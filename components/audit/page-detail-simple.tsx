@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -19,9 +19,13 @@ import {
   BarChart3,
   Eye,
   Image,
-  Globe
+  Globe,
+  Calendar,
+  Link2,
+  Clock,
 } from 'lucide-react';
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
 
 interface PageAnalysis {
   metaTags: {
@@ -98,29 +102,75 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   const [page, setPage] = useState<ScrapedPage | null>(null);
   const [analysis, setAnalysis] = useState<PageAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [grammarAnalyzing, setGrammarAnalyzing] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string>('');
   const [activeAnalysisTab, setActiveAnalysisTab] = useState('grammar');
   const [activeGrammarTab, setActiveGrammarTab] = useState('grammar');
-  const [grammarCached, setGrammarCached] = useState(false);
-  const [grammarCachedAt, setGrammarCachedAt] = useState<string | null>(null);
+  const [grammarAnalyzing, setGrammarAnalyzing] = useState(false);
   const [seoAnalyzing, setSeoAnalyzing] = useState(false);
+  const [grammarCached, setGrammarCached] = useState(false);
   const [seoCached, setSeoCached] = useState(false);
+  const [grammarCachedAt, setGrammarCachedAt] = useState<string | null>(null);
   const [seoCachedAt, setSeoCachedAt] = useState<string | null>(null);
+  const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
 
-  useEffect(() => {
-    fetchPageData();
+  // Fetch results from audit_results table
+  const fetchAnalysisResults = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/pages/${pageId}`);
+      const data = await response.json();
+      
+      if (response.ok && data.results) {
+        console.log('📊 Fetched analysis results:', data.results);
+        
+        // Update analysis state with fresh results
+        setAnalysis(prev => {
+          const newAnalysis = prev || analyzePage(data.page);
+          
+          if (data.results.grammar_analysis) {
+            newAnalysis.grammarCheck = data.results.grammar_analysis;
+            setGrammarCached(true);
+            setGrammarCachedAt(data.results.created_at || data.results.updated_at);
+            setGrammarAnalyzing(false);
+          }
+          
+          if (data.results.seo_analysis) {
+            newAnalysis.seoAnalysis = data.results.seo_analysis;
+            setSeoCached(true);
+            setSeoCachedAt(data.results.created_at || data.results.updated_at);
+            setSeoAnalyzing(false);
+          }
+          
+          return newAnalysis;
+        });
+        
+        // Clear analyzing states
+        setIsAnalysisRunning(false);
+      }
+    } catch (error) {
+      console.error('Error fetching analysis results:', error);
+    }
   }, [pageId]);
 
-  const fetchPageData = async () => {
+  const fetchPageData = useCallback(async () => {
     try {
       const response = await fetch(`/api/pages/${pageId}`);
       const data = await response.json();
       
       if (response.ok) {
+        console.log('🔍 Page data received:', {
+          pageId: data.page?.id,
+          analysis_status: data.page?.analysis_status,
+          has_results: !!data.results,
+          grammar_result: !!data.results?.grammar_analysis,
+          seo_result: !!data.results?.seo_analysis
+        });
+        
         setSession(data.session);
         setPage(data.page);
+        
+        // Check if this specific page is currently being analyzed
+        const isPageAnalyzing = data.page?.analysis_status === 'analyzing';
+        setIsAnalysisRunning(isPageAnalyzing);
         
         // Analyze the page data
         if (data.page) {
@@ -133,26 +183,39 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             if (data.results.grammar_analysis) {
               basicAnalysis.grammarCheck = data.results.grammar_analysis;
               setGrammarCached(true);
-              setGrammarCachedAt(data.results.created_at);
+              setGrammarCachedAt(data.results.created_at || data.results.updated_at);
               hasGrammarCache = true;
             }
             
             if (data.results.seo_analysis) {
               basicAnalysis.seoAnalysis = data.results.seo_analysis;
               setSeoCached(true);
-              setSeoCachedAt(data.results.created_at);
+              setSeoCachedAt(data.results.created_at || data.results.updated_at);
               hasSeoCache = true;
             }
           }
           
           setAnalysis(basicAnalysis);
           
-          // Start analysis for missing cached data
-          if (!hasGrammarCache) {
-            analyzeContentWithGemini();
-          }
-          if (!hasSeoCache) {
-            analyzeSeoWithAPI();
+          // Determine if we need to start analysis or show analyzing state
+          if (isPageAnalyzing) {
+            console.log('🔥 Page is analyzing - showing analyzing states');
+            // Page is being analyzed - show analyzing state for missing analyses
+            if (!hasGrammarCache) {
+              setGrammarAnalyzing(true);
+            }
+            if (!hasSeoCache) {
+              setSeoAnalyzing(true);
+            }
+          } else if (data.page.analysis_status === 'pending' || !data.page.analysis_status) {
+            console.log('📝 Page needs analysis - starting fresh');
+            // Page hasn't been analyzed yet - start fresh analysis for missing cached data
+            if (!hasGrammarCache) {
+              analyzeContentWithGemini();
+            }
+            if (!hasSeoCache) {
+              analyzeSeoWithAPI();
+            }
           }
         }
       } else {
@@ -163,56 +226,197 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     } finally {
       setLoading(false);
     }
+  }, [pageId, grammarCached, seoCached]);
+
+  useEffect(() => {
+    fetchPageData();
+    
+    // Set up Supabase Realtime subscriptions  
+    const supabase = createClient();
+    const channels: any[] = [];
+
+    const setupRealtimeSubscriptions = () => {
+      if (!pageId) return;
+
+      // Subscribe to page status changes
+      const pageChannel = supabase
+        .channel(`page-status-${pageId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'scraped_pages',
+            filter: `id=eq.${pageId}`
+          },
+          async (payload) => {
+            console.log('🔄 Page status updated:', payload.new);
+            const updatedPage = payload.new as any;
+            
+            // Update page state
+            setPage(prev => ({ ...prev, ...updatedPage } as ScrapedPage));
+            
+            // Handle status changes
+            if (updatedPage.analysis_status === 'analyzing') {
+              console.log('▶️ Analysis started');
+              setIsAnalysisRunning(true);
+              if (!grammarCached) setGrammarAnalyzing(true);
+              if (!seoCached) setSeoAnalyzing(true);
+            } else if (updatedPage.analysis_status === 'completed') {
+              console.log('✅ Analysis completed - fetching results');
+              // Fetch the completed results
+              await fetchAnalysisResults();
+            } else if (updatedPage.analysis_status === 'failed') {
+              console.log('❌ Analysis failed');
+              setIsAnalysisRunning(false);
+              setGrammarAnalyzing(false);
+              setSeoAnalyzing(false);
+            }
+          }
+        )
+        .subscribe();
+
+      channels.push(pageChannel);
+
+      // Subscribe to analysis results updates
+      const resultsChannel = supabase
+        .channel(`results-update-${pageId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'audit_results',
+            filter: `scraped_page_id=eq.${pageId}`
+          },
+          async (payload) => {
+            console.log('📊 Results updated:', payload.eventType, payload.new);
+            
+            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+              // Fetch the latest results
+              await fetchAnalysisResults();
+            }
+          }
+        )
+        .subscribe();
+
+      channels.push(resultsChannel);
+
+      console.log('🔌 Realtime subscriptions set up for page:', pageId);
+    };
+
+    setupRealtimeSubscriptions();
+
+    // Cleanup subscriptions on unmount
+    return () => {
+      channels.forEach(channel => {
+        supabase.removeChannel(channel);
+      });
+    };
+  }, [pageId, fetchAnalysisResults]);
+
+  // Add polling fallback when analysis is running
+  useEffect(() => {
+    if (isAnalysisRunning) {
+      console.log('🔄 Starting fallback polling for analysis status');
+      
+      const pollInterval = setInterval(async () => {
+        console.log('⏰ Polling for updates...');
+        await fetchPageData();
+      }, 5000); // Poll every 5 seconds
+      
+      return () => {
+        console.log('🛑 Stopping fallback polling');
+        clearInterval(pollInterval);
+      };
+    }
+  }, [isAnalysisRunning, fetchPageData]);
+
+  // Manual analysis trigger for both
+  const startFullAnalysis = async () => {
+    if (!session?.id) return;
+    
+    setIsAnalysisRunning(true);
+    setGrammarAnalyzing(true);
+    setSeoAnalyzing(true);
+    
+    try {
+      const response = await fetch(`/api/audit-sessions/${session.id}/analyze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          page_ids: [pageId],
+          analysis_types: ['grammar', 'seo'],
+          use_cache: false,
+          background: false,
+          force_refresh: true
+        }),
+      });
+      
+      if (response.ok) {
+        console.log('✅ Full analysis started');
+        // Results will come via realtime or polling
+      }
+    } catch (error) {
+      console.error('Failed to start analysis:', error);
+      setIsAnalysisRunning(false);
+      setGrammarAnalyzing(false);
+      setSeoAnalyzing(false);
+    }
   };
 
   const analyzeContentWithGemini = async (forceRefresh = false) => {
     setGrammarAnalyzing(true);
+    setIsAnalysisRunning(true);
     try {
-      const url = forceRefresh 
-        ? `/api/pages/${pageId}/analyze-content?refresh=true`
-        : `/api/pages/${pageId}/analyze-content`;
-        
-      const response = await fetch(url, {
+      if (!session?.id) {
+        console.error('No session ID available for analysis');
+        return;
+      }
+
+      console.log('🚀 Starting grammar analysis...');
+      const response = await fetch(`/api/audit-sessions/${session.id}/analyze`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          page_ids: [pageId],
+          analysis_types: ['grammar'],
+          use_cache: !forceRefresh,
+          background: false,
+          force_refresh: forceRefresh
+        }),
       });
 
       if (response.ok) {
         const grammarData = await response.json();
+        console.log('✅ Grammar analysis response:', grammarData);
         
         // Check if this is cached data
         setGrammarCached(grammarData.cached || false);
         setGrammarCachedAt(grammarData.cached_at || null);
         
         // Remove caching metadata before setting analysis
-        const { cached, cached_at, ...analysisData } = grammarData;
+        const { cached, cached_at, background, ...analysisData } = grammarData;
         
-        setAnalysis(prev => prev ? {
-          ...prev,
-          grammarCheck: analysisData
-        } : null);
-      } else {
-        console.error('Failed to analyze content with Gemini');
-        setAnalysis(prev => prev ? {
-          ...prev,
-          grammarCheck: {
-            wordCount: 0,
-            sentenceCount: 0,
-            readabilityScore: 0,
-            estimatedReadingTime: 0,
-            grammarErrors: [],
-            spellingErrors: [],
-            issues: ['Failed to analyze content'],
-            suggestions: ['Try refreshing to analyze again'],
-            tone: 'neutral',
-            overallScore: 0,
-            contentQuality: 0,
-          }
-        } : null);
+        if (analysisData.wordCount !== undefined) {
+          // We got the results immediately
+          setAnalysis(prev => prev ? {
+            ...prev,
+            grammarCheck: analysisData
+          } : null);
+          setGrammarAnalyzing(false);
+          setIsAnalysisRunning(false);
+        }
+        // Otherwise, results will come via realtime subscription
       }
     } catch (error) {
       console.error('Grammar analysis error:', error);
-    } finally {
       setGrammarAnalyzing(false);
+      setIsAnalysisRunning(false);
     }
   };
 
@@ -222,44 +426,54 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
   const analyzeSeoWithAPI = async (forceRefresh = false) => {
     setSeoAnalyzing(true);
+    setIsAnalysisRunning(true);
     try {
-      const url = forceRefresh 
-        ? `/api/pages/${pageId}/analyze-seo?refresh=true`
-        : `/api/pages/${pageId}/analyze-seo`;
-        
-      const response = await fetch(url, {
+      if (!session?.id) {
+        console.error('No session ID available for analysis');
+        return;
+      }
+
+      console.log('🚀 Starting SEO analysis...');
+      const response = await fetch(`/api/audit-sessions/${session.id}/analyze`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          page_ids: [pageId],
+          analysis_types: ['seo'],
+          use_cache: !forceRefresh,
+          background: false,
+          force_refresh: forceRefresh
+        }),
       });
 
       if (response.ok) {
         const seoData = await response.json();
+        console.log('✅ SEO analysis response:', seoData);
         
         // Check if this is cached data
         setSeoCached(seoData.cached || false);
         setSeoCachedAt(seoData.cached_at || null);
         
         // Remove caching metadata before setting analysis
-        const { cached, cached_at, ...analysisData } = seoData;
+        const { cached, cached_at, background, ...analysisData } = seoData;
         
-        setAnalysis(prev => prev ? {
-          ...prev,
-          seoAnalysis: analysisData
-        } : null);
-      } else {
-        console.error('Failed to analyze SEO');
-        setAnalysis(prev => prev ? {
-          ...prev,
-          seoAnalysis: {
-            overallScore: 0,
-            issues: ['Failed to analyze SEO'],
-            recommendations: ['Try refreshing to analyze again']
-          }
-        } : null);
+        if (analysisData.overallScore !== undefined) {
+          // We got the results immediately
+          setAnalysis(prev => prev ? {
+            ...prev,
+            seoAnalysis: analysisData
+          } : null);
+          setSeoAnalyzing(false);
+          setIsAnalysisRunning(false);
+        }
+        // Otherwise, results will come via realtime subscription
       }
     } catch (error) {
       console.error('SEO analysis error:', error);
-    } finally {
       setSeoAnalyzing(false);
+      setIsAnalysisRunning(false);
     }
   };
 
@@ -431,43 +645,78 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
-      {/* Header */}
+    <div className="container mx-auto p-6 space-y-6">
+      {/* Header with back button and refresh */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href={session ? `/audit?session=${session.id}` : "/audit"}>
-            <Button variant="outline" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Audit
-            </Button>
-          </Link>
-              <div>
-            <h1 className="text-2xl font-bold">Technical SEO Analysis</h1>
-            <p className="text-muted-foreground">{page.title || 'Untitled'}</p>
-                  </div>
-                  </div>
-        <Button
-          onClick={fetchPageData}
-          disabled={analyzing}
-          variant="outline"
-        >
-          {analyzing ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4 mr-2" />
+        <Link href={session ? `/audit?session=${session.id}` : "/audit"}>
+          <Button variant="outline">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Audit
+          </Button>
+        </Link>
+        
+        <div className="flex items-center gap-2">
+          {/* Analysis Status Indicator */}
+          {isAnalysisRunning && (
+            <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950">
+              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              Analysis Running
+            </Badge>
           )}
-          Refresh
-        </Button>
-                  </div>
+          
+          {/* Manual Refresh Button */}
+          <Button
+            onClick={fetchPageData}
+            disabled={grammarAnalyzing || seoAnalyzing}
+            variant="outline"
+            size="sm"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${(grammarAnalyzing || seoAnalyzing) ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          
+          {/* Start Analysis Button - show when no analysis is running and no results */}
+          {!isAnalysisRunning && (!grammarCached || !seoCached) && (
+            <Button
+              onClick={startFullAnalysis}
+              variant="default"
+              size="sm"
+            >
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Start Analysis
+            </Button>
+          )}
+              </div>
+              </div>
 
       {error && (
-        <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
-          <div className="flex items-center gap-2 text-destructive">
-            <XCircle className="h-4 w-4" />
-            {error}
-                </div>
-              </div>
-            )}
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-lg p-4">
+          {error}
+            </div>
+      )}
+
+      {/* Page Title and URL */}
+      {page && (
+                <div className="space-y-2">
+          <h1 className="text-3xl font-bold">{page.title || 'Untitled Page'}</h1>
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Globe className="h-4 w-4" />
+            <a href={page.url} target="_blank" rel="noopener noreferrer" className="hover:underline flex items-center gap-1">
+              {page.url}
+              <ExternalLink className="h-3 w-3" />
+            </a>
+                  </div>
+          {page.analysis_status && (
+            <Badge variant={
+              page.analysis_status === 'completed' ? 'default' :
+              page.analysis_status === 'analyzing' ? 'secondary' :
+              page.analysis_status === 'failed' ? 'destructive' : 'outline'
+            }>
+              Page Status: {page.analysis_status}
+            </Badge>
+          )}
+                  </div>
+      )}
 
       {/* Main Content - Side by Side Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -479,7 +728,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               <div>
                   <CardTitle className="text-lg">{page.title || 'Untitled'}</CardTitle>
                   <CardDescription className="break-all">{page.url}</CardDescription>
-              </div>
+                  </div>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -489,30 +738,30 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                     <ExternalLink className="h-4 w-4" />
                   </a>
                 </Button>
-              </div>
+                  </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
               <div>
                   <p className="text-sm text-muted-foreground">Status Code</p>
                   <p className="font-medium">{page.status_code || 'Unknown'}</p>
-              </div>
+                </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Protocol</p>
                   <p className="font-medium">{analysis.httpsCheck.isHttps ? 'HTTPS' : 'HTTP'}</p>
-          </div>
-                <div>
+              </div>
+              <div>
                   <p className="text-sm text-muted-foreground">Indexable</p>
                   <p className="font-medium">{analysis.robotsCheck.indexable ? 'Yes' : 'No'}</p>
               </div>
-                <div>
+              <div>
                   <p className="text-sm text-muted-foreground">Has Redirects</p>
                   <p className="font-medium">{analysis.redirectCheck.hasRedirect ? 'Yes' : 'No'}</p>
               </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Scraped Date</p>
                   <p className="font-medium">{new Date(page.scraped_at).toLocaleDateString()}</p>
-              </div>
+          </div>
             </div>
 
               {/* Quick Stats */}
@@ -536,15 +785,15 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       <div className="flex justify-between">
                         <span className="text-sm text-muted-foreground">Word Count</span>
                         <span className="text-sm font-medium">{analysis.grammarCheck.wordCount}</span>
-            </div>
+              </div>
                       <div className="flex justify-between">
                         <span className="text-sm text-muted-foreground">Reading Time</span>
                         <span className="text-sm font-medium">{analysis.grammarCheck.estimatedReadingTime}m</span>
-              </div>
+            </div>
                     </>
                   )}
-                </div>
               </div>
+            </div>
 
               {/* Overall Scores */}
               <div className="pt-4 border-t">
@@ -560,18 +809,18 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                     <div className="flex items-center justify-between p-2 border rounded">
                       <span className="text-sm font-medium">SEO Score</span>
                       <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{analysis.seoAnalysis.overallScore}</span>
-          </div>
-                  )}
+              </div>
+            )}
                   {(!analysis.grammarCheck || !analysis.seoAnalysis) && (
                     <div className="text-center py-2">
                       <p className="text-xs text-muted-foreground">Scores will appear as analysis completes</p>
-              </div>
+          </div>
                   )}
               </div>
               </div>
             </CardContent>
           </Card>
-        </div>
+              </div>
 
         {/* Analysis Tabs - 3/4 width on large screens */}
         <div className="lg:col-span-3">

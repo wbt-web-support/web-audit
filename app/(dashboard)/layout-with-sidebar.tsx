@@ -32,7 +32,6 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Audit Sessions', href: '/sessions', icon: Globe },
-    { name: 'Audit Analysis', href: '/audit', icon: FileSearch },
     { name: 'Reports', href: '/reports', icon: BarChart3 },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];

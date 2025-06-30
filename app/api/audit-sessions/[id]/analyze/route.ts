@@ -18,7 +18,14 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { page_ids, analyze_all = false } = body;
+    const { 
+      page_ids, 
+      analyze_all = false,
+      analysis_types = ['grammar', 'seo'], // Default to both
+      use_cache = true, // Default to use cache
+      background = null, // Auto-determine based on page count
+      force_refresh = false // Force refresh cached results
+    } = body;
 
     // Verify the session belongs to the user
     const { data: session, error: sessionError } = await supabase
@@ -30,14 +37,6 @@ export async function POST(
 
     if (sessionError || !session) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
-    }
-
-    // Allow analysis when session has completed crawling
-    if (session.status !== 'analyzing' && session.status !== 'completed' && session.pages_crawled === 0) {
-      return NextResponse.json(
-        { error: 'Session must have crawled pages before analysis' },
-        { status: 400 }
-      );
     }
 
     // Get pages to analyze
@@ -60,19 +59,49 @@ export async function POST(
       return NextResponse.json({ error: 'No pages to analyze' }, { status: 400 });
     }
 
+    // Auto-determine background processing (single page = immediate, multiple = background)
+    const shouldRunInBackground = background !== null ? background : pages.length > 1;
+
+    if (shouldRunInBackground) {
+      // Allow analysis when session has completed crawling
+      if (session.status !== 'analyzing' && session.status !== 'completed' && session.pages_crawled === 0) {
+        return NextResponse.json(
+          { error: 'Session must have crawled pages before analysis' },
+          { status: 400 }
+        );
+    }
+
     // Update session status to analyzing
     await supabase
       .from('audit_sessions')
       .update({ status: 'analyzing' })
-      .eq('id', id);
+        .eq('id', id);
 
     // Start analysis in background
-    analyzePages(id, pages);
+      analyzePages(id, pages, analysis_types, use_cache, force_refresh);
 
     return NextResponse.json({ 
       message: 'Analysis started',
-      pages_to_analyze: pages.length 
-    });
+        pages_to_analyze: pages.length,
+        background: true
+      });
+    } else {
+      // Single page - return immediate results
+      const page = pages[0];
+      const results = await performSinglePageAnalysis(
+        supabase, 
+        page, 
+        session, 
+        analysis_types, 
+        use_cache, 
+        force_refresh
+      );
+      
+      return NextResponse.json({
+        ...results,
+        background: false
+      });
+    }
   } catch (error) {
     return NextResponse.json(
       { error: 'Internal server error' },
@@ -81,11 +110,165 @@ export async function POST(
   }
 }
 
-async function analyzePages(sessionId: string, pages: any[]) {
+async function performSinglePageAnalysis(
+  supabase: any, 
+  page: any, 
+  session: any, 
+  analysisTypes: string[], 
+  useCache: boolean, 
+  forceRefresh: boolean
+) {
+  try {
+    // Mark page as analyzing
+    await supabase
+      .from('scraped_pages')
+      .update({ analysis_status: 'analyzing' })
+      .eq('id', page.id);
+
+    let grammarAnalysis = null;
+    let seoAnalysis = null;
+    let cached = false;
+    let cachedAt = null;
+
+    // Check for cached results first (unless force refresh)
+    if (useCache && !forceRefresh) {
+      const { data: cachedResult, error: cacheError } = await supabase
+        .from('audit_results')
+        .select('grammar_analysis, seo_analysis, created_at')
+        .eq('scraped_page_id', page.id)
+        .maybeSingle();
+
+      if (!cacheError && cachedResult) {
+        if (analysisTypes.includes('grammar') && cachedResult.grammar_analysis) {
+          grammarAnalysis = cachedResult.grammar_analysis;
+          cached = true;
+          cachedAt = cachedResult.created_at;
+        }
+        if (analysisTypes.includes('seo') && cachedResult.seo_analysis) {
+          seoAnalysis = cachedResult.seo_analysis;
+          cached = true;
+          cachedAt = cachedResult.created_at;
+        }
+      }
+    }
+
+    // Perform missing analyses
+    if (analysisTypes.includes('grammar') && !grammarAnalysis) {
+      console.log(`Running fresh grammar analysis for page ${page.id}`);
+      grammarAnalysis = await analyzeContentWithGemini(page.content || '', session);
+    }
+
+    if (analysisTypes.includes('seo') && !seoAnalysis) {
+      console.log(`Running fresh SEO analysis for page ${page.id}`);
+      seoAnalysis = await analyzeSEO(page.html || '', page.url, page.title, page.status_code);
+    }
+
+    // Calculate combined score if both analyses are requested
+    let overallScore = 0;
+    if (grammarAnalysis && seoAnalysis) {
+      overallScore = Math.round((grammarAnalysis.overallScore * 0.6) + (seoAnalysis.overallScore * 0.4));
+    } else if (grammarAnalysis) {
+      overallScore = grammarAnalysis.overallScore;
+    } else if (seoAnalysis) {
+      overallScore = seoAnalysis.overallScore;
+    }
+
+    // Save results to cache if new analysis was performed
+    if (!cached) {
+      await upsertAnalysisResult(supabase, page, grammarAnalysis, seoAnalysis, overallScore);
+    }
+
+    // Mark page as completed
+    await supabase
+      .from('scraped_pages')
+      .update({ analysis_status: 'completed' })
+      .eq('id', page.id);
+
+    // Return appropriate response based on what was requested
+    if (analysisTypes.includes('grammar') && analysisTypes.includes('seo')) {
+      return {
+        grammar_analysis: grammarAnalysis,
+        seo_analysis: seoAnalysis,
+        overall_score: overallScore,
+        cached,
+        cached_at: cachedAt
+      };
+    } else if (analysisTypes.includes('grammar')) {
+      return {
+        ...grammarAnalysis,
+        cached,
+        cached_at: cachedAt
+      };
+    } else if (analysisTypes.includes('seo')) {
+      return {
+        ...seoAnalysis,
+        cached,
+        cached_at: cachedAt
+      };
+    }
+
+    return { error: 'No valid analysis types specified' };
+  } catch (error) {
+    console.error(`Single page analysis failed for page ${page.id}:`, error);
+    
+    // Mark page as failed
+    await supabase
+      .from('scraped_pages')
+      .update({ analysis_status: 'failed' })
+      .eq('id', page.id);
+    
+    throw error;
+  }
+}
+
+async function upsertAnalysisResult(supabase: any, page: any, grammarAnalysis: any, seoAnalysis: any, overallScore: number) {
+  const status = overallScore >= 80 ? 'pass' : overallScore >= 60 ? 'warning' : 'fail';
+  
+  const updateData: any = {
+    scraped_page_id: page.id,
+    page_name: page.title || page.url,
+    overall_score: overallScore,
+    overall_status: status,
+    updated_at: new Date().toISOString()
+  };
+  
+  if (grammarAnalysis) {
+    updateData.grammar_analysis = grammarAnalysis;
+  }
+  
+  if (seoAnalysis) {
+    updateData.seo_analysis = seoAnalysis;
+  }
+
+  const { error } = await supabase
+    .from('audit_results')
+    .upsert(updateData, { 
+      onConflict: 'scraped_page_id',
+      ignoreDuplicates: false 
+    });
+
+  if (error) {
+    console.error(`Failed to save analysis results for page ${page.id}:`, error);
+    throw error;
+  }
+}
+
+async function analyzePages(sessionId: string, pages: any[], analysisTypes: string[], useCache: boolean, forceRefresh: boolean) {
   const supabase = await createClient();
   
   try {
     let analyzedCount = 0;
+
+    // Get session data for company information verification
+    const { data: session, error: sessionError } = await supabase
+      .from('audit_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .single();
+
+    if (sessionError || !session) {
+      throw new Error('Failed to get session data for analysis');
+    }
 
     for (const page of pages) {
       // Check if analysis should stop
@@ -101,8 +284,8 @@ async function analyzePages(sessionId: string, pages: any[]) {
 
       console.log(`Starting analysis for page ${page.id}: ${page.title || page.url}`);
 
-      // Do comprehensive AI analysis directly (like individual page routes)
-      await performComprehensiveAnalysis(supabase, page);
+      // Perform analysis using the same logic as single page
+      await performSinglePageAnalysis(supabase, page, session, analysisTypes, useCache, forceRefresh);
 
       analyzedCount++;
       
@@ -150,95 +333,7 @@ async function analyzePages(sessionId: string, pages: any[]) {
   }
 }
 
-async function performComprehensiveAnalysis(supabase: any, page: any) {
-  try {
-    // Initialize result object
-    let grammarAnalysis, seoAnalysis;
-    let grammarScore = 0, seoScore = 0;
-
-    // 1. Grammar Analysis with Gemini AI
-    try {
-      console.log(`Running grammar analysis for page ${page.id}`);
-      grammarAnalysis = await analyzeContentWithGemini(page.content || '');
-      grammarScore = grammarAnalysis.overallScore;
-      console.log(`Grammar analysis completed for page ${page.id}, score: ${grammarScore}`);
-    } catch (error) {
-      console.error(`Grammar analysis failed for page ${page.id}:`, error);
-      // Provide fallback analysis
-      grammarAnalysis = {
-        wordCount: 0,
-        sentenceCount: 0,
-        readabilityScore: 0,
-        estimatedReadingTime: 0,
-        grammarErrors: [],
-        spellingErrors: [],
-        issues: ['Analysis failed - please try again'],
-        suggestions: ['Retry analysis or check content'],
-        tone: 'neutral',
-        overallScore: 0,
-        contentQuality: 0,
-      };
-    }
-
-    // 2. SEO Analysis
-    try {
-      console.log(`Running SEO analysis for page ${page.id}`);
-      seoAnalysis = await analyzeSEO(page.html || '', page.url, page.title, page.status_code);
-      seoScore = seoAnalysis.overallScore;
-      console.log(`SEO analysis completed for page ${page.id}, score: ${seoScore}`);
-    } catch (error) {
-      console.error(`SEO analysis failed for page ${page.id}:`, error);
-      // Provide fallback analysis
-      seoScore = 20;
-      seoAnalysis = {
-        metaTags: { title: page.title },
-        headingStructure: { h1Count: 0, h1Text: [], hasProperStructure: false, allHeadings: [] },
-        robotsCheck: { robotsTxt: false, robotsMeta: null, indexable: true },
-        linksCheck: { totalLinks: 0, internalLinks: 0, externalLinks: 0, brokenLinks: [] },
-        redirectCheck: { hasRedirect: false, finalUrl: page.url, redirectChain: [] },
-        httpsCheck: { isHttps: page.url.startsWith('https://'), hasSecurityHeaders: false },
-        overallScore: 20,
-        issues: ['Analysis failed - please try again'],
-        recommendations: ['Retry analysis or check page content']
-      };
-    }
-
-    // 3. Calculate overall score (weighted average)
-    const overallScore = Math.round((grammarScore * 0.6) + (seoScore * 0.4));
-    const overallStatus = overallScore >= 80 ? 'pass' : overallScore >= 60 ? 'warning' : 'fail';
-
-    // 4. Upsert comprehensive results to database
-    const analysisData = {
-      scraped_page_id: page.id,
-      page_name: page.title || page.url,
-      grammar_analysis: grammarAnalysis,
-      seo_analysis: seoAnalysis,
-      overall_score: overallScore,
-      overall_status: overallStatus,
-      updated_at: new Date().toISOString()
-    };
-
-    const { error } = await supabase
-      .from('audit_results')
-      .upsert(analysisData, { 
-        onConflict: 'scraped_page_id',
-        ignoreDuplicates: false 
-      });
-
-    if (error) {
-      console.error(`Failed to save analysis results for page ${page.id}:`, error);
-      throw error;
-    }
-
-    console.log(`Successfully saved analysis results for page ${page.id}`);
-
-  } catch (error) {
-    console.error(`Comprehensive analysis failed for page ${page.id}:`, error);
-    throw error;
-  }
-}
-
-async function analyzeContentWithGemini(content: string) {
+async function analyzeContentWithGemini(content: string, session?: any) {
   try {
     if (!content.trim()) {
       return {
@@ -258,11 +353,34 @@ async function analyzeContentWithGemini(content: string) {
 
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
+    // Build expected company information section if available
+    let expectedCompanyInfo = '';
+    if (session && (session.company_name || session.phone_number || session.email || session.address || session.custom_info)) {
+      expectedCompanyInfo = `
+
+ADDITIONAL COMPANY INFORMATION VERIFICATION:
+Check if the website content contains the following expected company information and report any discrepancies:
+
+Expected Information:`;
+      
+      if (session.company_name) expectedCompanyInfo += `\n- Company Name: "${session.company_name}"`;
+      if (session.phone_number) expectedCompanyInfo += `\n- Phone Number: "${session.phone_number}"`;
+      if (session.email) expectedCompanyInfo += `\n- Email: "${session.email}"`;
+      if (session.address) expectedCompanyInfo += `\n- Address: "${session.address}"`;
+      if (session.custom_info) expectedCompanyInfo += `\n- Additional Info: "${session.custom_info}"`;
+      
+      expectedCompanyInfo += `
+
+If any of this expected information is missing from the content, add it to the issues array.
+If any information on the website conflicts with the expected information, add it to the issues array with details about the discrepancy.
+Include suggestions for adding missing company information or correcting discrepancies.`;
+    }
+
     const prompt = `
 Analyze the following website content for grammar, spelling, and content quality. You MUST strictly follow UK English conventions and flag any US English spellings as grammar errors.
 
 Content to analyze:
-"${content}"
+"${content}"${expectedCompanyInfo}
 
 Return a JSON object with this exact structure:
 {

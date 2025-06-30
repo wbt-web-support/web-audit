@@ -31,6 +31,13 @@ export async function GET(
       return NextResponse.json({ error: 'Page not found' }, { status: 404 });
     }
 
+    console.log('🔍 DEBUG: Page data from DB:', {
+      id: page.id,
+      analysis_status: page.analysis_status,
+      title: page.title,
+      all_fields: Object.keys(page)
+    });
+
     // Get analysis results for this page
     const { data: results, error: resultsError } = await supabase
       .from('audit_results')

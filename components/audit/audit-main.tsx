@@ -148,9 +148,9 @@ export function AuditMain() {
         // Fetch analyzed pages from the selected session
         try {
           const resultsResponse = await fetch(`/api/audit-sessions/${selectedSessionId}/results`);
-          const resultsData = await resultsResponse.json();
-          
-          if (resultsResponse.ok && resultsData.pageResults) {
+            const resultsData = await resultsResponse.json();
+            
+            if (resultsResponse.ok && resultsData.pageResults) {
             const pages = resultsData.pageResults.map((pageResult: any) => {
               const results = pageResult.results;
               
@@ -465,20 +465,20 @@ export function AuditMain() {
       case 'warning':
         return <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" />;
       case 'fail':
-        return <XCircle className="h-4 w-4 text-red-500 dark:text-red-400" />;
+        return <XCircle className="h-4 w-4 text-red-500 dark:text-red-400 w-full" />;
       case 'pending':
-        return <Clock className="h-4 w-4 text-muted-foreground" />;
+        return <Clock className="h-4 w-4 text-muted-foreground w-full" />;
       default:
-        return <AlertTriangle className="h-4 w-4 text-muted-foreground" />;
+          return <AlertTriangle className="h-4 w-4 text-muted-foreground w-full" />;
     }
   };
 
   const getStatusBadge = (status: string) => {
     const variants = {
-      pass: 'bg-emerald-500 dark:bg-emerald-600 text-white',
-      warning: 'bg-amber-500 dark:bg-amber-600 text-white',
-      fail: 'bg-red-500 dark:bg-red-600 text-white',
-      pending: 'bg-muted text-muted-foreground'
+      pass: 'bg-emerald-500 dark:bg-emerald-600 text-white w-full text-center justify-center',
+      warning: 'bg-amber-500 dark:bg-amber-600 text-white w-full text-center justify-center',
+      fail: 'bg-red-500 dark:bg-red-600 text-white w-full text-center justify-center',
+      pending: 'bg-muted text-muted-foreground w-full text-center justify-center '
     };
 
     return (
@@ -635,10 +635,10 @@ export function AuditMain() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <div>
+                    <div>
                 <CardTitle>Current Session</CardTitle>
                 <CardDescription>{sessions[0].base_url}</CardDescription>
-              </div>
+                    </div>
               <div className="flex items-center gap-2">
                 {sessions[0].status === 'pending' && (
                   <Button
@@ -651,27 +651,27 @@ export function AuditMain() {
                   </Button>
                 )}
                 {sessions[0].status === 'completed' && (
-                  <Button
-                    size="sm"
+                      <Button
+                        size="sm"
                     onClick={() => startCrawling(sessions[0].id)}
-                    disabled={crawling}
-                  >
+                        disabled={crawling}
+                      >
                     <RefreshCw className="h-4 w-4 mr-2" />
                     Recrawl
-                  </Button>
-                )}
+                      </Button>
+                    )}
                 {sessions[0].status === 'crawling' && (
-                  <Button
-                    size="sm"
+                      <Button
+                        size="sm"
                     variant="outline"
                     onClick={() => stopProcess(sessions[0].id)}
                   >
                     <Square className="h-4 w-4 mr-2" />
                     Stop Crawl
-                  </Button>
-                )}
-              </div>
-            </div>
+                      </Button>
+                    )}
+                  </div>
+                </div>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-3 gap-4">
@@ -769,15 +769,15 @@ export function AuditMain() {
         <CardContent>
           <div className="mb-6 space-y-4">
             <div className="flex items-end gap-4">
-              <div className="flex-1">
-                <Label htmlFor="search">Search pages</Label>
-                <Input
-                  id="search"
-                  placeholder="Search by title or URL..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
+            <div className="flex-1">
+              <Label htmlFor="search">Search pages</Label>
+              <Input
+                id="search"
+                placeholder="Search by title or URL..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -949,7 +949,7 @@ export function AuditMain() {
                       Status {getSortIcon('status')}
                     </th>
                     <th 
-                      className="w-16 p-2 text-xs font-medium text-muted-foreground text-center cursor-pointer hover:text-foreground transition-colors"
+                      className="w-[100px] p-2 text-xs font-medium text-muted-foreground text-center cursor-pointer hover:text-foreground transition-colors"
                       onClick={() => handleSort('score')}
                     >
                       Score {getSortIcon('score')}
@@ -960,7 +960,7 @@ export function AuditMain() {
                 <tbody>
                   {filteredAndSortedPages.map((analyzedPage, index) => (
                     <tr
-                      key={`${analyzedPage.session.id}-${analyzedPage.page.id}`}
+                  key={`${analyzedPage.session.id}-${analyzedPage.page.id}`}
                       className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
                       onClick={(e) => {
                         // Don't trigger row selection if clicking on buttons or checkbox
@@ -999,19 +999,19 @@ export function AuditMain() {
                           <div className="flex items-center gap-2">
                             <Globe className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                             <p className="font-medium text-sm truncate">
-                              {analyzedPage.page.title || 'Untitled'}
-                            </p>
-                          </div>
+                          {analyzedPage.page.title || 'Untitled'}
+                        </p>
+                      </div>
                           <p className="text-xs text-muted-foreground truncate mt-0.5">
-                            {analyzedPage.page.url}
-                          </p>
+                        {analyzedPage.page.url}
+                      </p>
                           {analyzingPages.has(analyzedPage.page.id) && (
                             <div className="flex items-center gap-1 mt-1">
                               <Loader2 className="h-3 w-3 animate-spin" />
                               <span className="text-xs text-muted-foreground">Running AI analysis...</span>
-                            </div>
+                    </div>
                           )}
-                        </div>
+                  </div>
                       </td>
                       <td className="p-2 text-center">
                         {analyzingPages.has(analyzedPage.page.id) ? (
@@ -1028,10 +1028,10 @@ export function AuditMain() {
                       </td>
                       <td className="p-2 text-center">
                         {analyzedPage.resultCount > 0 && !analyzingPages.has(analyzedPage.page.id) ? (
-                          <div className="flex flex-col items-center">
+                          <div className="flex items-center justify-center">
                             <span className="text-sm font-bold">{analyzedPage.overallScore}</span>
                             <span className="text-xs text-muted-foreground">/ 100</span>
-                          </div>
+                    </div>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
@@ -1041,55 +1041,55 @@ export function AuditMain() {
                           {/* Main action button */}
                           {deletingPages.has(analyzedPage.page.id) ? (
                             <Button size="sm" disabled className="h-7 px-3">
-                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              <Loader2 className="h-3 w-full mr-1 animate-spin" />
                               Deleting
                             </Button>
                           ) : analyzingPages.has(analyzedPage.page.id) ? (
                             <Button size="sm" disabled className="h-7 px-3">
-                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              <Loader2 className="h-3 w-full mr-1 animate-spin" />
                               Analyzing
                             </Button>
                           ) : analyzedPage.resultCount > 0 ? (
-                            <Button
-                              size="sm"
-                              className="h-7 px-3"
-                              onClick={() => router.push(`/audit/${analyzedPage.page.id}`)}
-                            >
-                              <Eye className="h-3 w-3 mr-1" />
+                    <Button
+                      size="sm"
+                              className="h-7 px-3 w-full"
+                      onClick={() => router.push(`/audit/${analyzedPage.page.id}`)}
+                    >
+                              <Eye className="h-3 w-full mr-1" />
                               View
                             </Button>
                           ) : (
                             <Button
                               size="sm"
-                              className="h-7 px-3"
+                              className="h-7 px-3 w-full"
                               onClick={() => analyzeSinglePage(analyzedPage.page.id)}
                               disabled={analyzing || deleting}
                             >
-                              <BarChart3 className="h-3 w-3 mr-1" />
+                              <BarChart3 className="h-3 w-full mr-1" />
                               Analyze
                             </Button>
                           )}
                           
                           {/* Delete button */}
                           {deletingPages.has(analyzedPage.page.id) ? (
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled>
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 w-full p-0" disabled>
+                              <Loader2 className="h-3 w-full animate-spin" />
+                    </Button>
                           ) : (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 w-7 p-0 text-destructive hover:text-destructive/80 hover:bg-destructive/10"
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                              className="h-7 w-12 p-0 text-destructive hover:text-destructive/80 hover:bg-destructive/10"
                               onClick={() => deletePage(analyzedPage.page.id)}
                               disabled={analyzingPages.has(analyzedPage.page.id) || deleting}
                             >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
+                              <Trash2 className="h-3 w-full" />
+                    </Button>
                           )}
-                        </div>
+                  </div>
                       </td>
                     </tr>
-                  ))}
+              ))}
                 </tbody>
               </table>
             </div>

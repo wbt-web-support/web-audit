@@ -3,8 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { AuditSession } from '@/lib/types/database';
 import { 
@@ -14,17 +12,27 @@ import {
   Globe, 
   Calendar,
   Play,
-  BarChart3
+  BarChart3,
+  Edit
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export function SessionManager() {
   const [sessions, setSessions] = useState<AuditSession[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
-  const [newSessionUrl, setNewSessionUrl] = useState('');
   const [error, setError] = useState('');
   const router = useRouter();
+
+  useEffect(() => {
+    // Check for error parameters in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const errorParam = urlParams.get('error');
+    if (errorParam === 'session-not-found') {
+      setError('Session not found or you do not have permission to access it.');
+      // Clean up the URL
+      router.replace('/sessions', undefined);
+    }
+  }, [router]);
 
   useEffect(() => {
     fetchSessions();
@@ -47,39 +55,7 @@ export function SessionManager() {
     }
   };
 
-  const createSession = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newSessionUrl.trim()) return;
 
-    setCreating(true);
-    setError('');
-
-    try {
-      const response = await fetch('/api/audit-sessions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          base_url: newSessionUrl.trim(),
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setNewSessionUrl('');
-        await fetchSessions();
-        router.push('/audit');
-      } else {
-        setError(data.error || 'Failed to create session');
-      }
-    } catch (error) {
-      setError('Failed to create session');
-    } finally {
-      setCreating(false);
-    }
-  };
 
   const deleteSession = async (sessionId: string) => {
     if (!confirm('Are you sure you want to delete this session? This will remove all crawled data and analysis results.')) {
@@ -140,10 +116,13 @@ export function SessionManager() {
           <h1 className="text-3xl font-bold">Session Management</h1>
           <p className="text-muted-foreground">Create and manage your website audit sessions</p>
         </div>
-        <Button onClick={goToAudit} variant="outline">
-          <BarChart3 className="h-4 w-4 mr-2" />
-          Go to Audit
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => router.push('/sessions/create')}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create New Session
+          </Button>
+        
+        </div>
       </div>
 
       {error && (
@@ -154,39 +133,7 @@ export function SessionManager() {
         </div>
       )}
 
-      {/* Create New Session */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Create New Session</CardTitle>
-          <CardDescription>
-            Enter a website URL to start a new audit session
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={createSession} className="space-y-4">
-            <div>
-              <Label htmlFor="url">Website URL</Label>
-              <Input
-                id="url"
-                type="url"
-                placeholder="https://example.com"
-                value={newSessionUrl}
-                onChange={(e) => setNewSessionUrl(e.target.value)}
-                disabled={creating}
-                required
-              />
-            </div>
-            <Button type="submit" disabled={creating || !newSessionUrl.trim()}>
-              {creating ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4 mr-2" />
-              )}
-              Create Session
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+
 
       {/* Sessions List */}
       <div className="space-y-4">
@@ -231,6 +178,18 @@ export function SessionManager() {
                       </Button>
                       <Button
                         size="sm"
+                        variant="outline"
+                        onClick={() => router.push(`/sessions/edit/${session.id}`)}
+                        disabled={session.status === 'crawling' || session.status === 'analyzing'}
+                        title={session.status === 'crawling' || session.status === 'analyzing' 
+                          ? 'Cannot edit session while it is running' 
+                          : 'Edit session details'}
+                      >
+                        <Edit className="h-3 w-3 mr-1" />
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
                         variant="destructive"
                         onClick={() => deleteSession(session.id)}
                       >
@@ -240,25 +199,66 @@ export function SessionManager() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Status</p>
-                      <p className="font-medium">{session.status}</p>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Status</p>
+                        <p className="font-medium">{session.status}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Pages Crawled</p>
+                        <p className="font-medium">{session.pages_crawled || 0}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Pages Analyzed</p>
+                        <p className="font-medium">{session.pages_analyzed || 0}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Last Updated</p>
+                        <p className="font-medium">
+                          {new Date(session.updated_at).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Pages Crawled</p>
-                      <p className="font-medium">{session.pages_crawled || 0}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Pages Analyzed</p>
-                      <p className="font-medium">{session.pages_analyzed || 0}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Last Updated</p>
-                      <p className="font-medium">
-                        {new Date(session.updated_at).toLocaleDateString()}
-                      </p>
-                    </div>
+                    
+                    {/* Expected Company Information */}
+                    {(session.company_name || session.phone_number || session.email || session.address || session.custom_info) && (
+                      <div className="border-t pt-4">
+                        <p className="text-sm font-medium text-muted-foreground mb-2">Expected Company Information:</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                          {session.company_name && (
+                            <div>
+                              <span className="text-muted-foreground">Company:</span>
+                              <span className="ml-2 font-medium">{session.company_name}</span>
+                            </div>
+                          )}
+                          {session.phone_number && (
+                            <div>
+                              <span className="text-muted-foreground">Phone:</span>
+                              <span className="ml-2 font-medium">{session.phone_number}</span>
+                            </div>
+                          )}
+                          {session.email && (
+                            <div>
+                              <span className="text-muted-foreground">Email:</span>
+                              <span className="ml-2 font-medium">{session.email}</span>
+                            </div>
+                          )}
+                          {session.address && (
+                            <div className="md:col-span-2">
+                              <span className="text-muted-foreground">Address:</span>
+                              <span className="ml-2 font-medium">{session.address}</span>
+                            </div>
+                          )}
+                          {session.custom_info && (
+                            <div className="md:col-span-2 lg:col-span-3">
+                              <span className="text-muted-foreground">Additional Info:</span>
+                              <span className="ml-2 font-medium">{session.custom_info}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>

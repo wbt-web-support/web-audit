@@ -157,29 +157,29 @@ async function crawlWebsite(sessionId: string, baseUrl: string, userId: string, 
       } else {
         console.log(`Creating new page: ${normalizedUrl}`);
         // Insert new page (with normalized URL)
-        const { error } = await supabase
-          .from('scraped_pages')
-          .insert({
-            audit_session_id: sessionId,
+      const { error } = await supabase
+        .from('scraped_pages')
+        .insert({
+          audit_session_id: sessionId,
             url: normalizedUrl,
-            title: pageData.title,
-            content: pageData.content,
-            html: pageData.html,
-            status_code: pageData.statusCode,
-          });
+          title: pageData.title,
+          content: pageData.content,
+          html: pageData.html,
+          status_code: pageData.statusCode,
+        });
 
-        if (!error) {
+      if (!error) {
           newPages++;
-          pagesCrawled++;
+        pagesCrawled++;
           existingUrls.add(normalizedUrl); // Add normalized URL to prevent duplicates in this session
         }
       }
         
-      // Update progress
-      await supabase
-        .from('audit_sessions')
-        .update({ pages_crawled: pagesCrawled })
-        .eq('id', sessionId);
+        // Update progress
+        await supabase
+          .from('audit_sessions')
+          .update({ pages_crawled: pagesCrawled })
+          .eq('id', sessionId);
     });
 
     // Update session status to completed crawling (ready for analysis)

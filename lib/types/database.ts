@@ -20,19 +20,25 @@ export type AuditSession = {
   updated_at: string;
   completed_at: string | null;
   error_message: string | null;
+  company_name: string | null;
+  phone_number: string | null;
+  email: string | null;
+  address: string | null;
+  custom_info: string | null;
 };
 
-export type ScrapedPage = {
+export interface ScrapedPage {
   id: string;
   audit_session_id: string;
   url: string;
   title: string | null;
-  content: string | null;
   html: string | null;
+  content: string | null;
   status_code: number | null;
-  error_message: string | null;
   scraped_at: string;
-};
+  analysis_status: 'pending' | 'analyzing' | 'completed' | 'failed';
+  error_message: string | null;
+}
 
 export type AuditStatus = 'pass' | 'warning' | 'fail';
 

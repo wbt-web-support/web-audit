@@ -40,7 +40,14 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { base_url } = body;
+    const { 
+      base_url, 
+      company_name, 
+      phone_number, 
+      email, 
+      address, 
+      custom_info 
+    } = body;
 
     if (!base_url) {
       return NextResponse.json(
@@ -66,6 +73,11 @@ export async function POST(request: Request) {
         user_id: user.id,
         base_url,
         status: 'pending',
+        company_name: company_name || null,
+        phone_number: phone_number || null,
+        email: email || null,
+        address: address || null,
+        custom_info: custom_info || null,
       })
       .select()
       .single();
