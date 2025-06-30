@@ -26,7 +26,10 @@ import {
   RefreshCw,
   Trash2,
   Filter,
-  X
+  X,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -60,6 +63,8 @@ export function AuditMain() {
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [analysisFilter, setAnalysisFilter] = useState<string[]>([]);
   const [scoreRange, setScoreRange] = useState({ min: 0, max: 100 });
+  const [sortField, setSortField] = useState<'title' | 'status' | 'score'>('title');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedSessionId = searchParams.get('session');
@@ -97,6 +102,24 @@ export function AuditMain() {
     setStatusFilter([]);
     setAnalysisFilter([]);
     setScoreRange({ min: 0, max: 100 });
+  };
+
+  const handleSort = (field: 'title' | 'status' | 'score') => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIcon = (field: 'title' | 'status' | 'score') => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="h-3 w-3 inline ml-1" />;
+    }
+    return sortDirection === 'asc' ? 
+      <ArrowUp className="h-3 w-3 inline ml-1" /> : 
+      <ArrowDown className="h-3 w-3 inline ml-1" />;
   };
 
   const hasActiveFilters = () => {
@@ -465,7 +488,7 @@ export function AuditMain() {
     );
   };
 
-  const filteredPages = analyzedPages.filter(page => {
+  const filteredAndSortedPages = analyzedPages.filter(page => {
     const matchesSession = !selectedSessionId || page.session.id === selectedSessionId;
     const matchesSearch = searchTerm === '' || 
       page.page.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -488,6 +511,25 @@ export function AuditMain() {
       (page.overallScore >= scoreRange.min && page.overallScore <= scoreRange.max);
     
     return matchesSession && matchesSearch && matchesStatus && matchesAnalysis && matchesScore;
+  }).sort((a, b) => {
+    let comparison = 0;
+    
+    switch (sortField) {
+      case 'title':
+        comparison = (a.page.title || 'Untitled').localeCompare(b.page.title || 'Untitled');
+        break;
+      case 'status':
+        const statusOrder = { 'pass': 1, 'warning': 2, 'fail': 3, 'pending': 4 };
+        const aStatus = a.resultCount > 0 ? a.overallStatus : 'pending';
+        const bStatus = b.resultCount > 0 ? b.overallStatus : 'pending';
+        comparison = (statusOrder[aStatus as keyof typeof statusOrder] || 5) - (statusOrder[bStatus as keyof typeof statusOrder] || 5);
+        break;
+      case 'score':
+        comparison = a.overallScore - b.overallScore;
+        break;
+    }
+    
+    return sortDirection === 'asc' ? comparison : -comparison;
   });
 
   const activeSessions = sessions.filter(s => s.status === 'crawling' || s.status === 'analyzing');
@@ -710,11 +752,11 @@ export function AuditMain() {
                   </Button>
                 </>
               )}
-              {selectedPages.size === 0 && filteredPages.length > 0 && (
+              {selectedPages.size === 0 && filteredAndSortedPages.length > 0 && (
                 <Button
                   size="sm"
                   onClick={() => {
-                    const allPageIds = filteredPages.map(p => p.page.id);
+                    const allPageIds = filteredAndSortedPages.map(p => p.page.id);
                     setSelectedPages(new Set(allPageIds));
                   }}
                 >
@@ -852,20 +894,20 @@ export function AuditMain() {
           {/* Results Counter */}
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              Showing {filteredPages.length} of {analyzedPages.length} pages
+              Showing {filteredAndSortedPages.length} of {analyzedPages.length} pages
               {hasActiveFilters() && <span> (filtered)</span>}
             </p>
-            {filteredPages.length > 0 && (
+            {filteredAndSortedPages.length > 0 && (
               <p className="text-xs text-muted-foreground">
-                {filteredPages.filter(p => p.resultCount > 0).length} analyzed • {' '}
-                {filteredPages.filter(p => analyzingPages.has(p.page.id)).length} analyzing • {' '}
-                {filteredPages.filter(p => p.resultCount === 0 && !analyzingPages.has(p.page.id)).length} pending
+                {filteredAndSortedPages.filter(p => p.resultCount > 0).length} analyzed • {' '}
+                {filteredAndSortedPages.filter(p => analyzingPages.has(p.page.id)).length} analyzing • {' '}
+                {filteredAndSortedPages.filter(p => p.resultCount === 0 && !analyzingPages.has(p.page.id)).length} pending
               </p>
             )}
           </div>
 
-          {/* Pages List */}
-          {filteredPages.length === 0 ? (
+          {/* Pages Table */}
+          {filteredAndSortedPages.length === 0 ? (
             <div className="text-center py-8">
               <Globe className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">No pages found</p>
@@ -876,134 +918,180 @@ export function AuditMain() {
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {filteredPages.map((analyzedPage) => (
-                <div
-                  key={`${analyzedPage.session.id}-${analyzedPage.page.id}`}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50"
-                >
-                  <div className="flex items-center gap-3">
-                    <Checkbox
-                      checked={selectedPages.has(analyzedPage.page.id)}
-                      onCheckedChange={(checked) => {
+            <div className=" overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-muted/50 border-b">
+                  <tr className="text-left">
+                    <th className="w-8 p-2">
+                      <Checkbox
+                        checked={selectedPages.size === filteredAndSortedPages.length && filteredAndSortedPages.length > 0}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            const allPageIds = filteredAndSortedPages.map(p => p.page.id);
+                            setSelectedPages(new Set(allPageIds));
+                          } else {
+                            setSelectedPages(new Set());
+                          }
+                        }}
+                      />
+                    </th>
+                    <th className="w-8 p-2 text-xs font-medium text-muted-foreground text-center">#</th>
+                    <th 
+                      className="p-2 text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                      onClick={() => handleSort('title')}
+                    >
+                      Page {getSortIcon('title')}
+                    </th>
+                    <th 
+                      className="w-20 p-2 text-xs font-medium text-muted-foreground text-center cursor-pointer hover:text-foreground transition-colors"
+                      onClick={() => handleSort('status')}
+                    >
+                      Status {getSortIcon('status')}
+                    </th>
+                    <th 
+                      className="w-16 p-2 text-xs font-medium text-muted-foreground text-center cursor-pointer hover:text-foreground transition-colors"
+                      onClick={() => handleSort('score')}
+                    >
+                      Score {getSortIcon('score')}
+                    </th>
+                    <th className="w-40 p-2 text-xs font-medium text-muted-foreground text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredAndSortedPages.map((analyzedPage, index) => (
+                    <tr
+                      key={`${analyzedPage.session.id}-${analyzedPage.page.id}`}
+                      className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
+                      onClick={(e) => {
+                        // Don't trigger row selection if clicking on buttons or checkbox
+                        if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('input[type="checkbox"]')) {
+                          return;
+                        }
                         const newSelected = new Set(selectedPages);
-                        if (checked) {
-                          newSelected.add(analyzedPage.page.id);
-                        } else {
+                        if (selectedPages.has(analyzedPage.page.id)) {
                           newSelected.delete(analyzedPage.page.id);
+                        } else {
+                          newSelected.add(analyzedPage.page.id);
                         }
                         setSelectedPages(newSelected);
                       }}
-                      disabled={analyzingPages.has(analyzedPage.page.id) || deletingPages.has(analyzedPage.page.id)}
-                    />
-                    <Globe className="h-5 w-5 text-muted-foreground" />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="font-medium">
-                          {analyzedPage.page.title || 'Untitled'}
-                        </p>
+                    >
+                      <td className="p-2" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={selectedPages.has(analyzedPage.page.id)}
+                          onCheckedChange={(checked) => {
+                            const newSelected = new Set(selectedPages);
+                            if (checked) {
+                              newSelected.add(analyzedPage.page.id);
+                            } else {
+                              newSelected.delete(analyzedPage.page.id);
+                            }
+                            setSelectedPages(newSelected);
+                          }}
+                          disabled={analyzingPages.has(analyzedPage.page.id) || deletingPages.has(analyzedPage.page.id)}
+                        />
+                      </td>
+                      <td className="p-2 text-center text-xs text-muted-foreground">
+                        {index + 1}
+                      </td>
+                      <td className="p-2 min-w-0">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Globe className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                            <p className="font-medium text-sm truncate">
+                              {analyzedPage.page.title || 'Untitled'}
+                            </p>
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">
+                            {analyzedPage.page.url}
+                          </p>
+                          {analyzingPages.has(analyzedPage.page.id) && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              <span className="text-xs text-muted-foreground">Running AI analysis...</span>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-2 text-center">
                         {analyzingPages.has(analyzedPage.page.id) ? (
-                          <div className="flex items-center gap-1">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            <Badge variant="outline" className="text-xs">
-                              Analyzing...
-                            </Badge>
+                          <Badge variant="outline" className="text-xs px-1.5 py-0.5">
+                            Analyzing
+                          </Badge>
+                        ) : analyzedPage.resultCount > 0 ? (
+                          getStatusBadge(analyzedPage.overallStatus)
+                        ) : (
+                          <Badge variant="outline" className="text-xs px-1.5 py-0.5">
+                            Pending
+                          </Badge>
+                        )}
+                      </td>
+                      <td className="p-2 text-center">
+                        {analyzedPage.resultCount > 0 && !analyzingPages.has(analyzedPage.page.id) ? (
+                          <div className="flex flex-col items-center">
+                            <span className="text-sm font-bold">{analyzedPage.overallScore}</span>
+                            <span className="text-xs text-muted-foreground">/ 100</span>
                           </div>
                         ) : (
-                          analyzedPage.resultCount > 0 && getStatusBadge(analyzedPage.overallStatus)
+                          <span className="text-xs text-muted-foreground">—</span>
                         )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {analyzedPage.page.url}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {analyzingPages.has(analyzedPage.page.id) ? (
-                          'Running AI analysis...'
-                        ) : analyzedPage.resultCount > 0 ? (
-                          <>
-                            {analyzedPage.resultCount} checks • 
-                            Score: {analyzedPage.overallScore}/100
-                          </>
-                        ) : (
-                          'Not analyzed yet'
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {analyzedPage.resultCount > 0 && !analyzingPages.has(analyzedPage.page.id) && (
-                      <>
-                        <div className="text-right mr-2">
-                          <p className="text-lg font-bold">{analyzedPage.overallScore}</p>
-                          <p className="text-xs text-muted-foreground">score</p>
+                      </td>
+                      <td className="p-2" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1">
+                          {/* Main action button */}
+                          {deletingPages.has(analyzedPage.page.id) ? (
+                            <Button size="sm" disabled className="h-7 px-3">
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              Deleting
+                            </Button>
+                          ) : analyzingPages.has(analyzedPage.page.id) ? (
+                            <Button size="sm" disabled className="h-7 px-3">
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              Analyzing
+                            </Button>
+                          ) : analyzedPage.resultCount > 0 ? (
+                            <Button
+                              size="sm"
+                              className="h-7 px-3"
+                              onClick={() => router.push(`/audit/${analyzedPage.page.id}`)}
+                            >
+                              <Eye className="h-3 w-3 mr-1" />
+                              View
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              className="h-7 px-3"
+                              onClick={() => analyzeSinglePage(analyzedPage.page.id)}
+                              disabled={analyzing || deleting}
+                            >
+                              <BarChart3 className="h-3 w-3 mr-1" />
+                              Analyze
+                            </Button>
+                          )}
+                          
+                          {/* Delete button */}
+                          {deletingPages.has(analyzedPage.page.id) ? (
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled>
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-destructive hover:text-destructive/80 hover:bg-destructive/10"
+                              onClick={() => deletePage(analyzedPage.page.id)}
+                              disabled={analyzingPages.has(analyzedPage.page.id) || deleting}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          )}
                         </div>
-                        {getStatusIcon(analyzedPage.overallStatus)}
-                      </>
-                    )}
-                    
-                    {/* Show appropriate action button based on analysis status */}
-                    {deletingPages.has(analyzedPage.page.id) ? (
-                      <Button size="sm" disabled>
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                        Deleting...
-                      </Button>
-                    ) : analyzingPages.has(analyzedPage.page.id) ? (
-                      <Button size="sm" disabled>
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                        Analyzing...
-                      </Button>
-                    ) : analyzedPage.resultCount > 0 ? (
-                      <Button
-                        size="sm"
-                        onClick={() => router.push(`/audit/${analyzedPage.page.id}`)}
-                      >
-                        <Eye className="h-3 w-3 mr-1" />
-                        View Details
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        onClick={() => analyzeSinglePage(analyzedPage.page.id)}
-                        disabled={analyzing || deleting}
-                      >
-                        <BarChart3 className="h-3 w-3 mr-1" />
-                        Analyze
-                      </Button>
-                    )}
-
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      asChild
-                      disabled={deletingPages.has(analyzedPage.page.id)}
-                    >
-                      <a 
-                        href={analyzedPage.page.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </Button>
-                    
-                    {deletingPages.has(analyzedPage.page.id) ? (
-                      <Button size="sm" variant="ghost" disabled>
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => deletePage(analyzedPage.page.id)}
-                        disabled={analyzingPages.has(analyzedPage.page.id) || deleting}
-                        className="text-destructive hover:text-destructive/80 hover:bg-destructive/10"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>
