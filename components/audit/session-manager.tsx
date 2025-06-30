@@ -104,16 +104,16 @@ export function SessionManager() {
 
   const getStatusBadge = (status: string) => {
     const variants = {
-      pending: 'bg-gray-500',
-      crawling: 'bg-blue-500',
-      completed: 'bg-green-500',
-      analyzing: 'bg-yellow-500',
-      analyzed: 'bg-purple-500',
-      error: 'bg-red-500'
+      pending: 'bg-muted text-muted-foreground',
+      crawling: 'bg-blue-500 dark:bg-blue-600 text-white',
+      completed: 'bg-emerald-500 dark:bg-emerald-600 text-white',
+      analyzing: 'bg-amber-500 dark:bg-amber-600 text-white',
+      analyzed: 'bg-purple-500 dark:bg-purple-600 text-white',
+      error: 'bg-destructive text-destructive-foreground'
     };
 
     return (
-      <Badge className={`${variants[status as keyof typeof variants] || 'bg-gray-500'} text-white`}>
+      <Badge className={variants[status as keyof typeof variants] || 'bg-muted text-muted-foreground'}>
         {status.toUpperCase()}
       </Badge>
     );
@@ -147,8 +147,8 @@ export function SessionManager() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-          <div className="flex items-center gap-2 text-red-700">
+        <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+          <div className="flex items-center gap-2 text-destructive">
             <span>{error}</span>
           </div>
         </div>

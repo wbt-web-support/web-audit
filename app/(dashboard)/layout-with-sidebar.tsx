@@ -43,7 +43,7 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       {/* Mobile menu button */}
       <div className="lg:hidden fixed top-4 left-4 z-50">
         <Button
@@ -60,10 +60,10 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
         "hidden lg:fixed lg:inset-y-0 lg:flex lg:flex-col transition-all duration-300",
         sidebarOpen ? "lg:w-64" : "lg:w-20"
       )}>
-        <div className="flex flex-1 flex-col bg-white border-r">
-          <div className="flex h-16 items-center justify-between px-4 border-b">
+        <div className="flex flex-1 flex-col bg-card border-r border-border">
+          <div className="flex h-16 items-center justify-between px-4 border-b border-border">
             {sidebarOpen && (
-              <h2 className="text-xl font-semibold">Web Audit</h2>
+              <h2 className="text-xl font-semibold text-foreground">Web Audit</h2>
             )}
             <Button
               variant="ghost"
@@ -88,15 +88,15 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
                   className={cn(
                     "group flex items-center rounded-md px-2 py-2 text-sm font-medium transition-colors",
                     isActive(item.href)
-                      ? "bg-blue-50 text-blue-700"
-                      : "text-gray-700 hover:bg-gray-50 hover:text-gray-900",
+                      ? "bg-primary/10 text-primary"
+                      : "text-foreground hover:bg-muted hover:text-foreground",
                     !sidebarOpen && "justify-center"
                   )}
                   title={!sidebarOpen ? item.name : undefined}
                 >
                   <Icon className={cn(
                     "flex-shrink-0 h-5 w-5",
-                    isActive(item.href) ? "text-blue-700" : "text-gray-400 group-hover:text-gray-500",
+                    isActive(item.href) ? "text-primary" : "text-muted-foreground group-hover:text-foreground",
                     sidebarOpen && "mr-3"
                   )} />
                   {sidebarOpen && item.name}
@@ -105,7 +105,7 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
             })}
           </nav>
 
-          <div className="border-t p-4">
+          <div className="border-t border-border p-4">
             <div className={cn(
               "flex items-center gap-2",
               !sidebarOpen && "justify-center"
@@ -117,8 +117,8 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
                 </>
               ) : (
                 <>
-                  <User className="h-5 w-5 text-gray-400" />
-                  <span className="text-sm font-medium text-gray-700">Account</span>
+                  <User className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-sm font-medium text-foreground">Account</span>
                   <div className="ml-auto flex items-center gap-2">
                     <ThemeSwitcher />
                     <LogoutButton />
@@ -133,10 +133,10 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
       {/* Mobile sidebar */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setMobileMenuOpen(false)} />
-          <div className="fixed inset-y-0 left-0 flex w-64 flex-col bg-white">
-            <div className="flex h-16 items-center justify-between px-4 border-b">
-              <h2 className="text-xl font-semibold">Web Audit</h2>
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />
+          <div className="fixed inset-y-0 left-0 flex w-64 flex-col bg-card border-r border-border">
+            <div className="flex h-16 items-center justify-between px-4 border-b border-border">
+              <h2 className="text-xl font-semibold text-foreground">Web Audit</h2>
             </div>
             <nav className="flex-1 space-y-1 px-2 py-4">
               {navigation.map((item) => {
@@ -149,13 +149,13 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
                     className={cn(
                       "group flex items-center rounded-md px-2 py-2 text-sm font-medium transition-colors",
                       isActive(item.href)
-                        ? "bg-blue-50 text-blue-700"
-                        : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                        ? "bg-primary/10 text-primary"
+                        : "text-foreground hover:bg-muted hover:text-foreground"
                     )}
                   >
                     <Icon className={cn(
                       "mr-3 h-5 w-5",
-                      isActive(item.href) ? "text-blue-700" : "text-gray-400 group-hover:text-gray-500"
+                      isActive(item.href) ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
                     )} />
                     {item.name}
                   </Link>

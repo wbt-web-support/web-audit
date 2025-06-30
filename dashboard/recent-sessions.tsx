@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Globe, Clock, CheckCircle, AlertTriangle, XCircle } from "lucide-react";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 interface AuditSession {
   id: string;
@@ -17,6 +18,23 @@ interface RecentSessionsProps {
 }
 
 export function RecentSessions({ sessions }: RecentSessionsProps) {
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return <CheckCircle className="h-5 w-5 text-emerald-500 dark:text-emerald-400" />;
+      case 'crawling':
+        return <Clock className="h-5 w-5 text-blue-500 dark:text-blue-400 animate-pulse" />;
+      case 'analyzing':
+        return <Clock className="h-5 w-5 text-amber-500 dark:text-amber-400 animate-pulse" />;
+      case 'failed':
+        return <XCircle className="h-5 w-5 text-red-500 dark:text-red-400" />;
+      case 'pending':
+        return <AlertTriangle className="h-5 w-5 text-muted-foreground" />;
+      default:
+        return <AlertTriangle className="h-5 w-5 text-muted-foreground" />;
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -35,13 +53,12 @@ export function RecentSessions({ sessions }: RecentSessionsProps) {
         ) : (
           <div className="space-y-4">
             {sessions.map((session) => (
-              <div key={session.id} className="flex items-center justify-between p-4 border rounded-lg">
+              <div key={session.id} className={cn(
+                "flex items-center justify-between p-4 border rounded-lg transition-colors",
+                "hover:bg-muted/50"
+              )}>
                 <div className="flex items-center gap-4">
-                  {session.status === 'completed' && <CheckCircle className="h-5 w-5 text-green-500" />}
-                  {session.status === 'crawling' && <Clock className="h-5 w-5 text-blue-500 animate-pulse" />}
-                  {session.status === 'analyzing' && <Clock className="h-5 w-5 text-yellow-500 animate-pulse" />}
-                  {session.status === 'failed' && <XCircle className="h-5 w-5 text-red-500" />}
-                  {session.status === 'pending' && <AlertTriangle className="h-5 w-5 text-gray-500" />}
+                  {getStatusIcon(session.status)}
                   <div>
                     <p className="font-medium">{session.base_url}</p>
                     <p className="text-sm text-muted-foreground">

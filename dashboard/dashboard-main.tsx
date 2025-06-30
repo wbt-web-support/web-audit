@@ -61,8 +61,8 @@ export function DashboardMain() {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="text-center py-8">
-          <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <p className="text-red-600">{error}</p>
+          <XCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <p className="text-destructive">{error}</p>
           <Button onClick={fetchDashboardStats} className="mt-4">
             Try Again
           </Button>

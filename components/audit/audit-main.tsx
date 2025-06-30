@@ -438,28 +438,28 @@ export function AuditMain() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pass':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
+        return <CheckCircle className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />;
       case 'warning':
-        return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+        return <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" />;
       case 'fail':
-        return <XCircle className="h-4 w-4 text-red-500" />;
+        return <XCircle className="h-4 w-4 text-red-500 dark:text-red-400" />;
       case 'pending':
-        return <Clock className="h-4 w-4 text-gray-500" />;
+        return <Clock className="h-4 w-4 text-muted-foreground" />;
       default:
-        return <AlertTriangle className="h-4 w-4 text-gray-500" />;
+        return <AlertTriangle className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
   const getStatusBadge = (status: string) => {
     const variants = {
-      pass: 'bg-green-500',
-      warning: 'bg-yellow-500',
-      fail: 'bg-red-500',
-      pending: 'bg-gray-500'
+      pass: 'bg-emerald-500 dark:bg-emerald-600 text-white',
+      warning: 'bg-amber-500 dark:bg-amber-600 text-white',
+      fail: 'bg-red-500 dark:bg-red-600 text-white',
+      pending: 'bg-muted text-muted-foreground'
     };
 
     return (
-      <Badge className={`${variants[status as keyof typeof variants] || 'bg-gray-500'} text-white`}>
+      <Badge className={variants[status as keyof typeof variants] || 'bg-muted text-muted-foreground'}>
         {status.toUpperCase()}
       </Badge>
     );
@@ -741,7 +741,7 @@ export function AuditMain() {
                   variant="outline"
                   size="sm"
                   onClick={() => setShowFilters(!showFilters)}
-                  className={showFilters ? 'bg-blue-50 border-blue-200' : ''}
+                  className={showFilters ? 'bg-primary/5 border-primary/20' : ''}
                 >
                   <Filter className="h-4 w-4 mr-2" />
                   Filters
@@ -766,7 +766,7 @@ export function AuditMain() {
 
             {/* Filter Panel */}
             {showFilters && (
-              <div className="p-4 border rounded-lg bg-gray-50 space-y-4">
+              <div className="p-4 border rounded-lg bg-muted/50 space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* Analysis Status Filter */}
                   <div>
@@ -796,9 +796,9 @@ export function AuditMain() {
                     <Label className="text-sm font-medium">Overall Status</Label>
                     <div className="mt-2 space-y-2">
                       {[
-                        { id: 'pass', label: 'Pass', color: 'text-green-600', count: analyzedPages.filter(p => p.overallStatus === 'pass').length },
-                        { id: 'warning', label: 'Warning', color: 'text-yellow-600', count: analyzedPages.filter(p => p.overallStatus === 'warning').length },
-                        { id: 'fail', label: 'Fail', color: 'text-red-600', count: analyzedPages.filter(p => p.overallStatus === 'fail').length }
+                                { id: 'pass', label: 'Pass', color: 'text-emerald-600 dark:text-emerald-400', count: analyzedPages.filter(p => p.overallStatus === 'pass').length },
+        { id: 'warning', label: 'Warning', color: 'text-amber-600 dark:text-amber-400', count: analyzedPages.filter(p => p.overallStatus === 'warning').length },
+        { id: 'fail', label: 'Fail', color: 'text-red-600 dark:text-red-400', count: analyzedPages.filter(p => p.overallStatus === 'fail').length }
                       ].map(item => (
                         <div key={item.id} className="flex items-center space-x-2">
                           <Checkbox
@@ -880,7 +880,7 @@ export function AuditMain() {
               {filteredPages.map((analyzedPage) => (
                 <div
                   key={`${analyzedPage.session.id}-${analyzedPage.page.id}`}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50"
                 >
                   <div className="flex items-center gap-3">
                     <Checkbox
@@ -996,7 +996,7 @@ export function AuditMain() {
                         variant="ghost"
                         onClick={() => deletePage(analyzedPage.page.id)}
                         disabled={analyzingPages.has(analyzedPage.page.id) || deleting}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        className="text-destructive hover:text-destructive/80 hover:bg-destructive/10"
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
