@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 
 export async function POST(
   request: Request,
-  { params }: { params: { pageId: string } }
+  { params }: { params: Promise<{ pageId: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -15,11 +15,13 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { pageId } = await params;
+
     // Get the specific page
     const { data: page, error: pageError } = await supabase
       .from('scraped_pages')
       .select('*')
-      .eq('id', params.pageId)
+      .eq('id', pageId)
       .single();
 
     if (pageError || !page) {
@@ -43,12 +45,12 @@ export async function POST(
       const { data: cachedResult, error: cacheError } = await supabase
         .from('audit_results')
         .select('seo_analysis, created_at')
-        .eq('scraped_page_id', params.pageId)
+        .eq('scraped_page_id', pageId)
         .maybeSingle();
 
       if (!cacheError && cachedResult && cachedResult.seo_analysis) {
         // Return cached result
-        console.log('Returning cached SEO analysis for page:', params.pageId);
+        console.log('Returning cached SEO analysis for page:', pageId);
         return NextResponse.json({
           ...cachedResult.seo_analysis,
           cached: true,
@@ -56,7 +58,7 @@ export async function POST(
         });
       }
     } else {
-      console.log('Force refresh requested for SEO analysis of page:', params.pageId);
+      console.log('Force refresh requested for SEO analysis of page:', pageId);
     }
 
     const html = page.html || '';
@@ -106,19 +108,19 @@ export async function POST(
       };
 
       // Upsert the SEO analysis result
-      await upsertAnalysisResult(supabase, params.pageId, page.title, 'seo_analysis', emptyAnalysis, 20);
+      await upsertAnalysisResult(supabase, pageId, page.title, 'seo_analysis', emptyAnalysis, 20);
 
       return NextResponse.json(emptyAnalysis);
     }
 
     // Perform comprehensive SEO analysis
-    console.log('Performing SEO analysis for page:', params.pageId);
+    console.log('Performing SEO analysis for page:', pageId);
     const seoAnalysis = await analyzeSEO(html, pageUrl, page.title, page.status_code);
     
     // Upsert the SEO analysis result
-    await upsertAnalysisResult(supabase, params.pageId, page.title, 'seo_analysis', seoAnalysis, seoAnalysis.overallScore);
+    await upsertAnalysisResult(supabase, pageId, page.title, 'seo_analysis', seoAnalysis, seoAnalysis.overallScore);
 
-    console.log('Cached SEO analysis result for page:', params.pageId);
+    console.log('Cached SEO analysis result for page:', pageId);
     
     return NextResponse.json(seoAnalysis);
   } catch (error) {

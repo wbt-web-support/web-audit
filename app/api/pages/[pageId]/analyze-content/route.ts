@@ -6,7 +6,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(
   request: Request,
-  { params }: { params: { pageId: string } }
+  { params }: { params: Promise<{ pageId: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -18,11 +18,13 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { pageId } = await params;
+
     // Get the specific page
     const { data: page, error: pageError } = await supabase
       .from('scraped_pages')
       .select('*')
-      .eq('id', params.pageId)
+      .eq('id', pageId)
       .single();
 
     if (pageError || !page) {
@@ -46,12 +48,12 @@ export async function POST(
       const { data: cachedResult, error: cacheError } = await supabase
         .from('audit_results')
         .select('grammar_analysis, created_at')
-        .eq('scraped_page_id', params.pageId)
+        .eq('scraped_page_id', pageId)
         .maybeSingle();
 
       if (!cacheError && cachedResult && cachedResult.grammar_analysis) {
         // Return cached result
-        console.log('Returning cached content analysis for page:', params.pageId);
+        console.log('Returning cached content analysis for page:', pageId);
         return NextResponse.json({
           ...cachedResult.grammar_analysis,
           cached: true,
@@ -59,7 +61,7 @@ export async function POST(
         });
       }
     } else {
-      console.log('Force refresh requested for page:', params.pageId);
+      console.log('Force refresh requested for page:', pageId);
     }
 
     const content = page.content || '';
@@ -82,19 +84,19 @@ export async function POST(
       };
 
       // Upsert the analysis result (single entry per page)
-      await upsertAnalysisResult(supabase, params.pageId, page.title, 'grammar_analysis', emptyAnalysis, 0);
+      await upsertAnalysisResult(supabase, pageId, page.title, 'grammar_analysis', emptyAnalysis, 0);
 
       return NextResponse.json(emptyAnalysis);
     }
 
     // Analyze with Gemini
-    console.log('Calling Gemini API for content analysis of page:', params.pageId);
+    console.log('Calling Gemini API for content analysis of page:', pageId);
     const analysis = await analyzeContentWithGemini(content);
     
     // Upsert the analysis result (single entry per page)
-    await upsertAnalysisResult(supabase, params.pageId, page.title, 'grammar_analysis', analysis, analysis.overallScore);
+    await upsertAnalysisResult(supabase, pageId, page.title, 'grammar_analysis', analysis, analysis.overallScore);
 
-    console.log('Cached content analysis result for page:', params.pageId);
+    console.log('Cached content analysis result for page:', pageId);
     
     return NextResponse.json(analysis);
   } catch (error) {

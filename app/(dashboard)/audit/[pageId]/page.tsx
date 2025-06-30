@@ -3,9 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { PageDetailSimple } from "@/components/audit/page-detail-simple";
 
 interface PageDetailPageProps {
-  params: {
+  params: Promise<{
     pageId: string;
-  };
+  }>;
 }
 
 export default async function PageDetailPage({ params }: PageDetailPageProps) {
@@ -16,5 +16,7 @@ export default async function PageDetailPage({ params }: PageDetailPageProps) {
     redirect("/auth/login");
   }
 
-  return <PageDetailSimple pageId={params.pageId} />;
+  const resolvedParams = await params;
+
+  return <PageDetailSimple pageId={resolvedParams.pageId} />;
 } 
