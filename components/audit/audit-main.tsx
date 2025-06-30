@@ -35,7 +35,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 interface AnalyzedPage {
-  page: ScrapedPage;
+  page: ScrapedPage & {
+    analysis_status?: 'pending' | 'analyzing' | 'completed' | 'failed';
+  };
   session: {
     id: string;
     base_url: string;
@@ -172,12 +174,23 @@ export function AuditMain() {
             });
             setAnalyzedPages(pages);
             
-            // Clear analyzing state for pages that are now analyzed
+            // Update analyzing state based on database analysis_status
             setAnalyzingPages(prev => {
-              const newAnalyzing = new Set(prev);
+              const newAnalyzing = new Set<string>();
+              
+              // Add pages that are currently analyzing according to database
               pages.forEach((page: AnalyzedPage) => {
-                if (page.resultCount > 0) {
-                  newAnalyzing.delete(page.page.id);
+                if (page.page.analysis_status === 'analyzing') {
+                  newAnalyzing.add(page.page.id);
+                }
+              });
+              
+              // Also keep pages that are in local state but not yet updated in database
+              // (for immediate UI feedback when user clicks analyze)
+              prev.forEach(pageId => {
+                const page = pages.find((p: AnalyzedPage) => p.page.id === pageId);
+                if (page && page.page.analysis_status !== 'completed' && page.page.analysis_status !== 'failed') {
+                  newAnalyzing.add(pageId);
                 }
               });
               
@@ -423,7 +436,6 @@ export function AuditMain() {
     if (!sessions[0]) return;
 
     setAnalyzingPages(prev => new Set(prev).add(pageId));
-    setCurrentAction(`Analyzing single page...`);
     setError('');
 
     try {
@@ -444,10 +456,8 @@ export function AuditMain() {
           newAnalyzing.delete(pageId);
           return newAnalyzing;
         });
-      } else {
-        setCurrentAction(`Analyzing page with AI...`);
-        // Keep analyzing state until next data fetch shows completion
       }
+      // Note: No currentAction updates - just rely on row-level state
     } catch (error) {
       setError('Failed to start analysis');
       setAnalyzingPages(prev => {
@@ -488,6 +498,29 @@ export function AuditMain() {
     );
   };
 
+  const getAnalysisStatus = (page: AnalyzedPage) => {
+    // Use database analysis_status field instead of local state
+    if (page.page.analysis_status === 'analyzing') return 'analyzing';
+    return page.resultCount > 0 ? 'analyzed' : 'not-analyzed';
+  };
+
+  const isPageAnalyzing = (page: AnalyzedPage) => {
+    // Check both local state (immediate) and database field (persistent)
+    return analyzingPages.has(page.page.id) || page.page.analysis_status === 'analyzing';
+  };
+
+  // Add polling effect when pages are analyzing
+  useEffect(() => {
+    if (analyzingPages.size === 0) return;
+
+    const pollInterval = setInterval(() => {
+      console.log('Polling for analysis updates...');
+      fetchData();
+    }, 3000); // Poll every 3 seconds when analysis is running
+
+    return () => clearInterval(pollInterval);
+  }, [analyzingPages.size]);
+
   const filteredAndSortedPages = analyzedPages.filter(page => {
     const matchesSession = !selectedSessionId || page.session.id === selectedSessionId;
     const matchesSearch = searchTerm === '' || 
@@ -499,12 +532,8 @@ export function AuditMain() {
       (page.resultCount > 0 && statusFilter.includes(page.overallStatus));
     
     // Analysis filter (Analyzed, Not Analyzed, Analyzing)
-    const getAnalysisStatus = () => {
-      if (analyzingPages.has(page.page.id)) return 'analyzing';
-      return page.resultCount > 0 ? 'analyzed' : 'not-analyzed';
-    };
     const matchesAnalysis = analysisFilter.length === 0 || 
-      analysisFilter.includes(getAnalysisStatus());
+      analysisFilter.includes(getAnalysisStatus(page));
     
     // Score range filter
     const matchesScore = page.resultCount === 0 || 
@@ -756,11 +785,14 @@ export function AuditMain() {
                 <Button
                   size="sm"
                   onClick={() => {
-                    const allPageIds = filteredAndSortedPages.map(p => p.page.id);
-                    setSelectedPages(new Set(allPageIds));
+                    // Only select pages that aren't being analyzed
+                    const selectablePageIds = filteredAndSortedPages
+                      .filter(p => !isPageAnalyzing(p))
+                      .map(p => p.page.id);
+                    setSelectedPages(new Set(selectablePageIds));
                   }}
                 >
-                  Select All
+                  Select All ({filteredAndSortedPages.filter(p => !isPageAnalyzing(p)).length})
                 </Button>
               )}
             </div>
@@ -815,9 +847,9 @@ export function AuditMain() {
                     <Label className="text-sm font-medium">Analysis Status</Label>
                     <div className="mt-2 space-y-2">
                       {[
-                        { id: 'analyzed', label: 'Analyzed', count: analyzedPages.filter(p => p.resultCount > 0 && !analyzingPages.has(p.page.id)).length },
-                        { id: 'not-analyzed', label: 'Not Analyzed', count: analyzedPages.filter(p => p.resultCount === 0 && !analyzingPages.has(p.page.id)).length },
-                        { id: 'analyzing', label: 'Analyzing', count: analyzedPages.filter(p => analyzingPages.has(p.page.id)).length }
+                        { id: 'analyzed', label: 'Analyzed', count: analyzedPages.filter(p => getAnalysisStatus(p) === 'analyzed').length },
+                        { id: 'not-analyzed', label: 'Not Analyzed', count: analyzedPages.filter(p => getAnalysisStatus(p) === 'not-analyzed').length },
+                        { id: 'analyzing', label: 'Analyzing', count: analyzedPages.filter(p => getAnalysisStatus(p) === 'analyzing').length }
                       ].map(item => (
                         <div key={item.id} className="flex items-center space-x-2">
                           <Checkbox
@@ -899,9 +931,9 @@ export function AuditMain() {
             </p>
             {filteredAndSortedPages.length > 0 && (
               <p className="text-xs text-muted-foreground">
-                {filteredAndSortedPages.filter(p => p.resultCount > 0).length} analyzed • {' '}
-                {filteredAndSortedPages.filter(p => analyzingPages.has(p.page.id)).length} analyzing • {' '}
-                {filteredAndSortedPages.filter(p => p.resultCount === 0 && !analyzingPages.has(p.page.id)).length} pending
+                {filteredAndSortedPages.filter(p => getAnalysisStatus(p) === 'analyzed').length} analyzed • {' '}
+                {filteredAndSortedPages.filter(p => getAnalysisStatus(p) === 'analyzing').length} analyzing • {' '}
+                {filteredAndSortedPages.filter(p => getAnalysisStatus(p) === 'not-analyzed').length} pending
               </p>
             )}
           </div>
@@ -924,11 +956,18 @@ export function AuditMain() {
                   <tr className="text-left">
                     <th className="w-8 p-2">
                       <Checkbox
-                        checked={selectedPages.size === filteredAndSortedPages.length && filteredAndSortedPages.length > 0}
+                        checked={
+                          selectedPages.size > 0 && 
+                          filteredAndSortedPages.filter(p => !isPageAnalyzing(p)).length > 0 && 
+                          selectedPages.size === filteredAndSortedPages.filter(p => !isPageAnalyzing(p)).length
+                        }
                         onCheckedChange={(checked) => {
                           if (checked) {
-                            const allPageIds = filteredAndSortedPages.map(p => p.page.id);
-                            setSelectedPages(new Set(allPageIds));
+                            // Only select pages that aren't being analyzed
+                            const selectablePageIds = filteredAndSortedPages
+                              .filter(p => !isPageAnalyzing(p))
+                              .map(p => p.page.id);
+                            setSelectedPages(new Set(selectablePageIds));
                           } else {
                             setSelectedPages(new Set());
                           }
@@ -988,7 +1027,7 @@ export function AuditMain() {
                             }
                             setSelectedPages(newSelected);
                           }}
-                          disabled={analyzingPages.has(analyzedPage.page.id) || deletingPages.has(analyzedPage.page.id)}
+                          disabled={isPageAnalyzing(analyzedPage) || deletingPages.has(analyzedPage.page.id)}
                         />
                       </td>
                       <td className="p-2 text-center text-xs text-muted-foreground">
@@ -1005,17 +1044,18 @@ export function AuditMain() {
                           <p className="text-xs text-muted-foreground truncate mt-0.5">
                         {analyzedPage.page.url}
                       </p>
-                          {analyzingPages.has(analyzedPage.page.id) && (
+                          {isPageAnalyzing(analyzedPage) && (
                             <div className="flex items-center gap-1 mt-1">
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                              <span className="text-xs text-muted-foreground">Running AI analysis...</span>
-                    </div>
+                              <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                              <span className="text-xs text-blue-600 dark:text-blue-400">Re-scraping & analyzing with AI...</span>
+                            </div>
                           )}
                   </div>
                       </td>
                       <td className="p-2 text-center">
-                        {analyzingPages.has(analyzedPage.page.id) ? (
-                          <Badge variant="outline" className="text-xs px-1.5 py-0.5">
+                        {isPageAnalyzing(analyzedPage) ? (
+                          <Badge variant="outline" className="text-xs px-1.5 py-0.5 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                             Analyzing
                           </Badge>
                         ) : analyzedPage.resultCount > 0 ? (
@@ -1027,11 +1067,11 @@ export function AuditMain() {
                         )}
                       </td>
                       <td className="p-2 text-center">
-                        {analyzedPage.resultCount > 0 && !analyzingPages.has(analyzedPage.page.id) ? (
+                        {analyzedPage.resultCount > 0 && !isPageAnalyzing(analyzedPage) ? (
                           <div className="flex items-center justify-center">
                             <span className="text-sm font-bold">{analyzedPage.overallScore}</span>
                             <span className="text-xs text-muted-foreground">/ 100</span>
-                    </div>
+                          </div>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
@@ -1041,21 +1081,21 @@ export function AuditMain() {
                           {/* Main action button */}
                           {deletingPages.has(analyzedPage.page.id) ? (
                             <Button size="sm" disabled className="h-7 px-3">
-                              <Loader2 className="h-3 w-full mr-1 animate-spin" />
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                               Deleting
                             </Button>
-                          ) : analyzingPages.has(analyzedPage.page.id) ? (
-                            <Button size="sm" disabled className="h-7 px-3">
-                              <Loader2 className="h-3 w-full mr-1 animate-spin" />
+                          ) : isPageAnalyzing(analyzedPage) ? (
+                            <Button size="sm" disabled className="h-7 px-3 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                               Analyzing
                             </Button>
                           ) : analyzedPage.resultCount > 0 ? (
-                    <Button
-                      size="sm"
+                            <Button
+                              size="sm"
                               className="h-7 px-3 w-full"
-                      onClick={() => router.push(`/audit/${analyzedPage.page.id}`)}
-                    >
-                              <Eye className="h-3 w-full mr-1" />
+                              onClick={() => router.push(`/audit/${analyzedPage.page.id}`)}
+                            >
+                              <Eye className="h-3 w-3 mr-1" />
                               View
                             </Button>
                           ) : (
@@ -1065,28 +1105,28 @@ export function AuditMain() {
                               onClick={() => analyzeSinglePage(analyzedPage.page.id)}
                               disabled={analyzing || deleting}
                             >
-                              <BarChart3 className="h-3 w-full mr-1" />
+                              <BarChart3 className="h-3 w-3 mr-1" />
                               Analyze
                             </Button>
                           )}
                           
                           {/* Delete button */}
                           {deletingPages.has(analyzedPage.page.id) ? (
-                            <Button size="sm" variant="ghost" className="h-7 w-full p-0" disabled>
-                              <Loader2 className="h-3 w-full animate-spin" />
-                    </Button>
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled>
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            </Button>
                           ) : (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                              className="h-7 w-12 p-0 text-destructive hover:text-destructive/80 hover:bg-destructive/10"
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-destructive hover:text-destructive/80 hover:bg-destructive/10"
                               onClick={() => deletePage(analyzedPage.page.id)}
-                              disabled={analyzingPages.has(analyzedPage.page.id) || deleting}
+                              disabled={isPageAnalyzing(analyzedPage) || deleting}
                             >
-                              <Trash2 className="h-3 w-full" />
-                    </Button>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
                           )}
-                  </div>
+                        </div>
                       </td>
                     </tr>
               ))}

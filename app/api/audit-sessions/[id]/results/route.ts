@@ -48,7 +48,8 @@ export async function GET(
         title: page.title,
         status_code: page.status_code,
         audit_session_id: page.audit_session_id,
-        scraped_at: page.scraped_at
+        scraped_at: page.scraped_at,
+        analysis_status: page.analysis_status || 'pending'
       },
       results: page.audit_results || null // Single result object or null
     }));

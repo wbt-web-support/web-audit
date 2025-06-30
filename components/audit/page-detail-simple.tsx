@@ -706,17 +706,36 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               <ExternalLink className="h-3 w-3" />
             </a>
                   </div>
-          {page.analysis_status && (
-            <Badge variant={
-              page.analysis_status === 'completed' ? 'default' :
-              page.analysis_status === 'analyzing' ? 'secondary' :
-              page.analysis_status === 'failed' ? 'destructive' : 'outline'
-            }>
-              Page Status: {page.analysis_status}
+          
+          <div className="flex items-center gap-2 flex-wrap">
+            {page.analysis_status && (
+              <Badge variant={
+                page.analysis_status === 'completed' ? 'default' :
+                page.analysis_status === 'analyzing' ? 'secondary' :
+                page.analysis_status === 'failed' ? 'destructive' : 'outline'
+              }>
+                Page Status: {page.analysis_status}
+              </Badge>
+            )}
+            
+            {/* Content freshness indicator */}
+            <Badge variant="outline" className="text-xs">
+              <Calendar className="h-3 w-3 mr-1" />
+              Content: {new Date(page.scraped_at).toLocaleDateString()} at {new Date(page.scraped_at).toLocaleTimeString()}
             </Badge>
-          )}
+            
+            {/* Real-time analysis status */}
+            {isAnalysisRunning && (
+              <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950 text-xs">
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                Re-scraping & Analyzing...
+              </Badge>
+            )}
                   </div>
-      )}
+                  </div>
+            )}
+
+     
 
       {/* Main Content - Side by Side Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -738,15 +757,15 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                     <ExternalLink className="h-4 w-4" />
                   </a>
                 </Button>
-                  </div>
+                </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
               <div>
                   <p className="text-sm text-muted-foreground">Status Code</p>
                   <p className="font-medium">{page.status_code || 'Unknown'}</p>
-                </div>
-                <div>
+              </div>
+              <div>
                   <p className="text-sm text-muted-foreground">Protocol</p>
                   <p className="font-medium">{analysis.httpsCheck.isHttps ? 'HTTPS' : 'HTTP'}</p>
               </div>
@@ -757,12 +776,12 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               <div>
                   <p className="text-sm text-muted-foreground">Has Redirects</p>
                   <p className="font-medium">{analysis.redirectCheck.hasRedirect ? 'Yes' : 'No'}</p>
-              </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Scraped Date</p>
-                  <p className="font-medium">{new Date(page.scraped_at).toLocaleDateString()}</p>
           </div>
-            </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Content Date</p>
+                  <p className="font-medium">{new Date(page.scraped_at).toLocaleDateString()} {new Date(page.scraped_at).toLocaleTimeString()}</p>
+              </div>
+              </div>
 
               {/* Quick Stats */}
               <div className="pt-4 border-t">
@@ -779,7 +798,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">H1 Tags</span>
                     <span className="text-sm font-medium">{analysis.headingStructure.h1Count}</span>
-              </div>
+            </div>
                   {analysis.grammarCheck && (
                     <>
                       <div className="flex justify-between">
@@ -789,7 +808,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       <div className="flex justify-between">
                         <span className="text-sm text-muted-foreground">Reading Time</span>
                         <span className="text-sm font-medium">{analysis.grammarCheck.estimatedReadingTime}m</span>
-            </div>
+              </div>
                     </>
                   )}
               </div>
@@ -896,20 +915,25 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             </div>
 
                     <p className="text-sm text-muted-foreground">
-                      {grammarAnalyzing ? 'Analyzing with AI...' : 
+                      {grammarAnalyzing ? 'Re-scraping page and analyzing with AI...' : 
                        grammarCached && grammarCachedAt ? 
-                         `Content readability and writing quality (cached ${new Date(grammarCachedAt).toLocaleDateString()} at ${new Date(grammarCachedAt).toLocaleTimeString()})` : 
-                         'Content readability and writing quality'}
+                         `Content analysis (from ${new Date(grammarCachedAt).toLocaleDateString()})` : 
+                         'Content readability and writing quality analysis'}
                     </p>
 
                     {!analysis.grammarCheck || grammarAnalyzing ? (
                       <div className="flex items-center justify-center py-12">
                         <div className="text-center">
-                          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-muted-foreground" />
+                          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
                           <p className="text-sm text-muted-foreground">
-                            {grammarAnalyzing ? 'Analyzing content with Gemini AI...' : 'Loading...'}
+                            {grammarAnalyzing ? 'Analyzing Fresh Content with AI...' : 'Loading...'}
                           </p>
-              </div>
+                          {grammarAnalyzing && (
+                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                              Re-scraping page for latest content
+                            </p>
+                          )}
+                        </div>
                       </div>
                     ) : (
                       <>
@@ -1097,197 +1121,214 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
           </div>
 
                     <p className="text-sm text-muted-foreground">
-                      {seoAnalyzing ? 'Analyzing SEO...' : 
+                      {seoAnalyzing ? 'Re-scraping page and analyzing SEO...' : 
                        seoCached && seoCachedAt ? 
-                         `SEO analysis (cached ${new Date(seoCachedAt).toLocaleDateString()})` : 
+                         `SEO analysis (from ${new Date(seoCachedAt).toLocaleDateString()})` : 
                          'Technical SEO and structure analysis'}
                     </p>
 
-                    {/* SEO Content Grid */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {/* Meta Tags */}
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="text-base">Meta Tags</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          <div className="p-3 border rounded">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="font-medium">Title Tag</span>
-                              {getStatusIcon(!!analysis.metaTags.title)}
+                    {seoAnalyzing ? (
+                      // Show loading placeholder when SEO analysis is running
+                      <div className="flex items-center justify-center py-12">
+                        <div className="text-center">
+                          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-green-500" />
+                          <p className="text-sm text-muted-foreground">
+                            Analyzing Fresh SEO Content...
+                          </p>
+                          <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                            Re-scraping page for latest structure and meta data
+                          </p>
       </div>
-                            <p className="text-sm text-muted-foreground">
-                              {analysis.metaTags.title ? 
-                                `"${analysis.metaTags.title}" (${(analysis.metaTags.title || '').length} chars)` : 
-                                'Missing'
-                              }
-                            </p>
-                          </div>
-
-                          <div className="p-3 border rounded">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="font-medium">Meta Description</span>
-                              {getStatusIcon(!!analysis.metaTags.description)}
+                      </div>
+                    ) : (
+                      <>
+                        {/* SEO Content Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                          {/* Meta Tags */}
+                          <Card>
+                            <CardHeader>
+                              <CardTitle className="text-base">Meta Tags</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                              <div className="p-3 border rounded">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="font-medium">Title Tag</span>
+                                  {getStatusIcon(!!analysis.metaTags.title)}
       </div>
-                            <p className="text-sm text-muted-foreground">
-                              {analysis.metaTags.description ? 
-                                `"${analysis.metaTags.description}" (${(analysis.metaTags.description || '').length} chars)` : 
-                                'Missing'
-                              }
-                            </p>
-                          </div>
+                                  <p className="text-sm text-muted-foreground">
+                                    {analysis.metaTags.title ? 
+                                      `"${analysis.metaTags.title}" (${(analysis.metaTags.title || '').length} chars)` : 
+                                      'Missing'
+                                    }
+                                  </p>
+                                </div>
 
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="p-3 border rounded text-center">
-                              <div className="font-medium mb-1">Viewport</div>
-                              <div className="text-2xl">{analysis.metaTags.viewport ? '✓' : '✗'}</div>
+                                <div className="p-3 border rounded">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="font-medium">Meta Description</span>
+                                    {getStatusIcon(!!analysis.metaTags.description)}
+      </div>
+                                  <p className="text-sm text-muted-foreground">
+                                    {analysis.metaTags.description ? 
+                                      `"${analysis.metaTags.description}" (${(analysis.metaTags.description || '').length} chars)` : 
+                                      'Missing'
+                                    }
+                                  </p>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="p-3 border rounded text-center">
+                                    <div className="font-medium mb-1">Viewport</div>
+                                    <div className="text-2xl">{analysis.metaTags.viewport ? '✓' : '✗'}</div>
           </div>
-                            <div className="p-3 border rounded text-center">
-                              <div className="font-medium mb-1">Canonical</div>
-                              <div className="text-2xl">{analysis.metaTags.canonical ? '✓' : '✗'}</div>
+                                  <div className="p-3 border rounded text-center">
+                                    <div className="font-medium mb-1">Canonical</div>
+                                    <div className="text-2xl">{analysis.metaTags.canonical ? '✓' : '✗'}</div>
         </div>
         </div>
-                        </CardContent>
-                      </Card>
+                            </CardContent>
+                          </Card>
 
-                      {/* Heading Structure */}
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="text-base">Heading Structure</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          <div className="p-3 border rounded">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="font-medium">H1 Tags</span>
-                              {getStatusIcon(analysis.headingStructure.h1Count === 1)}
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              {analysis.headingStructure.h1Count} found
-                            </p>
-                            {(analysis.headingStructure.h1Text || []).length > 0 && (
-                              <p className="text-sm text-muted-foreground mt-2 italic">
-                                "{analysis.headingStructure.h1Text[0]}"
-                              </p>
-                            )}
+                          {/* Heading Structure */}
+                          <Card>
+                            <CardHeader>
+                              <CardTitle className="text-base">Heading Structure</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                              <div className="p-3 border rounded">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="font-medium">H1 Tags</span>
+                                  {getStatusIcon(analysis.headingStructure.h1Count === 1)}
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                  {analysis.headingStructure.h1Count} found
+                                </p>
+                                {(analysis.headingStructure.h1Text || []).length > 0 && (
+                                  <p className="text-sm text-muted-foreground mt-2 italic">
+                                    "{analysis.headingStructure.h1Text[0]}"
+                                  </p>
+                                )}
       </div>
 
-                          <div className="p-3 border rounded">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="font-medium">Heading Hierarchy</span>
-                              {getStatusIcon((analysis.headingStructure.allHeadings || []).length > 0)}
+                                <div className="p-3 border rounded">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="font-medium">Heading Hierarchy</span>
+                                    {getStatusIcon((analysis.headingStructure.allHeadings || []).length > 0)}
           </div>
-                            <p className="text-sm text-muted-foreground">
-                              {(analysis.headingStructure.allHeadings || []).length} total headings
-                            </p>
-                            {(analysis.headingStructure.allHeadings || []).length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-1">
-                                {(analysis.headingStructure.allHeadings || []).slice(0, 8).map((h, i) => (
-                                  <span key={i} className="px-2 py-1 bg-muted rounded text-xs">
-                                    H{h.level}
-                                  </span>
-                                ))}
+                                    <p className="text-sm text-muted-foreground">
+                                      {(analysis.headingStructure.allHeadings || []).length} total headings
+                                    </p>
+                                    {(analysis.headingStructure.allHeadings || []).length > 0 && (
+                                      <div className="mt-2 flex flex-wrap gap-1">
+                                        {(analysis.headingStructure.allHeadings || []).slice(0, 8).map((h, i) => (
+                                          <span key={i} className="px-2 py-1 bg-muted rounded text-xs">
+                                            H{h.level}
+                                          </span>
+                                        ))}
         </div>
       )}
-                          </div>
-                        </CardContent>
-                      </Card>
+                                </div>
+                              </CardContent>
+                            </Card>
 
-                      {/* Technical SEO */}
+                            {/* Technical SEO */}
       <Card>
         <CardHeader>
-                          <CardTitle className="text-base">Technical</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                          <div className="flex items-center justify-between p-3 border rounded">
-                            <span className="font-medium">HTTPS</span>
-                            <span className={`text-2xl ${analysis.httpsCheck.isHttps ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                              {analysis.httpsCheck.isHttps ? '✓' : '✗'}
-                            </span>
+                              <CardTitle className="text-base">Technical</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                              <div className="flex items-center justify-between p-3 border rounded">
+                                <span className="font-medium">HTTPS</span>
+                                <span className={`text-2xl ${analysis.httpsCheck.isHttps ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                                  {analysis.httpsCheck.isHttps ? '✓' : '✗'}
+                                </span>
             </div>
-                          <div className="flex items-center justify-between p-3 border rounded">
-                            <span className="font-medium">Indexable</span>
-                            <span className={`text-2xl ${analysis.robotsCheck.indexable ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                              {analysis.robotsCheck.indexable ? '✓' : '✗'}
-                            </span>
+                              <div className="flex items-center justify-between p-3 border rounded">
+                                <span className="font-medium">Indexable</span>
+                                <span className={`text-2xl ${analysis.robotsCheck.indexable ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                                  {analysis.robotsCheck.indexable ? '✓' : '✗'}
+                                </span>
               </div>
-                          <div className="flex items-center justify-between p-3 border rounded">
-                            <span className="font-medium">Direct Access</span>
-                            <span className={`text-2xl ${!analysis.redirectCheck.hasRedirect ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                              {!analysis.redirectCheck.hasRedirect ? '✓' : '✗'}
-                            </span>
+                              <div className="flex items-center justify-between p-3 border rounded">
+                                <span className="font-medium">Direct Access</span>
+                                <span className={`text-2xl ${!analysis.redirectCheck.hasRedirect ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                                  {!analysis.redirectCheck.hasRedirect ? '✓' : '✗'}
+                                </span>
             </div>
-                        </CardContent>
-                      </Card>
+                            </CardContent>
+                          </Card>
 
-                      {/* Links Analysis */}
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="text-base">Links</CardTitle>
+                          {/* Links Analysis */}
+                          <Card>
+                            <CardHeader>
+                              <CardTitle className="text-base">Links</CardTitle>
         </CardHeader>
         <CardContent>
-                          <div className="grid grid-cols-3 gap-3 text-center">
-                            <div className="p-3 border rounded">
-                              <div className="text-2xl font-bold">{analysis.linksCheck.totalLinks}</div>
-                              <div className="text-xs text-muted-foreground">Total</div>
+                              <div className="grid grid-cols-3 gap-3 text-center">
+                                <div className="p-3 border rounded">
+                                  <div className="text-2xl font-bold">{analysis.linksCheck.totalLinks}</div>
+                                  <div className="text-xs text-muted-foreground">Total</div>
             </div>
-                            <div className="p-3 border rounded">
-                              <div className="text-2xl font-bold">{analysis.linksCheck.internalLinks}</div>
-                              <div className="text-xs text-muted-foreground">Internal</div>
+                                <div className="p-3 border rounded">
+                                  <div className="text-2xl font-bold">{analysis.linksCheck.internalLinks}</div>
+                                  <div className="text-xs text-muted-foreground">Internal</div>
             </div>
-                            <div className="p-3 border rounded">
-                              <div className="text-2xl font-bold">{analysis.linksCheck.externalLinks}</div>
-                              <div className="text-xs text-muted-foreground">External</div>
+                                <div className="p-3 border rounded">
+                                  <div className="text-2xl font-bold">{analysis.linksCheck.externalLinks}</div>
+                                  <div className="text-xs text-muted-foreground">External</div>
             </div>
           </div>
         </CardContent>
       </Card>
-                    </div>
+                        </div>
 
-                    {/* SEO Issues and Recommendations */}
-                    {analysis.seoAnalysis && (
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                        {(analysis.seoAnalysis.issues || []).length > 0 && (
+                        {/* SEO Issues and Recommendations */}
+                        {analysis.seoAnalysis && (
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                            {(analysis.seoAnalysis.issues || []).length > 0 && (
         <Card>
-                            <CardHeader>
-                              <CardTitle className="text-base text-destructive">Issues Found</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="space-y-2">
-                                {(analysis.seoAnalysis.issues || []).map((issue, i) => (
-                                  <div key={i} className="p-3 bg-destructive/10 border border-destructive/20 rounded text-destructive text-sm">
-                                    {issue}
+                                <CardHeader>
+                                  <CardTitle className="text-base text-destructive">Issues Found</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="space-y-2">
+                                    {(analysis.seoAnalysis.issues || []).map((issue, i) => (
+                                      <div key={i} className="p-3 bg-destructive/10 border border-destructive/20 rounded text-destructive text-sm">
+                                        {issue}
               </div>
-                                ))}
+                                    ))}
             </div>
           </CardContent>
         </Card>
       )}
 
-                        {(analysis.seoAnalysis.recommendations || []).length > 0 && (
+                            {(analysis.seoAnalysis.recommendations || []).length > 0 && (
         <Card>
-                            <CardHeader>
-                              <CardTitle className="text-base text-primary">Recommendations</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="space-y-2">
-                                {(analysis.seoAnalysis.recommendations || []).map((rec, i) => (
-                                  <div key={i} className="p-3 bg-primary/10 border border-primary/20 rounded text-primary text-sm">
-                                    {rec}
-                                  </div>
-                                ))}
+                                <CardHeader>
+                                  <CardTitle className="text-base text-primary">Recommendations</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="space-y-2">
+                                    {(analysis.seoAnalysis.recommendations || []).map((rec, i) => (
+                                      <div key={i} className="p-3 bg-primary/10 border border-primary/20 rounded text-primary text-sm">
+                                        {rec}
+                                      </div>
+                                    ))}
             </div>
           </CardContent>
         </Card>
-                        )}
+                            )}
 
-                        {(analysis.seoAnalysis.issues || []).length === 0 && (analysis.seoAnalysis.recommendations || []).length === 0 && (
-                          <div className="col-span-2 text-center py-8">
-                            <CheckCircle className="h-12 w-12 text-emerald-500 dark:text-emerald-400 mx-auto mb-3" />
-                            <p className="text-lg font-medium">Excellent SEO!</p>
-                            <p className="text-sm text-muted-foreground">No issues found</p>
+                            {(analysis.seoAnalysis.issues || []).length === 0 && (analysis.seoAnalysis.recommendations || []).length === 0 && (
+                              <div className="col-span-2 text-center py-8">
+                                <CheckCircle className="h-12 w-12 text-emerald-500 dark:text-emerald-400 mx-auto mb-3" />
+                                                                <p className="text-lg font-medium">Excellent SEO!</p>
+                                <p className="text-sm text-muted-foreground">No issues found</p>
                     </div>
-                        )}
+                            )}
                   </div>
+                        )}
+                      </>
                     )}
                     </div>
                 )}

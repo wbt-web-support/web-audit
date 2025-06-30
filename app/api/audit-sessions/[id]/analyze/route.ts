@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { WebScraper } from '@/lib/services/web-scraper';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -125,6 +126,49 @@ async function performSinglePageAnalysis(
       .update({ analysis_status: 'analyzing' })
       .eq('id', page.id);
 
+    // Re-scrape the page to get the latest content
+    console.log(`🔄 Re-scraping page for latest content: ${page.url}`);
+    try {
+      const scraper = new WebScraper(page.url, {
+        maxPages: 1,
+        timeout: 30000,
+        userAgent: 'WebAuditBot/1.0 (Analysis)',
+      });
+      
+      const freshPageData = await scraper.scrapePage(page.url);
+      
+      // Update the page with fresh content
+      const { error: updateError } = await supabase
+        .from('scraped_pages')
+        .update({
+          title: freshPageData.title || page.title,
+          content: freshPageData.content || page.content,
+          html: freshPageData.html || page.html,
+          status_code: freshPageData.statusCode || page.status_code,
+          scraped_at: new Date().toISOString(),
+        })
+        .eq('id', page.id);
+
+      if (updateError) {
+        console.error('Failed to update page with fresh content:', updateError);
+        // Continue with existing content if update fails
+      } else {
+        console.log(`✅ Updated page ${page.id} with fresh content`);
+        // Update local page object for analysis
+        page = {
+          ...page,
+          title: freshPageData.title || page.title,
+          content: freshPageData.content || page.content,
+          html: freshPageData.html || page.html,
+          status_code: freshPageData.statusCode || page.status_code,
+          scraped_at: new Date().toISOString(),
+        };
+      }
+    } catch (scrapeError) {
+      console.warn(`⚠️ Failed to re-scrape page ${page.url}, using existing content:`, scrapeError);
+      // Continue with existing content if re-scraping fails
+    }
+
     let grammarAnalysis = null;
     let seoAnalysis = null;
     let cached = false;
@@ -152,7 +196,7 @@ async function performSinglePageAnalysis(
       }
     }
 
-    // Perform missing analyses
+    // Perform missing analyses with fresh content
     if (analysisTypes.includes('grammar') && !grammarAnalysis) {
       console.log(`Running fresh grammar analysis for page ${page.id}`);
       grammarAnalysis = await analyzeContentWithGemini(page.content || '', session);
@@ -173,10 +217,8 @@ async function performSinglePageAnalysis(
       overallScore = seoAnalysis.overallScore;
     }
 
-    // Save results to cache if new analysis was performed
-    if (!cached) {
-      await upsertAnalysisResult(supabase, page, grammarAnalysis, seoAnalysis, overallScore);
-    }
+    // Save results to cache
+    await upsertAnalysisResult(supabase, page, grammarAnalysis, seoAnalysis, overallScore);
 
     // Mark page as completed
     await supabase
@@ -191,19 +233,22 @@ async function performSinglePageAnalysis(
         seo_analysis: seoAnalysis,
         overall_score: overallScore,
         cached,
-        cached_at: cachedAt
+        cached_at: cachedAt,
+        freshly_scraped: true
       };
     } else if (analysisTypes.includes('grammar')) {
       return {
         ...grammarAnalysis,
         cached,
-        cached_at: cachedAt
+        cached_at: cachedAt,
+        freshly_scraped: true
       };
     } else if (analysisTypes.includes('seo')) {
       return {
         ...seoAnalysis,
         cached,
-        cached_at: cachedAt
+        cached_at: cachedAt,
+        freshly_scraped: true
       };
     }
 
