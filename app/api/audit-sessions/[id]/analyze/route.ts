@@ -232,6 +232,7 @@ async function performSinglePageAnalysis(
         grammar_analysis: grammarAnalysis,
         seo_analysis: seoAnalysis,
         overall_score: overallScore,
+        company_information: grammarAnalysis?.companyInformation || null,
         cached,
         cached_at: cachedAt,
         freshly_scraped: true
@@ -239,6 +240,7 @@ async function performSinglePageAnalysis(
     } else if (analysisTypes.includes('grammar')) {
       return {
         ...grammarAnalysis,
+        company_information: grammarAnalysis?.companyInformation || null,
         cached,
         cached_at: cachedAt,
         freshly_scraped: true
@@ -246,6 +248,7 @@ async function performSinglePageAnalysis(
     } else if (analysisTypes.includes('seo')) {
       return {
         ...seoAnalysis,
+        company_information: null, // SEO analysis doesn't include company info
         cached,
         cached_at: cachedAt,
         freshly_scraped: true
@@ -279,6 +282,12 @@ async function upsertAnalysisResult(supabase: any, page: any, grammarAnalysis: a
   
   if (grammarAnalysis) {
     updateData.grammar_analysis = grammarAnalysis;
+    
+    // Extract company information if available
+    if (grammarAnalysis.companyInformation) {
+      updateData.company_information_analysis = grammarAnalysis.companyInformation;
+      console.log(`Saving company information analysis for page ${page.id}: score ${grammarAnalysis.companyInformation.companyInfoScore}`);
+    }
   }
   
   if (seoAnalysis) {
@@ -301,8 +310,13 @@ async function upsertAnalysisResult(supabase: any, page: any, grammarAnalysis: a
 async function analyzePages(sessionId: string, pages: any[], analysisTypes: string[], useCache: boolean, forceRefresh: boolean) {
   const supabase = await createClient();
   
+  // Configure rolling batch processing
+  const MAX_CONCURRENT = 5; // Maximum number of pages analyzing simultaneously
+  
   try {
     let analyzedCount = 0;
+    let failedCount = 0;
+    const failedPages: Array<{id: string, error: string}> = [];
 
     // Get session data for company information verification
     const { data: session, error: sessionError } = await supabase
@@ -315,48 +329,144 @@ async function analyzePages(sessionId: string, pages: any[], analysisTypes: stri
       throw new Error('Failed to get session data for analysis');
     }
 
-    for (const page of pages) {
-      // Check if analysis should stop
+    console.log(`🚀 Starting rolling batch analysis for ${pages.length} pages with max ${MAX_CONCURRENT} concurrent`);
+
+    // Create a queue of pages to process
+    const pageQueue = [...pages];
+    const activePromises = new Map<string, Promise<any>>();
+
+    // Function to start analysis for a single page
+    const startPageAnalysis = async (page: any) => {
+      try {
+        console.log(`  ⚡ Starting analysis for page ${page.id}: ${page.title || page.url} (${analyzedCount + failedCount + 1}/${pages.length})`);
+        await performSinglePageAnalysis(supabase, page, session, analysisTypes, useCache, forceRefresh);
+        return { success: true, pageId: page.id };
+      } catch (error: any) {
+        console.error(`  ❌ Failed to analyze page ${page.id}:`, error.message);
+        
+        // Mark the page as failed but continue with others
+        await supabase
+          .from('scraped_pages')
+          .update({ analysis_status: 'failed' })
+          .eq('id', page.id);
+        
+        return { 
+          success: false, 
+          pageId: page.id, 
+          error: error.message || 'Unknown error' 
+        };
+      }
+    };
+
+    // Function to check if analysis should stop
+    const shouldStop = async () => {
       const { data: currentSession } = await supabase
         .from('audit_sessions')
         .select('status')
         .eq('id', sessionId)
         .single();
+      return currentSession?.status === 'failed';
+    };
 
-      if (currentSession?.status === 'failed') {
+    // Start initial batch of analyses
+    while (pageQueue.length > 0 && activePromises.size < MAX_CONCURRENT) {
+      if (await shouldStop()) {
         throw new Error('Analysis stopped by user');
       }
 
-      console.log(`Starting analysis for page ${page.id}: ${page.title || page.url}`);
+      const page = pageQueue.shift()!;
+      const promise = startPageAnalysis(page);
+      activePromises.set(page.id, promise);
+    }
 
-      // Perform analysis using the same logic as single page
-      await performSinglePageAnalysis(supabase, page, session, analysisTypes, useCache, forceRefresh);
-
-      analyzedCount++;
+    // Process remaining pages as soon as slots become available
+    while (activePromises.size > 0) {
+      if (await shouldStop()) {
+        throw new Error('Analysis stopped by user');
+      }
       
-      // Update progress
+      // Wait for at least one analysis to complete
+      const completedPromise = await Promise.race(Array.from(activePromises.values()));
+      
+      // Find which promise completed and remove it
+      let completedPageId = '';
+      for (const [pageId, promise] of activePromises.entries()) {
+        if (promise === completedPromise) {
+          completedPageId = pageId;
+          activePromises.delete(pageId);
+          break;
+        }
+      }
+      
+      // Process the result
+      try {
+        const result = await completedPromise;
+        
+        if (result.success) {
+      analyzedCount++;
+          console.log(`  ✅ Completed analysis for page ${result.pageId} (${analyzedCount + failedCount}/${pages.length})`);
+        } else {
+          failedCount++;
+          failedPages.push({ id: result.pageId, error: result.error || 'Unknown error' });
+          console.log(`  ❌ Failed analysis for page ${result.pageId} (${analyzedCount + failedCount}/${pages.length})`);
+        }
+      
+        // Update progress in database
       await supabase
         .from('audit_sessions')
         .update({ pages_analyzed: analyzedCount })
         .eq('id', sessionId);
 
-      console.log(`Completed analysis for page ${page.id} (${analyzedCount}/${pages.length})`);
+      } catch (error: any) {
+        failedCount++;
+        console.error(`  ❌ Unexpected error for page ${completedPageId}:`, error.message);
+      }
+
+      // Start analysis for next page if available
+      if (pageQueue.length > 0 && activePromises.size < MAX_CONCURRENT) {
+        const nextPage = pageQueue.shift()!;
+        const nextPromise = startPageAnalysis(nextPage);
+        activePromises.set(nextPage.id, nextPromise);
+        
+        console.log(`  🎯 Started next page analysis (${activePromises.size}/${MAX_CONCURRENT} slots used, ${pageQueue.length} remaining)`);
+      }
+    }
+
+    // Determine final status based on results
+    let finalStatus = 'completed';
+    let errorMessage = null;
+    
+    if (analyzedCount === 0) {
+      finalStatus = 'failed';
+      errorMessage = 'All pages failed to analyze';
+    } else if (failedCount > 0) {
+      finalStatus = 'completed';
+      errorMessage = `Analysis completed with ${failedCount} failures`;
     }
 
     // Update session status to completed
     await supabase
       .from('audit_sessions')
       .update({
-        status: 'completed',
+        status: finalStatus,
         pages_analyzed: analyzedCount,
         completed_at: new Date().toISOString(),
+        error_message: errorMessage
       })
       .eq('id', sessionId);
 
-    console.log(`All analysis completed for session ${sessionId}`);
+    console.log(`🎉 Rolling batch analysis completed for session ${sessionId}`);
+    console.log(`   Total analyzed: ${analyzedCount}/${pages.length}`);
+    console.log(`   Max concurrent maintained: ${MAX_CONCURRENT} pages`);
+    if (failedCount > 0) {
+      console.log(`   Failed pages: ${failedCount}`);
+      failedPages.forEach(fp => {
+        console.log(`     - Page ${fp.id}: ${fp.error}`);
+      });
+    }
 
   } catch (error: any) {
-    console.error('Analysis failed:', error);
+    console.error('Rolling batch analysis failed:', error);
     
     // Check if it was stopped by user
     const { data: currentSession } = await supabase
@@ -398,27 +508,82 @@ async function analyzeContentWithGemini(content: string, session?: any) {
 
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    // Build expected company information section if available
+    // Build comprehensive company information verification section
     let expectedCompanyInfo = '';
+    let hasCompanyInfo = false;
+    
     if (session && (session.company_name || session.phone_number || session.email || session.address || session.custom_info)) {
+      hasCompanyInfo = true;
       expectedCompanyInfo = `
 
-ADDITIONAL COMPANY INFORMATION VERIFICATION:
-Check if the website content contains the following expected company information and report any discrepancies:
+COMPREHENSIVE COMPANY INFORMATION VERIFICATION:
+This website should contain accurate and consistent company information. Please verify the following expected details against the website content:
 
-Expected Information:`;
+Expected Company Information:`;
       
-      if (session.company_name) expectedCompanyInfo += `\n- Company Name: "${session.company_name}"`;
-      if (session.phone_number) expectedCompanyInfo += `\n- Phone Number: "${session.phone_number}"`;
-      if (session.email) expectedCompanyInfo += `\n- Email: "${session.email}"`;
-      if (session.address) expectedCompanyInfo += `\n- Address: "${session.address}"`;
-      if (session.custom_info) expectedCompanyInfo += `\n- Additional Info: "${session.custom_info}"`;
+      if (session.company_name) {
+        expectedCompanyInfo += `\n- Company/Business Name: "${session.company_name}"`;
+        expectedCompanyInfo += `\n  → Check if this exact name appears prominently (header, footer, about page, contact page)`;
+        expectedCompanyInfo += `\n  → Flag any variations, misspellings, or inconsistencies`;
+      }
+      
+      if (session.phone_number) {
+        expectedCompanyInfo += `\n- Phone Number: "${session.phone_number}"`;
+        expectedCompanyInfo += `\n  → Check if this number appears correctly formatted`;
+        expectedCompanyInfo += `\n  → Flag any different numbers or formatting inconsistencies`;
+      }
+      
+      if (session.email) {
+        expectedCompanyInfo += `\n- Email Address: "${session.email}"`;
+        expectedCompanyInfo += `\n  → Check if this email appears and is properly formatted`;
+        expectedCompanyInfo += `\n  → Flag any different email addresses`;
+      }
+      
+      if (session.address) {
+        expectedCompanyInfo += `\n- Physical Address: "${session.address}"`;
+        expectedCompanyInfo += `\n  → Check if this address appears consistently`;
+        expectedCompanyInfo += `\n  → Flag any variations or incomplete address information`;
+      }
+      
+      if (session.custom_info) {
+        expectedCompanyInfo += `\n- Additional Business Info: "${session.custom_info}"`;
+        expectedCompanyInfo += `\n  → Check if this information is accurately represented`;
+      }
       
       expectedCompanyInfo += `
 
-If any of this expected information is missing from the content, add it to the issues array.
-If any information on the website conflicts with the expected information, add it to the issues array with details about the discrepancy.
-Include suggestions for adding missing company information or correcting discrepancies.`;
+COMPANY INFORMATION ANALYSIS REQUIREMENTS:
+1. MISSING INFORMATION: If any expected company details are completely missing from the page content, add specific issues like:
+   - "Missing company name '${session.company_name || '[Company Name]'}' - not found on this page"
+   - "Missing contact phone number '${session.phone_number || '[Phone]'}' - should be visible for customer contact"
+   - "Missing email address '${session.email || '[Email]'}' - important for customer communication"
+   - "Missing physical address '${session.address || '[Address]'}' - essential for business credibility"
+
+2. INCONSISTENT INFORMATION: If company information appears but differs from expected, add issues like:
+   - "Company name inconsistency: found '[found name]' but expected '${session.company_name || '[Expected]'}'"
+   - "Phone number mismatch: found '[found number]' but expected '${session.phone_number || '[Expected]'}'"
+   - "Email inconsistency: found '[found email]' but expected '${session.email || '[Expected]'}'"
+   - "Address discrepancy: found '[found address]' but expected '${session.address || '[Expected]'}'"
+
+3. FORMATTING ISSUES: Check for proper formatting and professional presentation:
+   - Phone numbers should be properly formatted (e.g., +44 123 456 7890 or (01234) 567890)
+   - Email addresses should be clickable links where appropriate
+   - Addresses should be complete and properly formatted
+   - Company names should be consistently styled
+
+4. PLACEMENT RECOMMENDATIONS: Add suggestions for better company information placement:
+   - "Add company name to page header for better brand visibility"
+   - "Include contact information in footer for easy access"
+   - "Add contact phone number to contact page"
+   - "Display business address prominently for local SEO"
+
+5. CREDIBILITY IMPROVEMENTS: Suggest ways to enhance business credibility:
+   - "Add company registration number or VAT number for transparency"
+   - "Include business hours information"
+   - "Add multiple contact methods for customer convenience"
+   - "Consider adding company logo alongside name for brand recognition"
+
+This company information verification should impact the overall content quality score significantly, as accurate business information is crucial for user trust and SEO.`;
     }
 
     const prompt = `
@@ -453,6 +618,30 @@ Return a JSON object with this exact structure:
   "suggestions": [
     "specific actionable suggestions for content improvement"
   ],
+  "companyInformation": {
+    "hasExpectedInfo": boolean,
+    "companyInfoScore": number (1-100),
+    "foundInformation": {
+      "companyName": "name found on page or null",
+      "phoneNumber": "phone found on page or null", 
+      "email": "email found on page or null",
+      "address": "address found on page or null",
+      "customInfo": "custom info found or null"
+    },
+    "issues": [
+      "specific company information issues"
+    ],
+    "suggestions": [
+      "specific company information suggestions"
+    ],
+    "complianceStatus": {
+      "companyName": "missing|correct|incorrect|partial",
+      "phoneNumber": "missing|correct|incorrect|partial",
+      "email": "missing|correct|incorrect|partial", 
+      "address": "missing|correct|incorrect|partial",
+      "customInfo": "missing|correct|incorrect|partial"
+    }
+  },
   "tone": "professional|casual|formal|conversational|academic|marketing",
   "overallScore": number (1-100),
   "contentQuality": number (1-100),
@@ -483,7 +672,31 @@ CRITICAL REQUIREMENTS:
    - "Add transition words between paragraphs 3 and 4 to improve flow"
    - "Replace jargon terms with simpler alternatives for broader accessibility"
 
-Focus on being helpful and educational. Each error should teach the user something about proper UK English and good writing practices.`;
+${hasCompanyInfo ? `
+6. COMPANY INFORMATION ANALYSIS (CRITICAL):
+   - Set "hasExpectedInfo" to true since company information was provided for verification
+   - Carefully extract any company information found on the page into "foundInformation"
+   - Compare found information with expected information and set appropriate "complianceStatus"
+   - Calculate "companyInfoScore" based on completeness and accuracy (0-100):
+     * 100: All expected information present and correct
+     * 80-99: Most information present with minor issues
+     * 60-79: Some information present but incomplete or inconsistent  
+     * 40-59: Limited information present with major issues
+     * 20-39: Very little correct company information
+     * 0-19: No expected company information found
+   - Include detailed company-specific issues in "companyInformation.issues"
+   - Provide actionable company information suggestions in "companyInformation.suggestions"
+   - Company information score should significantly impact the overall content score
+` : `
+6. COMPANY INFORMATION ANALYSIS:
+   - Set "hasExpectedInfo" to false since no company information was provided for verification
+   - Set "companyInfoScore" to 100 (N/A - no expected information to verify)
+   - Leave "foundInformation" fields as null
+   - Set all "complianceStatus" fields to "correct" (N/A)
+   - Keep "issues" and "suggestions" arrays empty
+`}
+
+Focus on being helpful and educational. Each error should teach the user something about proper UK English and good writing practices. Company information accuracy is crucial for business credibility and local SEO.`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
@@ -496,7 +709,7 @@ Focus on being helpful and educational. Each error should teach the user somethi
       const analysis = JSON.parse(cleanedText);
       
       // Validate required fields and provide defaults
-      return {
+      const result = {
         wordCount: Math.max(0, analysis.wordCount || 0),
         sentenceCount: Math.max(0, analysis.sentenceCount || 0),
         readabilityScore: Math.min(100, Math.max(0, analysis.readabilityScore || 0)),
@@ -508,7 +721,61 @@ Focus on being helpful and educational. Each error should teach the user somethi
         tone: analysis.tone || 'neutral',
         overallScore: Math.min(100, Math.max(0, analysis.overallScore || 0)),
         contentQuality: Math.min(100, Math.max(0, analysis.contentQuality || 0)),
+        companyInformation: {
+          hasExpectedInfo: hasCompanyInfo,
+          companyInfoScore: 100,
+          foundInformation: {
+            companyName: null,
+            phoneNumber: null,
+            email: null,
+            address: null,
+            customInfo: null
+          },
+          issues: [],
+          suggestions: [],
+          complianceStatus: {
+            companyName: 'correct',
+            phoneNumber: 'correct',
+            email: 'correct',
+            address: 'correct',
+            customInfo: 'correct'
+          }
+        }
       };
+
+      // If company information was expected, validate and use AI analysis
+      if (hasCompanyInfo && analysis.companyInformation) {
+        const companyInfo = analysis.companyInformation;
+        result.companyInformation = {
+          hasExpectedInfo: hasCompanyInfo,
+          companyInfoScore: Math.min(100, Math.max(0, companyInfo.companyInfoScore || 0)),
+          foundInformation: {
+            companyName: companyInfo.foundInformation?.companyName || null,
+            phoneNumber: companyInfo.foundInformation?.phoneNumber || null,
+            email: companyInfo.foundInformation?.email || null,
+            address: companyInfo.foundInformation?.address || null,
+            customInfo: companyInfo.foundInformation?.customInfo || null
+          },
+          issues: Array.isArray(companyInfo.issues) ? companyInfo.issues : [],
+          suggestions: Array.isArray(companyInfo.suggestions) ? companyInfo.suggestions : [],
+          complianceStatus: {
+            companyName: companyInfo.complianceStatus?.companyName || 'missing',
+            phoneNumber: companyInfo.complianceStatus?.phoneNumber || 'missing',
+            email: companyInfo.complianceStatus?.email || 'missing',
+            address: companyInfo.complianceStatus?.address || 'missing',
+            customInfo: companyInfo.complianceStatus?.customInfo || 'missing'
+          }
+        };
+
+        // Adjust overall score based on company information score if it's significantly lower
+        if (result.companyInformation.companyInfoScore < 70) {
+          const penalty = (70 - result.companyInformation.companyInfoScore) * 0.2; // Up to 14 point penalty
+          result.overallScore = Math.max(0, result.overallScore - penalty);
+          console.log(`Applied company info penalty: -${penalty.toFixed(1)} points for score ${result.companyInformation.companyInfoScore}`);
+        }
+      }
+
+      return result;
     } catch (parseError) {
       console.error('Failed to parse Gemini response:', cleanedText);
       throw new Error('Invalid response format from Gemini');

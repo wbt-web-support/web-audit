@@ -85,6 +85,26 @@ interface PageAnalysis {
     tone: string;
     overallScore: number;
     contentQuality: number;
+    companyInformation?: {
+      hasExpectedInfo: boolean;
+      companyInfoScore: number;
+      foundInformation: {
+        companyName: string | null;
+        phoneNumber: string | null;
+        email: string | null;
+        address: string | null;
+        customInfo: string | null;
+      };
+      issues: string[];
+      suggestions: string[];
+      complianceStatus: {
+        companyName: string;
+        phoneNumber: string;
+        email: string;
+        address: string;
+        customInfo: string;
+      };
+    };
   } | null;
   seoAnalysis: {
     overallScore: number;
@@ -830,6 +850,12 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{analysis.seoAnalysis.overallScore}</span>
               </div>
             )}
+                  {analysis.grammarCheck?.companyInformation?.hasExpectedInfo && (
+                    <div className="flex items-center justify-between p-2 border rounded">
+                      <span className="text-sm font-medium">Company Info</span>
+                      <span className="text-lg font-bold text-blue-600 dark:text-blue-400">{analysis.grammarCheck.companyInformation.companyInfoScore}</span>
+              </div>
+            )}
                   {(!analysis.grammarCheck || !analysis.seoAnalysis) && (
                     <div className="text-center py-2">
                       <p className="text-xs text-muted-foreground">Scores will appear as analysis completes</p>
@@ -951,14 +977,28 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           const spellingErrors = grammarCheck.spellingErrors || [];
                           const issues = grammarCheck.issues || [];
 
+                          // Company information tab data
+                          const companyInfo = grammarCheck.companyInformation;
+                          const hasCompanyInfo = companyInfo?.hasExpectedInfo || false;
+                          const companyInfoIssues = companyInfo?.issues || [];
+                          const companyInfoCount = hasCompanyInfo ? companyInfoIssues.length : 0;
+
                           const tabs = [
-                            { id: 'grammar', label: 'Grammar', count: grammarErrors.length, errors: grammarErrors, type: 'error' },
-                            { id: 'punctuation', label: 'Punctuation', count: punctuationErrors.length, errors: punctuationErrors, type: 'error' },
-                            { id: 'structure', label: 'Structure', count: structureErrors.length, errors: structureErrors, type: 'error' },
-                            { id: 'ukEnglish', label: 'UK English', count: ukEnglishErrors.length, errors: ukEnglishErrors, type: 'error' },
-                            { id: 'spelling', label: 'Spelling', count: spellingErrors.length, errors: spellingErrors, type: 'error' },
-                            { id: 'issues', label: 'Content Issues', count: issues.length, errors: issues, type: 'issue' }
-                          ].filter(tab => tab.count > 0);
+                            { id: 'grammar', label: 'Grammar', count: grammarErrors.length, errors: grammarErrors, type: 'error' as const },
+                            { id: 'punctuation', label: 'Punctuation', count: punctuationErrors.length, errors: punctuationErrors, type: 'error' as const },
+                            { id: 'structure', label: 'Structure', count: structureErrors.length, errors: structureErrors, type: 'error' as const },
+                            { id: 'ukEnglish', label: 'UK English', count: ukEnglishErrors.length, errors: ukEnglishErrors, type: 'error' as const },
+                            { id: 'spelling', label: 'Spelling', count: spellingErrors.length, errors: spellingErrors, type: 'error' as const },
+                            { id: 'issues', label: 'Content Issues', count: issues.length, errors: issues, type: 'issue' as const },
+                            ...(hasCompanyInfo ? [{ 
+                              id: 'company', 
+                              label: 'Company Information', 
+                              count: companyInfoCount, 
+                              errors: companyInfoIssues, 
+                              type: 'company' as const,
+                              data: companyInfo
+                            }] : [])
+                          ].filter(tab => tab.count > 0 || tab.type === 'company');
 
                           if (tabs.length === 0) {
                             return (
@@ -999,7 +1039,117 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                                     className={activeGrammarTab === tab.id ? 'block' : 'hidden'}
                                   >
                                     <div className="space-y-3">
-                                      {tab.type === 'issue' ? (
+                                      {tab.type === 'company' ? (
+                                        // Company Information Tab
+                                        <div className="space-y-6">
+                                          {/* Company Information Score */}
+                                          <div className="p-4 border rounded-lg bg-blue-50 dark:bg-blue-950/20">
+                                            <div className="flex items-center justify-between mb-3">
+                                              <h5 className="font-medium text-blue-800 dark:text-blue-200">Company Information Score</h5>
+                                              <div className="flex items-center gap-2">
+                                                                                                 <span className="text-2xl font-bold text-blue-700 dark:text-blue-300">
+                                                   {companyInfo?.companyInfoScore || 0}
+                                                 </span>
+                                                <span className="text-sm text-blue-600 dark:text-blue-400">/100</span>
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                                                                     {/* Expected vs Found Information */}
+                                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                             {/* Found Information */}
+                                             <div className="p-4 border rounded-lg">
+                                               <h6 className="font-medium mb-3 text-foreground">Information Found on Page</h6>
+                                               <div className="space-y-2">
+                                                 {companyInfo?.foundInformation && Object.entries(companyInfo.foundInformation).map(([key, value]) => (
+                                                   <div key={key} className="flex items-center justify-between py-1">
+                                                     <span className="text-sm text-muted-foreground capitalize">
+                                                       {key.replace(/([A-Z])/g, ' $1').toLowerCase()}:
+                                                     </span>
+                                                     <span className="text-sm font-medium">
+                                                       {value ? (typeof value === 'string' ? `"${value}"` : 'Found') : 'Not found'}
+                                                     </span>
+                                                   </div>
+                                                 ))}
+                                               </div>
+                                             </div>
+
+                                             {/* Compliance Status */}
+                                             <div className="p-4 border rounded-lg">
+                                               <h6 className="font-medium mb-3 text-foreground">Compliance Status</h6>
+                                               <div className="space-y-2">
+                                                 {companyInfo?.complianceStatus && Object.entries(companyInfo.complianceStatus).map(([key, status]) => (
+                                                   <div key={key} className="flex items-center justify-between py-1">
+                                                     <span className="text-sm text-muted-foreground capitalize">
+                                                       {key.replace(/([A-Z])/g, ' $1').toLowerCase()}:
+                                                     </span>
+                                                     <Badge 
+                                                       variant={
+                                                         status === 'correct' ? 'default' :
+                                                         status === 'missing' ? 'destructive' :
+                                                         status === 'incorrect' ? 'destructive' :
+                                                         'secondary'
+                                                       }
+                                                       className="text-xs"
+                                                     >
+                                                       {status}
+                                                     </Badge>
+                                                   </div>
+                                                 ))}
+                                               </div>
+                                             </div>
+                                           </div>
+
+                                          {/* Company Information Issues */}
+                                          {companyInfoIssues.length > 0 && (
+                                            <div>
+                                              <h6 className="font-medium mb-3 text-foreground">Company Information Issues</h6>
+                                              <div className="space-y-3">
+                                                {companyInfoIssues.map((issue, i) => (
+                                                  <div key={i} className="p-4 border rounded-lg bg-orange-50 dark:bg-orange-950/20">
+                                                    <div className="flex items-start gap-3">
+                                                      <AlertTriangle className="h-5 w-5 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
+                                                      <div>
+                                                        <h5 className="font-medium text-orange-800 dark:text-orange-200">Company Information Issue</h5>
+                                                        <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">{issue}</p>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+
+                                                                                     {/* Company Information Suggestions */}
+                                           {(companyInfo?.suggestions || []).length > 0 && (
+                                             <div>
+                                               <h6 className="font-medium mb-3 text-foreground">Suggestions for Improvement</h6>
+                                               <div className="space-y-3">
+                                                 {(companyInfo?.suggestions || []).map((suggestion: string, i: number) => (
+                                                   <div key={i} className="p-4 border rounded-lg bg-green-50 dark:bg-green-950/20">
+                                                     <div className="flex items-start gap-3">
+                                                       <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                                                       <div>
+                                                         <h5 className="font-medium text-green-800 dark:text-green-200">Suggestion</h5>
+                                                         <p className="text-sm text-green-700 dark:text-green-300 mt-1">{suggestion}</p>
+                                                       </div>
+                                                     </div>
+                                                   </div>
+                                                 ))}
+                                               </div>
+                                             </div>
+                                           )}
+
+                                           {/* Perfect Company Information Message */}
+                                           {companyInfoIssues.length === 0 && (companyInfo?.companyInfoScore || 0) >= 95 && (
+                                             <div className="text-center py-8">
+                                               <CheckCircle className="h-16 w-16 text-emerald-500 dark:text-emerald-400 mx-auto mb-3" />
+                                               <p className="text-xl font-medium">Perfect Company Information!</p>
+                                               <p className="text-sm text-muted-foreground">All expected company information is present and correctly displayed.</p>
+                                             </div>
+                                           )}
+                                        </div>
+                                      ) : tab.type === 'issue' ? (
                                         // Content Issues (strings)
                                         (tab.errors as string[]).map((issue, i) => (
                                           <div key={i} className="p-4 border rounded-lg bg-amber-50 dark:bg-amber-950/20">

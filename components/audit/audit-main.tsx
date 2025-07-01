@@ -29,7 +29,8 @@ import {
   X,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Zap
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -245,7 +246,12 @@ export function AuditMain() {
 
   const startAnalysis = async (sessionId: string, pageIds: string[]) => {
     setAnalyzing(true);
-    setCurrentAction(`Starting analysis for ${pageIds.length} pages`);
+    const isBatchAnalysis = pageIds.length > 1;
+    setCurrentAction(
+      isBatchAnalysis 
+        ? `Starting batch analysis for ${pageIds.length} pages (maintaining 5 concurrent analyses)`
+        : `Starting analysis for 1 page`
+    );
     setError('');
     
     // Mark pages as analyzing
@@ -266,7 +272,11 @@ export function AuditMain() {
         setError(data.error || 'Failed to start analysis');
         setAnalyzingPages(new Set()); // Clear analyzing state on error
       } else {
-        setCurrentAction(`Analyzing ${pageIds.length} pages with AI...`);
+        setCurrentAction(
+          isBatchAnalysis
+            ? `Batch analyzing ${pageIds.length} pages with AI (processing in parallel for faster results)...`
+            : `Analyzing page with AI...`
+        );
         // Keep analyzing state until next data fetch shows completion
       }
     } catch (error) {
@@ -290,6 +300,60 @@ export function AuditMain() {
     } catch (error) {
       setError('Failed to stop process');
     }
+  };
+
+  const stopAllAnalysis = async () => {
+    if (analyzingPages.size === 0) return;
+
+    const analyzingPageIds = Array.from(analyzingPages);
+    setCurrentAction(`Stopping analysis for ${analyzingPageIds.length} pages...`);
+    setError('');
+
+    try {
+      // Stop each analyzing page individually
+      const stopPromises = analyzingPageIds.map(async (pageId) => {
+        try {
+          const response = await fetch(`/api/pages/${pageId}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+              analysis_status: 'pending' // Reset to pending instead of failed
+            }),
+          });
+
+          if (!response.ok) {
+            console.error(`Failed to stop analysis for page ${pageId}`);
+            return false;
+          }
+          return true;
+        } catch (error) {
+          console.error(`Error stopping analysis for page ${pageId}:`, error);
+          return false;
+        }
+      });
+
+      const results = await Promise.all(stopPromises);
+      const successCount = results.filter(Boolean).length;
+
+      // Clear local analyzing state immediately for better UX
+      setAnalyzingPages(new Set());
+
+      if (successCount === analyzingPageIds.length) {
+        setCurrentAction('All analysis processes stopped successfully');
+      } else if (successCount > 0) {
+        setCurrentAction(`Stopped ${successCount} of ${analyzingPageIds.length} analysis processes`);
+        setError(`${analyzingPageIds.length - successCount} processes could not be stopped`);
+      } else {
+        setError('Failed to stop analysis processes');
+      }
+    } catch (error) {
+      setError('Failed to stop analysis processes');
+      console.error('Stop all analysis error:', error);
+    }
+
+    setTimeout(() => setCurrentAction(''), 3000);
   };
 
   const deletePage = async (pageId: string) => {
@@ -513,10 +577,13 @@ export function AuditMain() {
   useEffect(() => {
     if (analyzingPages.size === 0) return;
 
+    // More frequent polling for batch analysis
+    const pollIntervalMs = analyzingPages.size > 5 ? 2000 : 3000;
+
     const pollInterval = setInterval(() => {
-      console.log('Polling for analysis updates...');
+      console.log(`Polling for analysis updates (${analyzingPages.size} pages analyzing)...`);
       fetchData();
-    }, 3000); // Poll every 3 seconds when analysis is running
+    }, pollIntervalMs); // Poll more frequently for batch analysis
 
     return () => clearInterval(pollInterval);
   }, [analyzingPages.size]);
@@ -730,6 +797,20 @@ export function AuditMain() {
               <CardDescription>Select pages to analyze</CardDescription>
             </div>
             <div className="flex items-center gap-2">
+              {/* Kill Switch for stopping all analysis */}
+              {analyzingPages.size > 0 && sessions[0] && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => stopAllAnalysis()}
+                  disabled={deleting}
+                  className="bg-red-600 hover:bg-red-700 text-white border-red-600"
+                >
+                  <Square className="h-4 w-4 mr-2" />
+                  Stop All Analysis ({analyzingPages.size})
+                </Button>
+              )}
+              
               {selectedPages.size > 0 && (
                 <>
                   <Button
@@ -774,16 +855,27 @@ export function AuditMain() {
                       </>
                     ) : (
                       <>
+                        {selectedPages.size > 1 ? (
+                          <>
+                            <Zap className="h-4 w-4 mr-2" />
+                            Batch Analyze {selectedPages.size} Pages
+                      </>
+                    ) : (
+                      <>
                         <BarChart3 className="h-4 w-4 mr-2" />
-                        Analyze {selectedPages.size} Pages
+                            Analyze {selectedPages.size} Page
+                          </>
+                        )}
                       </>
                     )}
                   </Button>
                 </>
               )}
-              {selectedPages.size === 0 && filteredAndSortedPages.length > 0 && (
+              {selectedPages.size === 0 && filteredAndSortedPages.length > 0 && analyzingPages.size === 0 && (
+                <>
                 <Button
                   size="sm"
+                    variant="outline"
                   onClick={() => {
                     // Only select pages that aren't being analyzed
                     const selectablePageIds = filteredAndSortedPages
@@ -793,7 +885,26 @@ export function AuditMain() {
                   }}
                 >
                   Select All ({filteredAndSortedPages.filter(p => !isPageAnalyzing(p)).length})
+                  </Button>
+                  {filteredAndSortedPages.filter(p => p.resultCount === 0).length > 0 && sessions[0] && (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        // Analyze all unanalyzed pages
+                        const unanalyzedPageIds = filteredAndSortedPages
+                          .filter(p => p.resultCount === 0 && !isPageAnalyzing(p))
+                          .map(p => p.page.id);
+                        if (unanalyzedPageIds.length > 0) {
+                          startAnalysis(sessions[0].id, unanalyzedPageIds);
+                        }
+                      }}
+                      disabled={analyzing || deleting}
+                    >
+                      <Zap className="h-4 w-4 mr-2" />
+                      Analyze All Unanalyzed ({filteredAndSortedPages.filter(p => p.resultCount === 0 && !isPageAnalyzing(p)).length})
                 </Button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -1047,7 +1158,11 @@ export function AuditMain() {
                           {isPageAnalyzing(analyzedPage) && (
                             <div className="flex items-center gap-1 mt-1">
                               <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-                              <span className="text-xs text-blue-600 dark:text-blue-400">Re-scraping & analyzing with AI...</span>
+                              <span className="text-xs text-blue-600 dark:text-blue-400">
+                                {analyzingPages.size > 1 
+                                  ? `Re-scraping & batch analyzing with AI (${analyzingPages.size} pages total)...` 
+                                  : 'Re-scraping & analyzing with AI...'}
+                              </span>
                             </div>
                           )}
                   </div>
