@@ -1,8 +1,11 @@
+
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { WebScraper } from '@/lib/services/web-scraper';
-
+import puppeteer, { Page } from "puppeteer";
+import path from "path";
+import fs from "fs/promises";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(
@@ -22,7 +25,7 @@ export async function POST(
     const { 
       page_ids, 
       analyze_all = false,
-      analysis_types = ['grammar', 'seo'], // Default to both
+      analysis_types = ['grammar', 'seo','ui'], // Default to both
       use_cache = true, // Default to use cache
       background = null, // Auto-determine based on page count
       force_refresh = false // Force refresh cached results
@@ -119,6 +122,8 @@ async function performSinglePageAnalysis(
   useCache: boolean, 
   forceRefresh: boolean
 ) {
+
+
   try {
     // Mark page as analyzing
     await supabase
@@ -126,8 +131,12 @@ async function performSinglePageAnalysis(
       .update({ analysis_status: 'analyzing' })
       .eq('id', page.id);
 
+const imageUrl: string = await takeScreenshot(page.url, page.id);
+const screenshotPath = path.join(process.cwd(), "public", `screenshot_${page.id}.png`);
+const storagePath = `session_${session.id}/screenshot_${page.id}.png`; // Organize by session if you want
+const publicUrl = await uploadScreenshotToStorage(screenshotPath, storagePath);
+
     // Re-scrape the page to get the latest content
-    console.log(`🔄 Re-scraping page for latest content: ${page.url}`);
     try {
       const scraper = new WebScraper(page.url, {
         maxPages: 1,
@@ -136,7 +145,7 @@ async function performSinglePageAnalysis(
       });
       
       const freshPageData = await scraper.scrapePage(page.url);
-      
+      console.log(`🔄 Fresh content scraped for page ${page.id}:`, freshPageData);
       // Update the page with fresh content
       const { error: updateError } = await supabase
         .from('scraped_pages')
@@ -146,6 +155,7 @@ async function performSinglePageAnalysis(
           html: freshPageData.html || page.html,
           status_code: freshPageData.statusCode || page.status_code,
           scraped_at: new Date().toISOString(),
+          page_screenshot_url:publicUrl || publicUrl, // Save screenshot URL in new field
         })
         .eq('id', page.id);
 
@@ -159,6 +169,7 @@ async function performSinglePageAnalysis(
           ...page,
           title: freshPageData.title || page.title,
           content: freshPageData.content || page.content,
+          imageUrl: imageUrl || publicUrl,
           html: freshPageData.html || page.html,
           status_code: freshPageData.statusCode || page.status_code,
           scraped_at: new Date().toISOString(),
@@ -171,6 +182,7 @@ async function performSinglePageAnalysis(
 
     let grammarAnalysis = null;
     let seoAnalysis = null;
+    let uiAnalysis = null;
     let cached = false;
     let cachedAt = null;
 
@@ -205,6 +217,15 @@ async function performSinglePageAnalysis(
     if (analysisTypes.includes('seo') && !seoAnalysis) {
       console.log(`Running fresh SEO analysis for page ${page.id}`);
       seoAnalysis = await analyzeSEO(page.html || '', page.url, page.title, page.status_code);
+    }
+    if (analysisTypes.includes('ui') && !uiAnalysis) {
+      console.log(`Running fresh UI analysis for page ${page.id}`);
+      if (publicUrl) {
+        uiAnalysis = await analyzeUIImageWithGemini(publicUrl);
+        console.log(`UI analysis completed for page ${uiAnalysis}`);
+      } else {
+        uiAnalysis = null;
+      }
     }
 
     // Calculate combined score if both analyses are requested
@@ -1021,3 +1042,157 @@ function analyzeLinks(html: string, baseUrl: string) {
     brokenLinks: [], // Would need to check each link
   };
 } 
+
+// analyzeUI function to take a screenshot of a webpage using Puppeteer and upload it to Supabase Storage. The function will scroll the page, take a full-page screenshot, and return the public URL of the uploaded image.
+// Analyze UI image using Gemini Vision API
+// imageUrl: public URL of the image (PNG/JPG)
+// Returns: JSON string with Gemini's response
+async function analyzeUIImageWithGemini(imageUrl: string): Promise<string | null> {
+  try {
+    if (!imageUrl) {
+      console.error("[Gemini UI] No imageUrl provided");
+      return "image not found";
+    }
+    console.log("[Gemini UI] Analyzing image with Gemini Vision API...", imageUrl);
+    // Gemini Vision API expects a prompt and an image (as base64)
+    const prompt = "Find and describe UI alignment issues, misalignments, overlaps, margin inconsistencies.";
+
+    // Use GoogleGenerativeAI's multimodal API (Gemini Vision)
+    // See: https://ai.google.dev/tutorials/node_quickstart_vision
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+    // Always fetch the image and encode as base64
+    let base64 = "";
+    try {
+      const response = await fetch(imageUrl);
+      const arrayBuffer = await response.arrayBuffer();
+      base64 = Buffer.from(arrayBuffer).toString('base64');
+      console.log("[Gemini UI] Image fetched and encoded as base64", { imageUrl, base64Length: base64.length });
+    } catch (fetchErr) {
+      console.error("[Gemini UI] Failed to fetch or encode image for Gemini Vision", fetchErr);
+      return JSON.stringify({ error: "Failed to fetch or encode image for Gemini Vision" });
+    }
+
+    const generationConfig = { temperature: 0.2, maxOutputTokens: 1024 };
+    const contents = [
+      {
+        role: "user",
+        parts: [
+          { text: prompt },
+          { inlineData: { mimeType: "image/png", data: base64 } }
+        ]
+      }
+    ];
+
+    let result;
+    try {
+      console.log("[Gemini UI] Sending image as base64 to Gemini Vision API", { prompt, imageUrl, base64Length: base64.length });
+      result = await model.generateContent({ contents, generationConfig });
+      console.log("[Gemini UI] Gemini Vision API result (base64):", result);
+    } catch (err) {
+      console.error("[Gemini UI] Gemini Vision API error (base64):", err);
+      return JSON.stringify({ error: "Gemini Vision API error", details: err });
+    }
+
+    const geminiResponse = result?.response?.text?.() || result?.response?.text || null;
+    if (!geminiResponse) {
+      console.error("[Gemini UI] Gemini Vision API returned empty response", result);
+      return null;
+    }
+
+    // Try to parse as JSON, or return as string
+    let jsonString = (typeof geminiResponse === 'function' ? geminiResponse() : geminiResponse).trim();
+    // If response is wrapped in code block, remove it
+    jsonString = jsonString.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim();
+    // If not valid JSON, wrap as { "result": ... }
+    console.log("[Gemini UI] Gemini Vision API response string:", jsonString);
+    try {
+      JSON.parse(jsonString);
+      return jsonString;
+    } catch {
+      console.warn("[Gemini UI] Gemini Vision API response is not valid JSON, wrapping as result string");
+      return JSON.stringify({ result: jsonString });
+    }
+  } catch (error) {
+    console.error("[Gemini UI] Gemini Vision API error (outer):", error);
+    return null;
+  }
+}
+// Function to take a screenshot of a webpage
+
+async function takeScreenshot(url: string, pagesCrawled: number): Promise<string> {
+  let browser: import("puppeteer").Browser | null = null;
+  try {
+    browser = await puppeteer.launch({
+      headless: true, // Set to true to prevent opening a visible browser window
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: "networkidle2" });
+    await page.waitForSelector("body");
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    await page.setViewport({ width: 1440, height: 3000 });
+
+    await autoScroll(page);
+    await page.evaluate(() => window.scrollTo(0, 0));
+
+    const screenshotPath = path.join(process.cwd(), "public", `screenshot_${pagesCrawled}.png`) as `${string}.png`;
+    await page.screenshot({
+      path: screenshotPath,
+      fullPage: true,
+    });
+
+    return `/screenshot_${pagesCrawled}.png`;
+  } catch (error) {
+    console.error("Error taking screenshot:", error);
+    // Do not throw, just log and return empty string
+    return "";
+  } finally {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeError) {
+        console.error("Error closing browser:", closeError);
+      }
+    }
+  }
+}
+
+
+async function autoScroll(page: Page) {
+  await page.evaluate(async () => {
+    await new Promise<void>((resolve) => {
+      let totalHeight = 0;
+      const distance = 800; // Adjust distance for smoother scroll
+      const timer = setInterval(() => {
+        window.scrollBy(0, distance);
+        totalHeight += distance;
+
+        if (totalHeight >= document.body.scrollHeight) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 800); // slow scroll
+    });
+  });
+}
+
+
+async function uploadScreenshotToStorage(localPath: string, storagePath: string): Promise<string | null> {
+ const supabase = await createClient();
+  const fileBuffer = await fs.readFile(localPath);
+  const { data, error } = await supabase.storage
+    .from('screenshots') // bucket name
+    .upload(storagePath, fileBuffer, { upsert: true, contentType: 'image/png' });
+
+  if (error) {
+    console.error('Supabase Storage upload error:', error);
+    return null;
+  }
+console.log(`Screenshot uploaded to Supabase Storage at path: ${storagePath}`);
+console.log(`File metadata:`, data);
+  // Get public URL
+  const { data: { publicUrl } } = supabase.storage.from('screenshots').getPublicUrl(storagePath);
+  return publicUrl;
+}
