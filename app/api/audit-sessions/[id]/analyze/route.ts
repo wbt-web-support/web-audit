@@ -1,11 +1,11 @@
-
-import { createClient } from '@/lib/supabase/server';
-import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { WebScraper } from '@/lib/services/web-scraper';
+import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { WebScraper } from "@/lib/services/web-scraper";
 import puppeteer, { Page } from "puppeteer";
 import path from "path";
 import fs from "fs/promises";
+import axios from "axios";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(
@@ -15,42 +15,45 @@ export async function POST(
   try {
     const supabase = await createClient();
     const { id } = await params;
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
-    const { 
-      page_ids, 
+    const {
+      page_ids,
       analyze_all = false,
-      analysis_types = ['grammar', 'seo','ui'], // Default to both
+      analysis_types = ["grammar", "seo", "ui"], // Default to both
       use_cache = true, // Default to use cache
       background = null, // Auto-determine based on page count
-      force_refresh = false // Force refresh cached results
+      force_refresh = false, // Force refresh cached results
     } = body;
 
     // Verify the session belongs to the user
     const { data: session, error: sessionError } = await supabase
-      .from('audit_sessions')
-      .select('*')
-      .eq('id', id)
-      .eq('user_id', user.id)
+      .from("audit_sessions")
+      .select("*")
+      .eq("id", id)
+      .eq("user_id", user.id)
       .single();
 
     if (sessionError || !session) {
-      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
     // Get pages to analyze
     let query = supabase
-      .from('scraped_pages')
-      .select('*')
-      .eq('audit_session_id', id);
+      .from("scraped_pages")
+      .select("*")
+      .eq("audit_session_id", id);
 
     if (!analyze_all && page_ids && page_ids.length > 0) {
-      query = query.in('id', page_ids);
+      query = query.in("id", page_ids);
     }
 
     const { data: pages, error: pagesError } = await query;
@@ -60,107 +63,123 @@ export async function POST(
     }
 
     if (!pages || pages.length === 0) {
-      return NextResponse.json({ error: 'No pages to analyze' }, { status: 400 });
+      return NextResponse.json(
+        { error: "No pages to analyze" },
+        { status: 400 }
+      );
     }
 
     // Auto-determine background processing (single page = immediate, multiple = background)
-    const shouldRunInBackground = background !== null ? background : pages.length > 1;
+    const shouldRunInBackground =
+      background !== null ? background : pages.length > 1;
 
     if (shouldRunInBackground) {
       // Allow analysis when session has completed crawling
-      if (session.status !== 'analyzing' && session.status !== 'completed' && session.pages_crawled === 0) {
+      if (
+        session.status !== "analyzing" &&
+        session.status !== "completed" &&
+        session.pages_crawled === 0
+      ) {
         return NextResponse.json(
-          { error: 'Session must have crawled pages before analysis' },
+          { error: "Session must have crawled pages before analysis" },
           { status: 400 }
         );
-    }
+      }
 
-    // Update session status to analyzing
-    await supabase
-      .from('audit_sessions')
-      .update({ status: 'analyzing' })
-        .eq('id', id);
+      // Update session status to analyzing
+      await supabase
+        .from("audit_sessions")
+        .update({ status: "analyzing" })
+        .eq("id", id);
 
-    // Start analysis in background
+      // Start analysis in background
       analyzePages(id, pages, analysis_types, use_cache, force_refresh);
 
-    return NextResponse.json({ 
-      message: 'Analysis started',
+      return NextResponse.json({
+        message: "Analysis started",
         pages_to_analyze: pages.length,
-        background: true
+        background: true,
       });
     } else {
       // Single page - return immediate results
       const page = pages[0];
       const results = await performSinglePageAnalysis(
-        supabase, 
-        page, 
-        session, 
-        analysis_types, 
-        use_cache, 
+        supabase,
+        page,
+        session,
+        analysis_types,
+        use_cache,
         force_refresh
       );
-      
+
       return NextResponse.json({
         ...results,
-        background: false
+        background: false,
       });
     }
   } catch (error) {
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
 }
 
 async function performSinglePageAnalysis(
-  supabase: any, 
-  page: any, 
-  session: any, 
-  analysisTypes: string[], 
-  useCache: boolean, 
+  supabase: any,
+  page: any,
+  session: any,
+  analysisTypes: string[],
+  useCache: boolean,
   forceRefresh: boolean
 ) {
-
-
   try {
     // Mark page as analyzing
     await supabase
-      .from('scraped_pages')
-      .update({ analysis_status: 'analyzing' })
-      .eq('id', page.id);
+      .from("scraped_pages")
+      .update({ analysis_status: "analyzing" })
+      .eq("id", page.id);
 
-const imageUrl: string = await takeScreenshot(page.url, page.id);
-const screenshotPath = path.join(process.cwd(), "public", `screenshot_${page.id}.png`);
-const storagePath = `session_${session.id}/screenshot_${page.id}.png`; // Organize by session if you want
-const publicUrl = await uploadScreenshotToStorage(screenshotPath, storagePath);
+    const imageUrl: string = await takeScreenshot(page.url, page.id);
+    const screenshotPath = path.join(
+      process.cwd(),
+      "public",
+      `screenshot_${page.id}.png`
+    );
+    const storagePath = `session_${session.id}/screenshot_${page.id}.png`; // Organize by session if you want
+    const publicUrl = await uploadScreenshotToStorage(
+      screenshotPath,
+      storagePath
+    );
 
     // Re-scrape the page to get the latest content
     try {
       const scraper = new WebScraper(page.url, {
         maxPages: 1,
         timeout: 30000,
-        userAgent: 'WebAuditBot/1.0 (Analysis)',
+        userAgent: "WebAuditBot/1.0 (Analysis)",
       });
-      
+
       const freshPageData = await scraper.scrapePage(page.url);
-      console.log(`🔄 Fresh content scraped for page ${page.id}:`, freshPageData);
+      console.log(
+        `🔄 Fresh content scraped for page ${page.id}:`,
+        freshPageData
+      );
       // Update the page with fresh content
       const { error: updateError } = await supabase
-        .from('scraped_pages')
+        .from("scraped_pages")
         .update({
           title: freshPageData.title || page.title,
           content: freshPageData.content || page.content,
           html: freshPageData.html || page.html,
           status_code: freshPageData.statusCode || page.status_code,
           scraped_at: new Date().toISOString(),
-          page_screenshot_url:publicUrl || publicUrl, // Save screenshot URL in new field
+          page_screenshot_url: publicUrl || publicUrl, // Save screenshot URL in new field
         })
-        .eq('id', page.id);
+        .eq("id", page.id);
 
       if (updateError) {
-        console.error('Failed to update page with fresh content:', updateError);
+        console.error("Failed to update page with fresh content:", updateError);
         // Continue with existing content if update fails
       } else {
         console.log(`✅ Updated page ${page.id} with fresh content`);
@@ -176,7 +195,10 @@ const publicUrl = await uploadScreenshotToStorage(screenshotPath, storagePath);
         };
       }
     } catch (scrapeError) {
-      console.warn(`⚠️ Failed to re-scrape page ${page.url}, using existing content:`, scrapeError);
+      console.warn(
+        `⚠️ Failed to re-scrape page ${page.url}, using existing content:`,
+        scrapeError
+      );
       // Continue with existing content if re-scraping fails
     }
 
@@ -189,18 +211,21 @@ const publicUrl = await uploadScreenshotToStorage(screenshotPath, storagePath);
     // Check for cached results first (unless force refresh)
     if (useCache && !forceRefresh) {
       const { data: cachedResult, error: cacheError } = await supabase
-        .from('audit_results')
-        .select('grammar_analysis, seo_analysis, created_at')
-        .eq('scraped_page_id', page.id)
+        .from("audit_results")
+        .select("grammar_analysis, seo_analysis, created_at")
+        .eq("scraped_page_id", page.id)
         .maybeSingle();
 
       if (!cacheError && cachedResult) {
-        if (analysisTypes.includes('grammar') && cachedResult.grammar_analysis) {
+        if (
+          analysisTypes.includes("grammar") &&
+          cachedResult.grammar_analysis
+        ) {
           grammarAnalysis = cachedResult.grammar_analysis;
           cached = true;
           cachedAt = cachedResult.created_at;
         }
-        if (analysisTypes.includes('seo') && cachedResult.seo_analysis) {
+        if (analysisTypes.includes("seo") && cachedResult.seo_analysis) {
           seoAnalysis = cachedResult.seo_analysis;
           cached = true;
           cachedAt = cachedResult.created_at;
@@ -209,20 +234,29 @@ const publicUrl = await uploadScreenshotToStorage(screenshotPath, storagePath);
     }
 
     // Perform missing analyses with fresh content
-    if (analysisTypes.includes('grammar') && !grammarAnalysis) {
+    if (analysisTypes.includes("grammar") && !grammarAnalysis) {
       console.log(`Running fresh grammar analysis for page ${page.id}`);
-      grammarAnalysis = await analyzeContentWithGemini(page.content || '', session);
+      grammarAnalysis = await analyzeContentWithGemini(
+        page.content || "",
+        session
+      );
+      console.log(`Grammar analysis completed for page**`, typeof(grammarAnalysis));
     }
 
-    if (analysisTypes.includes('seo') && !seoAnalysis) {
+    if (analysisTypes.includes("seo") && !seoAnalysis) {
       console.log(`Running fresh SEO analysis for page ${page.id}`);
-      seoAnalysis = await analyzeSEO(page.html || '', page.url, page.title, page.status_code);
+      seoAnalysis = await analyzeSEO(
+        page.html || "",
+        page.url,
+        page.title,
+        page.status_code
+      );
     }
-    if (analysisTypes.includes('ui') && !uiAnalysis) {
+    if (analysisTypes.includes("ui") && !uiAnalysis) {
       console.log(`Running fresh UI analysis for page ${page.id}`);
       if (publicUrl) {
         uiAnalysis = await analyzeUIImageWithGemini(publicUrl);
-        console.log(`UI analysis completed for page ${uiAnalysis}`);
+        console.log(`UI analysis completed for page ${page.id}:`, typeof(uiAnalysis));
       } else {
         uiAnalysis = null;
       }
@@ -231,7 +265,9 @@ const publicUrl = await uploadScreenshotToStorage(screenshotPath, storagePath);
     // Calculate combined score if both analyses are requested
     let overallScore = 0;
     if (grammarAnalysis && seoAnalysis) {
-      overallScore = Math.round((grammarAnalysis.overallScore * 0.6) + (seoAnalysis.overallScore * 0.4));
+      overallScore = Math.round(
+        grammarAnalysis.overallScore * 0.6 + seoAnalysis.overallScore * 0.4
+      );
     } else if (grammarAnalysis) {
       overallScore = grammarAnalysis.overallScore;
     } else if (seoAnalysis) {
@@ -239,16 +275,23 @@ const publicUrl = await uploadScreenshotToStorage(screenshotPath, storagePath);
     }
 
     // Save results to cache
-    await upsertAnalysisResult(supabase, page, grammarAnalysis, seoAnalysis, overallScore);
+    await upsertAnalysisResult(
+      supabase,
+      page,
+      grammarAnalysis,
+      seoAnalysis,
+      uiAnalysis,
+      overallScore
+    );
 
     // Mark page as completed
     await supabase
-      .from('scraped_pages')
-      .update({ analysis_status: 'completed' })
-      .eq('id', page.id);
+      .from("scraped_pages")
+      .update({ analysis_status: "completed" })
+      .eq("id", page.id);
 
     // Return appropriate response based on what was requested
-    if (analysisTypes.includes('grammar') && analysisTypes.includes('seo')) {
+    if (analysisTypes.includes("grammar") && analysisTypes.includes("seo")) {
       return {
         grammar_analysis: grammarAnalysis,
         seo_analysis: seoAnalysis,
@@ -256,101 +299,127 @@ const publicUrl = await uploadScreenshotToStorage(screenshotPath, storagePath);
         company_information: grammarAnalysis?.companyInformation || null,
         cached,
         cached_at: cachedAt,
-        freshly_scraped: true
+        freshly_scraped: true,
       };
-    } else if (analysisTypes.includes('grammar')) {
+    } else if (analysisTypes.includes("grammar")) {
       return {
         ...grammarAnalysis,
         company_information: grammarAnalysis?.companyInformation || null,
         cached,
         cached_at: cachedAt,
-        freshly_scraped: true
+        freshly_scraped: true,
       };
-    } else if (analysisTypes.includes('seo')) {
+    } else if (analysisTypes.includes("seo")) {
       return {
         ...seoAnalysis,
         company_information: null, // SEO analysis doesn't include company info
         cached,
         cached_at: cachedAt,
-        freshly_scraped: true
+        freshly_scraped: true,
       };
     }
 
-    return { error: 'No valid analysis types specified' };
+    return { error: "No valid analysis types specified" };
   } catch (error) {
     console.error(`Single page analysis failed for page ${page.id}:`, error);
-    
+
     // Mark page as failed
     await supabase
-      .from('scraped_pages')
-      .update({ analysis_status: 'failed' })
-      .eq('id', page.id);
-    
+      .from("scraped_pages")
+      .update({ analysis_status: "failed" })
+      .eq("id", page.id);
+
     throw error;
   }
 }
 
-async function upsertAnalysisResult(supabase: any, page: any, grammarAnalysis: any, seoAnalysis: any, overallScore: number) {
-  const status = overallScore >= 80 ? 'pass' : overallScore >= 60 ? 'warning' : 'fail';
-  
+async function upsertAnalysisResult(
+  supabase: any,
+  page: any,
+  grammarAnalysis: any,
+  seoAnalysis: any,
+  uiAnalysis: any,
+  overallScore: number
+) {
+  const status =
+    overallScore >= 80 ? "pass" : overallScore >= 60 ? "warning" : "fail";
+
   const updateData: any = {
     scraped_page_id: page.id,
     page_name: page.title || page.url,
     overall_score: overallScore,
     overall_status: status,
-    updated_at: new Date().toISOString()
+    updated_at: new Date().toISOString(),
   };
-  
+
   if (grammarAnalysis) {
     updateData.grammar_analysis = grammarAnalysis;
-    
+
     // Extract company information if available
     if (grammarAnalysis.companyInformation) {
-      updateData.company_information_analysis = grammarAnalysis.companyInformation;
-      console.log(`Saving company information analysis for page ${page.id}: score ${grammarAnalysis.companyInformation.companyInfoScore}`);
+      updateData.company_information_analysis =
+        grammarAnalysis.companyInformation;
+      console.log(
+        `Saving company information analysis for page ${page.id}: score ${grammarAnalysis.companyInformation.companyInfoScore}`
+      );
     }
   }
-  
+
   if (seoAnalysis) {
     updateData.seo_analysis = seoAnalysis;
   }
+  if (uiAnalysis) {
+    updateData.ui_quality_analysis = uiAnalysis;
+    console.log(
+      `Saving UI analysis for page ${page.id}: score ${uiAnalysis}`
+    );
+  }
 
-  const { error } = await supabase
-    .from('audit_results')
-    .upsert(updateData, { 
-      onConflict: 'scraped_page_id',
-      ignoreDuplicates: false 
-    });
+  const { error } = await supabase.from("audit_results").upsert(updateData, {
+    onConflict: "scraped_page_id",
+    ignoreDuplicates: false,
+  });
 
   if (error) {
-    console.error(`Failed to save analysis results for page ${page.id}:`, error);
+    console.error(
+      `Failed to save analysis results for page ${page.id}:`,
+      error
+    );
     throw error;
   }
 }
 
-async function analyzePages(sessionId: string, pages: any[], analysisTypes: string[], useCache: boolean, forceRefresh: boolean) {
+async function analyzePages(
+  sessionId: string,
+  pages: any[],
+  analysisTypes: string[],
+  useCache: boolean,
+  forceRefresh: boolean
+) {
   const supabase = await createClient();
-  
+
   // Configure rolling batch processing
   const MAX_CONCURRENT = 5; // Maximum number of pages analyzing simultaneously
-  
+
   try {
     let analyzedCount = 0;
     let failedCount = 0;
-    const failedPages: Array<{id: string, error: string}> = [];
+    const failedPages: Array<{ id: string; error: string }> = [];
 
     // Get session data for company information verification
     const { data: session, error: sessionError } = await supabase
-      .from('audit_sessions')
-      .select('*')
-      .eq('id', sessionId)
+      .from("audit_sessions")
+      .select("*")
+      .eq("id", sessionId)
       .single();
 
     if (sessionError || !session) {
-      throw new Error('Failed to get session data for analysis');
+      throw new Error("Failed to get session data for analysis");
     }
 
-    console.log(`🚀 Starting rolling batch analysis for ${pages.length} pages with max ${MAX_CONCURRENT} concurrent`);
+    console.log(
+      `🚀 Starting rolling batch analysis for ${pages.length} pages with max ${MAX_CONCURRENT} concurrent`
+    );
 
     // Create a queue of pages to process
     const pageQueue = [...pages];
@@ -359,22 +428,33 @@ async function analyzePages(sessionId: string, pages: any[], analysisTypes: stri
     // Function to start analysis for a single page
     const startPageAnalysis = async (page: any) => {
       try {
-        console.log(`  ⚡ Starting analysis for page ${page.id}: ${page.title || page.url} (${analyzedCount + failedCount + 1}/${pages.length})`);
-        await performSinglePageAnalysis(supabase, page, session, analysisTypes, useCache, forceRefresh);
+        console.log(
+          `  ⚡ Starting analysis for page ${page.id}: ${
+            page.title || page.url
+          } (${analyzedCount + failedCount + 1}/${pages.length})`
+        );
+        await performSinglePageAnalysis(
+          supabase,
+          page,
+          session,
+          analysisTypes,
+          useCache,
+          forceRefresh
+        );
         return { success: true, pageId: page.id };
       } catch (error: any) {
         console.error(`  ❌ Failed to analyze page ${page.id}:`, error.message);
-        
+
         // Mark the page as failed but continue with others
         await supabase
-          .from('scraped_pages')
-          .update({ analysis_status: 'failed' })
-          .eq('id', page.id);
-        
-        return { 
-          success: false, 
-          pageId: page.id, 
-          error: error.message || 'Unknown error' 
+          .from("scraped_pages")
+          .update({ analysis_status: "failed" })
+          .eq("id", page.id);
+
+        return {
+          success: false,
+          pageId: page.id,
+          error: error.message || "Unknown error",
         };
       }
     };
@@ -382,17 +462,17 @@ async function analyzePages(sessionId: string, pages: any[], analysisTypes: stri
     // Function to check if analysis should stop
     const shouldStop = async () => {
       const { data: currentSession } = await supabase
-        .from('audit_sessions')
-        .select('status')
-        .eq('id', sessionId)
+        .from("audit_sessions")
+        .select("status")
+        .eq("id", sessionId)
         .single();
-      return currentSession?.status === 'failed';
+      return currentSession?.status === "failed";
     };
 
     // Start initial batch of analyses
     while (pageQueue.length > 0 && activePromises.size < MAX_CONCURRENT) {
       if (await shouldStop()) {
-        throw new Error('Analysis stopped by user');
+        throw new Error("Analysis stopped by user");
       }
 
       const page = pageQueue.shift()!;
@@ -403,14 +483,16 @@ async function analyzePages(sessionId: string, pages: any[], analysisTypes: stri
     // Process remaining pages as soon as slots become available
     while (activePromises.size > 0) {
       if (await shouldStop()) {
-        throw new Error('Analysis stopped by user');
+        throw new Error("Analysis stopped by user");
       }
-      
+
       // Wait for at least one analysis to complete
-      const completedPromise = await Promise.race(Array.from(activePromises.values()));
-      
+      const completedPromise = await Promise.race(
+        Array.from(activePromises.values())
+      );
+
       // Find which promise completed and remove it
-      let completedPageId = '';
+      let completedPageId = "";
       for (const [pageId, promise] of activePromises.entries()) {
         if (promise === completedPromise) {
           completedPageId = pageId;
@@ -418,29 +500,42 @@ async function analyzePages(sessionId: string, pages: any[], analysisTypes: stri
           break;
         }
       }
-      
+
       // Process the result
       try {
         const result = await completedPromise;
-        
+
         if (result.success) {
-      analyzedCount++;
-          console.log(`  ✅ Completed analysis for page ${result.pageId} (${analyzedCount + failedCount}/${pages.length})`);
+          analyzedCount++;
+          console.log(
+            `  ✅ Completed analysis for page ${result.pageId} (${
+              analyzedCount + failedCount
+            }/${pages.length})`
+          );
         } else {
           failedCount++;
-          failedPages.push({ id: result.pageId, error: result.error || 'Unknown error' });
-          console.log(`  ❌ Failed analysis for page ${result.pageId} (${analyzedCount + failedCount}/${pages.length})`);
+          failedPages.push({
+            id: result.pageId,
+            error: result.error || "Unknown error",
+          });
+          console.log(
+            `  ❌ Failed analysis for page ${result.pageId} (${
+              analyzedCount + failedCount
+            }/${pages.length})`
+          );
         }
-      
-        // Update progress in database
-      await supabase
-        .from('audit_sessions')
-        .update({ pages_analyzed: analyzedCount })
-        .eq('id', sessionId);
 
+        // Update progress in database
+        await supabase
+          .from("audit_sessions")
+          .update({ pages_analyzed: analyzedCount })
+          .eq("id", sessionId);
       } catch (error: any) {
         failedCount++;
-        console.error(`  ❌ Unexpected error for page ${completedPageId}:`, error.message);
+        console.error(
+          `  ❌ Unexpected error for page ${completedPageId}:`,
+          error.message
+        );
       }
 
       // Start analysis for next page if available
@@ -448,63 +543,64 @@ async function analyzePages(sessionId: string, pages: any[], analysisTypes: stri
         const nextPage = pageQueue.shift()!;
         const nextPromise = startPageAnalysis(nextPage);
         activePromises.set(nextPage.id, nextPromise);
-        
-        console.log(`  🎯 Started next page analysis (${activePromises.size}/${MAX_CONCURRENT} slots used, ${pageQueue.length} remaining)`);
+
+        console.log(
+          `  🎯 Started next page analysis (${activePromises.size}/${MAX_CONCURRENT} slots used, ${pageQueue.length} remaining)`
+        );
       }
     }
 
     // Determine final status based on results
-    let finalStatus = 'completed';
+    let finalStatus = "completed";
     let errorMessage = null;
-    
+
     if (analyzedCount === 0) {
-      finalStatus = 'failed';
-      errorMessage = 'All pages failed to analyze';
+      finalStatus = "failed";
+      errorMessage = "All pages failed to analyze";
     } else if (failedCount > 0) {
-      finalStatus = 'completed';
+      finalStatus = "completed";
       errorMessage = `Analysis completed with ${failedCount} failures`;
     }
 
     // Update session status to completed
     await supabase
-      .from('audit_sessions')
+      .from("audit_sessions")
       .update({
         status: finalStatus,
         pages_analyzed: analyzedCount,
         completed_at: new Date().toISOString(),
-        error_message: errorMessage
+        error_message: errorMessage,
       })
-      .eq('id', sessionId);
+      .eq("id", sessionId);
 
     console.log(`🎉 Rolling batch analysis completed for session ${sessionId}`);
     console.log(`   Total analyzed: ${analyzedCount}/${pages.length}`);
     console.log(`   Max concurrent maintained: ${MAX_CONCURRENT} pages`);
     if (failedCount > 0) {
       console.log(`   Failed pages: ${failedCount}`);
-      failedPages.forEach(fp => {
+      failedPages.forEach((fp) => {
         console.log(`     - Page ${fp.id}: ${fp.error}`);
       });
     }
-
   } catch (error: any) {
-    console.error('Rolling batch analysis failed:', error);
-    
+    console.error("Rolling batch analysis failed:", error);
+
     // Check if it was stopped by user
     const { data: currentSession } = await supabase
-      .from('audit_sessions')
-      .select('status')
-      .eq('id', sessionId)
+      .from("audit_sessions")
+      .select("status")
+      .eq("id", sessionId)
       .single();
 
-    if (currentSession?.status !== 'failed') {
+    if (currentSession?.status !== "failed") {
       // Update session status to failed only if not already set to failed (stopped)
       await supabase
-        .from('audit_sessions')
+        .from("audit_sessions")
         .update({
-          status: 'failed',
-          error_message: error.message || 'Analysis failed',
+          status: "failed",
+          error_message: error.message || "Analysis failed",
         })
-        .eq('id', sessionId);
+        .eq("id", sessionId);
     }
   }
 }
@@ -519,9 +615,9 @@ async function analyzeContentWithGemini(content: string, session?: any) {
         estimatedReadingTime: 0,
         grammarErrors: [],
         spellingErrors: [],
-        issues: ['No content available for analysis'],
-        suggestions: ['Add meaningful content to the page'],
-        tone: 'neutral',
+        issues: ["No content available for analysis"],
+        suggestions: ["Add meaningful content to the page"],
+        tone: "neutral",
         overallScore: 0,
         contentQuality: 0,
       };
@@ -530,10 +626,17 @@ async function analyzeContentWithGemini(content: string, session?: any) {
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     // Build comprehensive company information verification section
-    let expectedCompanyInfo = '';
+    let expectedCompanyInfo = "";
     let hasCompanyInfo = false;
-    
-    if (session && (session.company_name || session.phone_number || session.email || session.address || session.custom_info)) {
+
+    if (
+      session &&
+      (session.company_name ||
+        session.phone_number ||
+        session.email ||
+        session.address ||
+        session.custom_info)
+    ) {
       hasCompanyInfo = true;
       expectedCompanyInfo = `
 
@@ -541,50 +644,66 @@ COMPREHENSIVE COMPANY INFORMATION VERIFICATION:
 This website should contain accurate and consistent company information. Please verify the following expected details against the website content:
 
 Expected Company Information:`;
-      
+
       if (session.company_name) {
         expectedCompanyInfo += `\n- Company/Business Name: "${session.company_name}"`;
         expectedCompanyInfo += `\n  → Check if this exact name appears prominently (header, footer, about page, contact page)`;
         expectedCompanyInfo += `\n  → Flag any variations, misspellings, or inconsistencies`;
       }
-      
+
       if (session.phone_number) {
         expectedCompanyInfo += `\n- Phone Number: "${session.phone_number}"`;
         expectedCompanyInfo += `\n  → Check if this number appears correctly formatted`;
         expectedCompanyInfo += `\n  → Flag any different numbers or formatting inconsistencies`;
       }
-      
+
       if (session.email) {
         expectedCompanyInfo += `\n- Email Address: "${session.email}"`;
         expectedCompanyInfo += `\n  → Check if this email appears and is properly formatted`;
         expectedCompanyInfo += `\n  → Flag any different email addresses`;
       }
-      
+
       if (session.address) {
         expectedCompanyInfo += `\n- Physical Address: "${session.address}"`;
         expectedCompanyInfo += `\n  → Check if this address appears consistently`;
         expectedCompanyInfo += `\n  → Flag any variations or incomplete address information`;
       }
-      
+
       if (session.custom_info) {
         expectedCompanyInfo += `\n- Additional Business Info: "${session.custom_info}"`;
         expectedCompanyInfo += `\n  → Check if this information is accurately represented`;
       }
-      
+
       expectedCompanyInfo += `
 
 COMPANY INFORMATION ANALYSIS REQUIREMENTS:
 1. MISSING INFORMATION: If any expected company details are completely missing from the page content, add specific issues like:
-   - "Missing company name '${session.company_name || '[Company Name]'}' - not found on this page"
-   - "Missing contact phone number '${session.phone_number || '[Phone]'}' - should be visible for customer contact"
-   - "Missing email address '${session.email || '[Email]'}' - important for customer communication"
-   - "Missing physical address '${session.address || '[Address]'}' - essential for business credibility"
+   - "Missing company name '${
+     session.company_name || "[Company Name]"
+   }' - not found on this page"
+   - "Missing contact phone number '${
+     session.phone_number || "[Phone]"
+   }' - should be visible for customer contact"
+   - "Missing email address '${
+     session.email || "[Email]"
+   }' - important for customer communication"
+   - "Missing physical address '${
+     session.address || "[Address]"
+   }' - essential for business credibility"
 
 2. INCONSISTENT INFORMATION: If company information appears but differs from expected, add issues like:
-   - "Company name inconsistency: found '[found name]' but expected '${session.company_name || '[Expected]'}'"
-   - "Phone number mismatch: found '[found number]' but expected '${session.phone_number || '[Expected]'}'"
-   - "Email inconsistency: found '[found email]' but expected '${session.email || '[Expected]'}'"
-   - "Address discrepancy: found '[found address]' but expected '${session.address || '[Expected]'}'"
+   - "Company name inconsistency: found '[found name]' but expected '${
+     session.company_name || "[Expected]"
+   }'"
+   - "Phone number mismatch: found '[found number]' but expected '${
+     session.phone_number || "[Expected]"
+   }'"
+   - "Email inconsistency: found '[found email]' but expected '${
+     session.email || "[Expected]"
+   }'"
+   - "Address discrepancy: found '[found address]' but expected '${
+     session.address || "[Expected]"
+   }'"
 
 3. FORMATTING ISSUES: Check for proper formatting and professional presentation:
    - Phone numbers should be properly formatted (e.g., +44 123 456 7890 or (01234) 567890)
@@ -693,7 +812,9 @@ CRITICAL REQUIREMENTS:
    - "Add transition words between paragraphs 3 and 4 to improve flow"
    - "Replace jargon terms with simpler alternatives for broader accessibility"
 
-${hasCompanyInfo ? `
+${
+  hasCompanyInfo
+    ? `
 6. COMPANY INFORMATION ANALYSIS (CRITICAL):
    - Set "hasExpectedInfo" to true since company information was provided for verification
    - Carefully extract any company information found on the page into "foundInformation"
@@ -708,40 +829,54 @@ ${hasCompanyInfo ? `
    - Include detailed company-specific issues in "companyInformation.issues"
    - Provide actionable company information suggestions in "companyInformation.suggestions"
    - Company information score should significantly impact the overall content score
-` : `
+`
+    : `
 6. COMPANY INFORMATION ANALYSIS:
    - Set "hasExpectedInfo" to false since no company information was provided for verification
    - Set "companyInfoScore" to 100 (N/A - no expected information to verify)
    - Leave "foundInformation" fields as null
    - Set all "complianceStatus" fields to "correct" (N/A)
    - Keep "issues" and "suggestions" arrays empty
-`}
+`
+}
 
 Focus on being helpful and educational. Each error should teach the user something about proper UK English and good writing practices. Company information accuracy is crucial for business credibility and local SEO.`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
-    
+
     // Clean up response and parse JSON
-    const cleanedText = text.replace(/```json\n?|\n?```/g, '').trim();
-    
+    const cleanedText = text.replace(/```json\n?|\n?```/g, "").trim();
+
     try {
       const analysis = JSON.parse(cleanedText);
-      
+
       // Validate required fields and provide defaults
       const result = {
         wordCount: Math.max(0, analysis.wordCount || 0),
         sentenceCount: Math.max(0, analysis.sentenceCount || 0),
-        readabilityScore: Math.min(100, Math.max(0, analysis.readabilityScore || 0)),
+        readabilityScore: Math.min(
+          100,
+          Math.max(0, analysis.readabilityScore || 0)
+        ),
         estimatedReadingTime: Math.max(1, analysis.estimatedReadingTime || 1),
-        grammarErrors: Array.isArray(analysis.grammarErrors) ? analysis.grammarErrors : [],
-        spellingErrors: Array.isArray(analysis.spellingErrors) ? analysis.spellingErrors : [],
+        grammarErrors: Array.isArray(analysis.grammarErrors)
+          ? analysis.grammarErrors
+          : [],
+        spellingErrors: Array.isArray(analysis.spellingErrors)
+          ? analysis.spellingErrors
+          : [],
         issues: Array.isArray(analysis.issues) ? analysis.issues : [],
-        suggestions: Array.isArray(analysis.suggestions) ? analysis.suggestions : [],
-        tone: analysis.tone || 'neutral',
+        suggestions: Array.isArray(analysis.suggestions)
+          ? analysis.suggestions
+          : [],
+        tone: analysis.tone || "neutral",
         overallScore: Math.min(100, Math.max(0, analysis.overallScore || 0)),
-        contentQuality: Math.min(100, Math.max(0, analysis.contentQuality || 0)),
+        contentQuality: Math.min(
+          100,
+          Math.max(0, analysis.contentQuality || 0)
+        ),
         companyInformation: {
           hasExpectedInfo: hasCompanyInfo,
           companyInfoScore: 100,
@@ -750,18 +885,18 @@ Focus on being helpful and educational. Each error should teach the user somethi
             phoneNumber: null,
             email: null,
             address: null,
-            customInfo: null
+            customInfo: null,
           },
           issues: [],
           suggestions: [],
           complianceStatus: {
-            companyName: 'correct',
-            phoneNumber: 'correct',
-            email: 'correct',
-            address: 'correct',
-            customInfo: 'correct'
-          }
-        }
+            companyName: "correct",
+            phoneNumber: "correct",
+            email: "correct",
+            address: "correct",
+            customInfo: "correct",
+          },
+        },
       };
 
       // If company information was expected, validate and use AI analysis
@@ -769,67 +904,81 @@ Focus on being helpful and educational. Each error should teach the user somethi
         const companyInfo = analysis.companyInformation;
         result.companyInformation = {
           hasExpectedInfo: hasCompanyInfo,
-          companyInfoScore: Math.min(100, Math.max(0, companyInfo.companyInfoScore || 0)),
+          companyInfoScore: Math.min(
+            100,
+            Math.max(0, companyInfo.companyInfoScore || 0)
+          ),
           foundInformation: {
             companyName: companyInfo.foundInformation?.companyName || null,
             phoneNumber: companyInfo.foundInformation?.phoneNumber || null,
             email: companyInfo.foundInformation?.email || null,
             address: companyInfo.foundInformation?.address || null,
-            customInfo: companyInfo.foundInformation?.customInfo || null
+            customInfo: companyInfo.foundInformation?.customInfo || null,
           },
           issues: Array.isArray(companyInfo.issues) ? companyInfo.issues : [],
-          suggestions: Array.isArray(companyInfo.suggestions) ? companyInfo.suggestions : [],
+          suggestions: Array.isArray(companyInfo.suggestions)
+            ? companyInfo.suggestions
+            : [],
           complianceStatus: {
-            companyName: companyInfo.complianceStatus?.companyName || 'missing',
-            phoneNumber: companyInfo.complianceStatus?.phoneNumber || 'missing',
-            email: companyInfo.complianceStatus?.email || 'missing',
-            address: companyInfo.complianceStatus?.address || 'missing',
-            customInfo: companyInfo.complianceStatus?.customInfo || 'missing'
-          }
+            companyName: companyInfo.complianceStatus?.companyName || "missing",
+            phoneNumber: companyInfo.complianceStatus?.phoneNumber || "missing",
+            email: companyInfo.complianceStatus?.email || "missing",
+            address: companyInfo.complianceStatus?.address || "missing",
+            customInfo: companyInfo.complianceStatus?.customInfo || "missing",
+          },
         };
 
         // Adjust overall score based on company information score if it's significantly lower
         if (result.companyInformation.companyInfoScore < 70) {
-          const penalty = (70 - result.companyInformation.companyInfoScore) * 0.2; // Up to 14 point penalty
+          const penalty =
+            (70 - result.companyInformation.companyInfoScore) * 0.2; // Up to 14 point penalty
           result.overallScore = Math.max(0, result.overallScore - penalty);
-          console.log(`Applied company info penalty: -${penalty.toFixed(1)} points for score ${result.companyInformation.companyInfoScore}`);
+          console.log(
+            `Applied company info penalty: -${penalty.toFixed(
+              1
+            )} points for score ${result.companyInformation.companyInfoScore}`
+          );
         }
       }
 
       return result;
     } catch (parseError) {
-      console.error('Failed to parse Gemini response:', cleanedText);
-      throw new Error('Invalid response format from Gemini');
+      console.error("Failed to parse Gemini response:", cleanedText);
+      throw new Error("Invalid response format from Gemini");
     }
-    
   } catch (error) {
-    console.error('Gemini API error:', error);
-    throw new Error('Failed to analyze content with Gemini');
+    console.error("Gemini API error:", error);
+    throw new Error("Failed to analyze content with Gemini");
   }
 }
 
-async function analyzeSEO(html: string, url: string, pageTitle: string | null, statusCode: number | null) {
-  // Meta tags analysis  
+async function analyzeSEO(
+  html: string,
+  url: string,
+  pageTitle: string | null,
+  statusCode: number | null
+) {
+  // Meta tags analysis
   const cleanTitle = extractTitle(html) || pageTitle;
   const metaTags = {
     title: cleanTitle,
-    description: extractMetaContent(html, 'description'),
-    keywords: extractMetaContent(html, 'keywords'),
-    robots: extractMetaContent(html, 'robots'),
-    canonical: extractLinkHref(html, 'canonical'),
-    ogTitle: extractMetaProperty(html, 'og:title'),
-    ogDescription: extractMetaProperty(html, 'og:description'),
-    viewport: extractMetaContent(html, 'viewport'),
+    description: extractMetaContent(html, "description"),
+    keywords: extractMetaContent(html, "keywords"),
+    robots: extractMetaContent(html, "robots"),
+    canonical: extractLinkHref(html, "canonical"),
+    ogTitle: extractMetaProperty(html, "og:title"),
+    ogDescription: extractMetaProperty(html, "og:description"),
+    viewport: extractMetaContent(html, "viewport"),
   };
 
-  // Heading structure analysis  
+  // Heading structure analysis
   const headingStructure = analyzeHeadings(html);
 
   // Robots check
   const robotsCheck = {
     robotsTxt: false, // Would need separate request
     robotsMeta: metaTags.robots,
-    indexable: !metaTags.robots?.includes('noindex'),
+    indexable: !metaTags.robots?.includes("noindex"),
   };
 
   // Links analysis
@@ -844,7 +993,7 @@ async function analyzeSEO(html: string, url: string, pageTitle: string | null, s
 
   // HTTPS check
   const httpsCheck = {
-    isHttps: url.startsWith('https://'),
+    isHttps: url.startsWith("https://"),
     hasSecurityHeaders: false, // Would need response headers
   };
 
@@ -859,94 +1008,105 @@ async function analyzeSEO(html: string, url: string, pageTitle: string | null, s
       score += 20;
     } else if (metaTags.title.length > 0) {
       score += 10;
-      issues.push(`Title tag length is ${metaTags.title.length} characters (optimal: 30-60)`);
-      recommendations.push('Optimize title tag length to 30-60 characters');
+      issues.push(
+        `Title tag length is ${metaTags.title.length} characters (optimal: 30-60)`
+      );
+      recommendations.push("Optimize title tag length to 30-60 characters");
     }
   } else {
-    issues.push('Missing title tag');
-    recommendations.push('Add a descriptive title tag');
+    issues.push("Missing title tag");
+    recommendations.push("Add a descriptive title tag");
   }
 
   // Description meta tag scoring (15 points)
   if (metaTags.description) {
-    if (metaTags.description.length >= 120 && metaTags.description.length <= 160) {
+    if (
+      metaTags.description.length >= 120 &&
+      metaTags.description.length <= 160
+    ) {
       score += 15;
     } else if (metaTags.description.length > 0) {
       score += 8;
-      issues.push(`Meta description length is ${metaTags.description.length} characters (optimal: 120-160)`);
-      recommendations.push('Optimize meta description length to 120-160 characters');
+      issues.push(
+        `Meta description length is ${metaTags.description.length} characters (optimal: 120-160)`
+      );
+      recommendations.push(
+        "Optimize meta description length to 120-160 characters"
+      );
     }
   } else {
-    issues.push('Missing meta description');
-    recommendations.push('Add a compelling meta description');
+    issues.push("Missing meta description");
+    recommendations.push("Add a compelling meta description");
   }
 
   // H1 tag scoring (15 points)
   if (headingStructure.hasProperStructure) {
     score += 15;
   } else if (headingStructure.h1Count === 0) {
-    issues.push('Missing H1 tag');
-    recommendations.push('Add exactly one H1 tag to the page');
+    issues.push("Missing H1 tag");
+    recommendations.push("Add exactly one H1 tag to the page");
   } else if (headingStructure.h1Count > 1) {
     score += 8;
     issues.push(`Multiple H1 tags found (${headingStructure.h1Count})`);
-    recommendations.push('Use only one H1 tag per page');
+    recommendations.push("Use only one H1 tag per page");
   }
 
   // Heading hierarchy scoring (10 points)
   if (headingStructure.allHeadings.length > 1) {
     score += 10;
   } else {
-    issues.push('Poor heading structure');
-    recommendations.push('Use proper heading hierarchy (H1 > H2 > H3...)');
+    issues.push("Poor heading structure");
+    recommendations.push("Use proper heading hierarchy (H1 > H2 > H3...)");
   }
 
   // HTTPS scoring (10 points)
   if (httpsCheck.isHttps) {
     score += 10;
   } else {
-    issues.push('Page not served over HTTPS');
-    recommendations.push('Implement HTTPS for better security and SEO');
+    issues.push("Page not served over HTTPS");
+    recommendations.push("Implement HTTPS for better security and SEO");
   }
 
   // Indexability scoring (10 points)
   if (robotsCheck.indexable) {
     score += 10;
   } else {
-    issues.push('Page is not indexable (noindex directive found)');
-    recommendations.push('Remove noindex directive if page should be indexed');
+    issues.push("Page is not indexable (noindex directive found)");
+    recommendations.push("Remove noindex directive if page should be indexed");
   }
 
   // Canonical URL scoring (5 points)
   if (metaTags.canonical) {
     score += 5;
   } else {
-    issues.push('Missing canonical URL');
-    recommendations.push('Add canonical URL to prevent duplicate content issues');
+    issues.push("Missing canonical URL");
+    recommendations.push(
+      "Add canonical URL to prevent duplicate content issues"
+    );
   }
 
   // Viewport meta tag scoring (5 points)
   if (metaTags.viewport) {
     score += 5;
   } else {
-    issues.push('Missing viewport meta tag');
-    recommendations.push('Add viewport meta tag for mobile responsiveness');
+    issues.push("Missing viewport meta tag");
+    recommendations.push("Add viewport meta tag for mobile responsiveness");
   }
 
   // Links scoring (5 points)
   if (linksCheck.totalLinks > 0) {
     score += 5;
   } else {
-    issues.push('No links found on the page');
-    recommendations.push('Add relevant internal and external links');
+    issues.push("No links found on the page");
+    recommendations.push("Add relevant internal and external links");
   }
 
   // Open Graph scoring (5 points)
   if (metaTags.ogTitle && metaTags.ogDescription) {
     score += 5;
   } else {
-    issues.push('Missing Open Graph tags');
-    recommendations.push('Add Open Graph tags for better social media sharing');
+    issues.push("Missing Open Graph tags");
+    recommendations.push("Add Open Graph tags for better social media sharing");
   }
 
   return {
@@ -958,7 +1118,7 @@ async function analyzeSEO(html: string, url: string, pageTitle: string | null, s
     httpsCheck,
     overallScore: Math.min(100, score),
     issues,
-    recommendations
+    recommendations,
   };
 }
 
@@ -967,37 +1127,49 @@ function extractTitle(html: string): string | null {
   const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
   if (titleMatch && titleMatch[1]) {
     let title = titleMatch[1].trim();
-    
+
     // Clean up common unwanted text patterns
     title = title
-      .replace(/\s*\|\s*.*?(Menu|Navigation|Nav).*$/i, '') // Remove menu-related suffixes
-      .replace(/\s*\|\s*.*?(Toggle|Expand|Dropdown).*$/i, '') // Remove toggle-related suffixes
-      .replace(/\s*\|\s*.*?(Facebook|Twitter|Instagram|LinkedIn|Social).*$/i, '') // Remove social media suffixes
-      .replace(/\s*-\s*.*?(Menu|Navigation|Nav).*$/i, '') // Remove menu with dash separator
-      .replace(/ExpandToggle.*$/i, '') // Remove specific "ExpandToggle" text
-      .replace(/MenuExpand.*$/i, '') // Remove specific "MenuExpand" text
-      .replace(/Facebook$/i, '') // Remove trailing "Facebook"
+      .replace(/\s*\|\s*.*?(Menu|Navigation|Nav).*$/i, "") // Remove menu-related suffixes
+      .replace(/\s*\|\s*.*?(Toggle|Expand|Dropdown).*$/i, "") // Remove toggle-related suffixes
+      .replace(
+        /\s*\|\s*.*?(Facebook|Twitter|Instagram|LinkedIn|Social).*$/i,
+        ""
+      ) // Remove social media suffixes
+      .replace(/\s*-\s*.*?(Menu|Navigation|Nav).*$/i, "") // Remove menu with dash separator
+      .replace(/ExpandToggle.*$/i, "") // Remove specific "ExpandToggle" text
+      .replace(/MenuExpand.*$/i, "") // Remove specific "MenuExpand" text
+      .replace(/Facebook$/i, "") // Remove trailing "Facebook"
       .trim();
-    
+
     return title || null;
   }
   return null;
 }
 
 function extractMetaContent(html: string, name: string): string | null {
-  const regex = new RegExp(`<meta[^>]*name=["']${name}["'][^>]*content=["']([^"']*?)["']`, 'i');
+  const regex = new RegExp(
+    `<meta[^>]*name=["']${name}["'][^>]*content=["']([^"']*?)["']`,
+    "i"
+  );
   const match = html.match(regex);
   return match ? match[1] : null;
 }
 
 function extractMetaProperty(html: string, property: string): string | null {
-  const regex = new RegExp(`<meta[^>]*property=["']${property}["'][^>]*content=["']([^"']*?)["']`, 'i');
+  const regex = new RegExp(
+    `<meta[^>]*property=["']${property}["'][^>]*content=["']([^"']*?)["']`,
+    "i"
+  );
   const match = html.match(regex);
   return match ? match[1] : null;
 }
 
 function extractLinkHref(html: string, rel: string): string | null {
-  const regex = new RegExp(`<link[^>]*rel=["']${rel}["'][^>]*href=["']([^"']*?)["']`, 'i');
+  const regex = new RegExp(
+    `<link[^>]*rel=["']${rel}["'][^>]*href=["']([^"']*?)["']`,
+    "i"
+  );
   const match = html.match(regex);
   return match ? match[1] : null;
 }
@@ -1005,12 +1177,12 @@ function extractLinkHref(html: string, rel: string): string | null {
 function analyzeHeadings(html: string) {
   const h1Matches = html.match(/<h1[^>]*>(.*?)<\/h1>/gi) || [];
   const allHeadingMatches = html.match(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi) || [];
-  
-  const h1Text = h1Matches.map(match => match.replace(/<[^>]*>/g, '').trim());
-  
-  const allHeadings = allHeadingMatches.map(match => {
-    const level = parseInt(match.match(/<h(\d)/)?.[1] || '1');
-    const text = match.replace(/<[^>]*>/g, '').trim();
+
+  const h1Text = h1Matches.map((match) => match.replace(/<[^>]*>/g, "").trim());
+
+  const allHeadings = allHeadingMatches.map((match) => {
+    const level = parseInt(match.match(/<h(\d)/)?.[1] || "1");
+    const text = match.replace(/<[^>]*>/g, "").trim();
     return { level, text };
   });
 
@@ -1024,14 +1196,17 @@ function analyzeHeadings(html: string) {
 
 function analyzeLinks(html: string, baseUrl: string) {
   const linkMatches = html.match(/<a[^>]*href=["']([^"']*?)["'][^>]*>/gi) || [];
-  const links = linkMatches.map(match => {
-    const href = match.match(/href=["']([^"']*?)["']/)?.[1] || '';
-    return href;
-  }).filter(href => href && !href.startsWith('#'));
+  const links = linkMatches
+    .map((match) => {
+      const href = match.match(/href=["']([^"']*?)["']/)?.[1] || "";
+      return href;
+    })
+    .filter((href) => href && !href.startsWith("#"));
 
   const totalLinks = links.length;
-  const externalLinks = links.filter(link => 
-    link.startsWith('http') && !link.includes(new URL(baseUrl).hostname)
+  const externalLinks = links.filter(
+    (link) =>
+      link.startsWith("http") && !link.includes(new URL(baseUrl).hostname)
   ).length;
   const internalLinks = totalLinks - externalLinks;
 
@@ -1041,86 +1216,106 @@ function analyzeLinks(html: string, baseUrl: string) {
     externalLinks,
     brokenLinks: [], // Would need to check each link
   };
-} 
+}
 
-// analyzeUI function to take a screenshot of a webpage using Puppeteer and upload it to Supabase Storage. The function will scroll the page, take a full-page screenshot, and return the public URL of the uploaded image.
 // Analyze UI image using Gemini Vision API
-// imageUrl: public URL of the image (PNG/JPG)
-// Returns: JSON string with Gemini's response
-async function analyzeUIImageWithGemini(imageUrl: string): Promise<string | null> {
-  try {
-    if (!imageUrl) {
-      console.error("[Gemini UI] No imageUrl provided");
-      return "image not found";
-    }
-    console.log("[Gemini UI] Analyzing image with Gemini Vision API...", imageUrl);
-    // Gemini Vision API expects a prompt and an image (as base64)
-    const prompt = "Find and describe UI alignment issues, misalignments, overlaps, margin inconsistencies.";
+// This version ignores the image and just sends a simple prompt to Gemini for testing.
 
-    // Use GoogleGenerativeAI's multimodal API (Gemini Vision)
-    // See: https://ai.google.dev/tutorials/node_quickstart_vision
+async function analyzeUIImageWithGemini(
+  imageUrl: string
+): Promise<string | null> {
+  try {
+    console.log(
+      "[Gemini UI] Analyzing image with Gemini Vision API:",
+      imageUrl
+    );
+const prompt = `
+You are an expert UI/UX reviewer. Please carefully analyze this image as if you are conducting a detailed design and accessibility review.
+
+Identify and describe all UI-related issues, including but not limited to:
+- Alignment problems
+- Inconsistent margins or paddings
+- Overlapping or clipped elements
+- Color contrast and accessibility concerns
+- Font consistency and readability issues
+- Button or input field design problems
+- Icon or image misplacements
+- Responsiveness or scaling concerns
+- Visual hierarchy and clarity
+- Any other visual or functional issues that could affect usability or user experience
+
+Provide the analysis strictly in the following JSON format, without any extra text or formatting don't add any '\n'. Do not include markdown backticks, code blocks, or escape characters. Only return plain JSON text:
+
+{
+  "issues": [
+    {
+      "type": "Alignment",
+      "description": "Description of the issue here",
+      "suggestion": "Suggestion to fix it"
+    }
+    // More issues...
+  ],
+  "overall_summary": "Short overall summary of the UI quality and general recommendations."
+}
+`;
+
+
+    // Fetch image from URL
+    const response = await axios.get(imageUrl, {
+      responseType: "arraybuffer",
+    });
+
+    const base64Image = Buffer.from(response.data, "binary").toString("base64");
+
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    // Always fetch the image and encode as base64
-    let base64 = "";
-    try {
-      const response = await fetch(imageUrl);
-      const arrayBuffer = await response.arrayBuffer();
-      base64 = Buffer.from(arrayBuffer).toString('base64');
-      console.log("[Gemini UI] Image fetched and encoded as base64", { imageUrl, base64Length: base64.length });
-    } catch (fetchErr) {
-      console.error("[Gemini UI] Failed to fetch or encode image for Gemini Vision", fetchErr);
-      return JSON.stringify({ error: "Failed to fetch or encode image for Gemini Vision" });
-    }
-
-    const generationConfig = { temperature: 0.2, maxOutputTokens: 1024 };
     const contents = [
       {
         role: "user",
         parts: [
           { text: prompt },
-          { inlineData: { mimeType: "image/png", data: base64 } }
-        ]
-      }
+          {
+            inlineData: {
+              mimeType: "image/png", // or "image/jpeg" — change if needed
+              data: base64Image,
+            },
+          },
+        ],
+      },
     ];
 
     let result;
     try {
-      console.log("[Gemini UI] Sending image as base64 to Gemini Vision API", { prompt, imageUrl, base64Length: base64.length });
-      result = await model.generateContent({ contents, generationConfig });
-      console.log("[Gemini UI] Gemini Vision API result (base64):", result);
+      result = await model.generateContent({ contents });
+      console.log("[Gemini UI] Gemini Vision API raw result:", result);
     } catch (err) {
-      console.error("[Gemini UI] Gemini Vision API error (base64):", err);
-      return JSON.stringify({ error: "Gemini Vision API error", details: err });
-    }
-
-    const geminiResponse = result?.response?.text?.() || result?.response?.text || null;
-    if (!geminiResponse) {
-      console.error("[Gemini UI] Gemini Vision API returned empty response", result);
+      // Always log the error and return null for any error (including 503)
+      console.error("[Gemini UI] Gemini Vision API error (inner):", err);
       return null;
     }
 
-    // Try to parse as JSON, or return as string
-    let jsonString = (typeof geminiResponse === 'function' ? geminiResponse() : geminiResponse).trim();
-    // If response is wrapped in code block, remove it
-    jsonString = jsonString.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim();
-    // If not valid JSON, wrap as { "result": ... }
-    console.log("[Gemini UI] Gemini Vision API response string:", jsonString);
-    try {
-      JSON.parse(jsonString);
-      return jsonString;
-    } catch {
-      console.warn("[Gemini UI] Gemini Vision API response is not valid JSON, wrapping as result string");
-      return JSON.stringify({ result: jsonString });
+    let geminiResponse: string | null = null;
+    if (typeof result?.response?.text === "function") {
+      geminiResponse = result.response.text();
+    } else if (typeof result?.response?.text === "string") {
+      geminiResponse = result.response.text;
+    } else {
+      geminiResponse = null;
     }
+
+    console.log("[Gemini UI] Gemini Vision API response text:", geminiResponse);
+    return JSON.parse(geminiResponse || "{}");
   } catch (error) {
     console.error("[Gemini UI] Gemini Vision API error (outer):", error);
     return null;
   }
 }
-// Function to take a screenshot of a webpage
 
-async function takeScreenshot(url: string, pagesCrawled: number): Promise<string> {
+// Function to take a screenshot of a webpage
+async function takeScreenshot(
+  url: string,
+  pagesCrawled: number
+): Promise<string> {
   let browser: import("puppeteer").Browser | null = null;
   try {
     browser = await puppeteer.launch({
@@ -1133,11 +1328,14 @@ async function takeScreenshot(url: string, pagesCrawled: number): Promise<string
     await page.waitForSelector("body");
     await new Promise((resolve) => setTimeout(resolve, 4000));
     await page.setViewport({ width: 1440, height: 3000 });
-
     await autoScroll(page);
     await page.evaluate(() => window.scrollTo(0, 0));
 
-    const screenshotPath = path.join(process.cwd(), "public", `screenshot_${pagesCrawled}.png`) as `${string}.png`;
+    const screenshotPath = path.join(
+      process.cwd(),
+      "public",
+      `screenshot_${pagesCrawled}.png`
+    ) as `${string}.png`;
     await page.screenshot({
       path: screenshotPath,
       fullPage: true,
@@ -1159,7 +1357,6 @@ async function takeScreenshot(url: string, pagesCrawled: number): Promise<string
   }
 }
 
-
 async function autoScroll(page: Page) {
   await page.evaluate(async () => {
     await new Promise<void>((resolve) => {
@@ -1178,21 +1375,30 @@ async function autoScroll(page: Page) {
   });
 }
 
-
-async function uploadScreenshotToStorage(localPath: string, storagePath: string): Promise<string | null> {
- const supabase = await createClient();
+async function uploadScreenshotToStorage(
+  localPath: string,
+  storagePath: string
+): Promise<string | null> {
+  const supabase = await createClient();
   const fileBuffer = await fs.readFile(localPath);
   const { data, error } = await supabase.storage
-    .from('screenshots') // bucket name
-    .upload(storagePath, fileBuffer, { upsert: true, contentType: 'image/png' });
+    .from("screenshots") // bucket name
+    .upload(storagePath, fileBuffer, {
+      upsert: true,
+      contentType: "image/png",
+    });
 
   if (error) {
-    console.error('Supabase Storage upload error:', error);
+    console.error("Supabase Storage upload error:", error);
     return null;
   }
-console.log(`Screenshot uploaded to Supabase Storage at path: ${storagePath}`);
-console.log(`File metadata:`, data);
+  console.log(
+    `Screenshot uploaded to Supabase Storage at path: ${storagePath}`
+  );
+  console.log(`File metadata:`, data);
   // Get public URL
-  const { data: { publicUrl } } = supabase.storage.from('screenshots').getPublicUrl(storagePath);
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("screenshots").getPublicUrl(storagePath);
   return publicUrl;
 }

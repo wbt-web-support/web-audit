@@ -111,6 +111,7 @@ interface PageAnalysis {
     issues: string[];
     recommendations: string[];
   } | null;
+  uiQuality?: any; // Add this line to allow uiQuality property
 }
 
 interface PageDetailSimpleProps {
@@ -127,10 +128,14 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   const [activeGrammarTab, setActiveGrammarTab] = useState('grammar');
   const [grammarAnalyzing, setGrammarAnalyzing] = useState(false);
   const [seoAnalyzing, setSeoAnalyzing] = useState(false);
+  const [uiAnalyzing, setUiAnalyzing] = useState(false);
   const [grammarCached, setGrammarCached] = useState(false);
+  const [uiCached, setUiCached] = useState(false);
   const [seoCached, setSeoCached] = useState(false);
+  const [uiQualityCached, setUiQualityCached] = useState(false);
   const [grammarCachedAt, setGrammarCachedAt] = useState<string | null>(null);
   const [seoCachedAt, setSeoCachedAt] = useState<string | null>(null);
+  const [uiQualityCachedAt, setUiQualityCachedAt] = useState<string | null>(null);
   const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
 
   // Fetch results from audit_results table
@@ -159,6 +164,12 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             setSeoCachedAt(data.results.created_at || data.results.updated_at);
             setSeoAnalyzing(false);
           }
+          if (data.results.ui_analysis) {
+            newAnalysis.uiQuality = data.results.ui_analysis;
+            setUiQualityCached(true);
+            setUiQualityCachedAt(data.results.created_at || data.results.updated_at);
+            setUiAnalyzing(false);
+          }
           
           return newAnalysis;
         });
@@ -175,7 +186,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     try {
       const response = await fetch(`/api/pages/${pageId}`);
       const data = await response.json();
-      
+      console.log("Fetching page data for ID:",typeof(data.results.ui_quality_analysis));  
       if (response.ok) {
         console.log('🔍 Page data received:', {
           pageId: data.page?.id,
@@ -197,7 +208,8 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
           const basicAnalysis = analyzePage(data.page);
           let hasGrammarCache = false;
           let hasSeoCache = false;
-          
+          let hasUiQualityCache = false;
+
           // Check for cached results and merge them
           if (data.results) {
             if (data.results.grammar_analysis) {
@@ -212,6 +224,12 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               setSeoCached(true);
               setSeoCachedAt(data.results.created_at || data.results.updated_at);
               hasSeoCache = true;
+            }
+            if (data.results.ui_quality_analysis) {
+              basicAnalysis.uiQuality = data.results.ui_quality_analysis;
+              setUiQualityCached(true);
+              setUiQualityCachedAt(data.results.created_at || data.results.updated_at);
+              hasUiQualityCache = true;
             }
           }
           
@@ -285,6 +303,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             } else if (updatedPage.analysis_status === 'completed') {
               console.log('✅ Analysis completed - fetching results');
               // Fetch the completed results
+              
               await fetchAnalysisResults();
             } else if (updatedPage.analysis_status === 'failed') {
               console.log('❌ Analysis failed');
@@ -368,7 +387,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
         },
         body: JSON.stringify({
           page_ids: [pageId],
-          analysis_types: ['grammar', 'seo'],
+          analysis_types: ['grammar', 'seo','ui'],
           use_cache: false,
           background: false,
           force_refresh: true
@@ -384,12 +403,14 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
       setIsAnalysisRunning(false);
       setGrammarAnalyzing(false);
       setSeoAnalyzing(false);
+      setUiAnalyzing(false);
     }
   };
 
   const analyzeContentWithGemini = async (forceRefresh = false) => {
     setGrammarAnalyzing(true);
     setIsAnalysisRunning(true);
+    setUiAnalyzing(true);
     try {
       if (!session?.id) {
         console.error('No session ID available for analysis');
@@ -404,7 +425,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
         },
         body: JSON.stringify({
           page_ids: [pageId],
-          analysis_types: ['grammar'],
+          analysis_types: ['grammar','seo','ui'],
           use_cache: !forceRefresh,
           background: false,
           force_refresh: forceRefresh
@@ -883,7 +904,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                     { id: 'seo', label: 'SEO & Structure', icon: Tag, analyzing: seoAnalyzing, cached: seoCached },
                     { id: 'performance', label: 'Performance', icon: BarChart3, analyzing: false, cached: false },
                     { id: 'accessibility', label: 'Accessibility', icon: Shield, analyzing: false, cached: false },
-                    { id: 'ui_quality', label: 'UI Quality', icon: Eye, analyzing: false, cached: false },
+                    { id: 'ui_quality', label: 'UI Quality', icon: Eye, analyzing: uiAnalyzing, cached: uiCached },
                     { id: 'images', label: 'Images', icon: Image, analyzing: false, cached: false },
                   ].map((tab) => {
                     const IconComponent = tab.icon;
@@ -1483,8 +1504,100 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                     </div>
                 )}
 
+{/* *********************************************************************************** */}
+  {activeAnalysisTab === 'ui_quality' && (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                        <Eye className="h-5 w-5" />
+                        <h3 className="text-lg font-semibold">UI Quality</h3>
+                        {uiAnalyzing && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {uiCached && !uiAnalyzing && (
+                          <Badge variant="outline" className="text-xs">
+                            Cached
+                          </Badge>
+                        )}
+              </div>
+                      {analysis.uiQuality && !uiAnalyzing && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          // onClick={refreshGrammarAnalysis}
+                          disabled={uiAnalyzing}
+                        >
+                          <RefreshCw className="h-3 w-3 mr-1" />
+                          Refresh Analysis
+                        </Button>
+              )}
+            </div>
+
+          {uiAnalyzing ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
+                <p className="text-sm text-muted-foreground">Analyzing UI screenshot with AI...</p>
+              </div>
+            </div>
+          ) : !analysis.uiQuality ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground">No UI Quality data available.</p>
+            </div>
+          ) : (
+            <>
+              {/* Overall Summary */}
+              {analysis.uiQuality.overall_summary && (
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle className="text-base">Overall Summary</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground">{analysis.uiQuality.overall_summary}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Issues List */}
+              <div className="space-y-4">
+                {(analysis.uiQuality.issues && analysis.uiQuality.issues.length > 0) ? (
+                  analysis.uiQuality.issues.map((issue: { type: string; description: string; suggestion: string }, idx: number) => (
+                    <Card key={idx} className="border-l-4 border-yellow-400">
+                      <CardContent className="py-4">
+                        <div className="flex items-start gap-3">
+                          <AlertTriangle className="h-6 w-6 text-yellow-500 mt-1" />
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-semibold text-yellow-700">{issue.type}</span>
+                              <Badge variant="outline" className="text-xs">{`Issue ${idx + 1}`}</Badge>
+                            </div>
+                            <p className="text-sm mb-2">{issue.description}</p>
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-semibold">Suggestion:</span> {issue.suggestion}
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                ) : (
+                  <div className="text-center py-8">
+                    <CheckCircle className="h-12 w-12 text-emerald-500 dark:text-emerald-400 mx-auto mb-3" />
+                    <p className="text-lg font-medium">No UI issues found!</p>
+                    <p className="text-sm text-muted-foreground">Your UI looks great.</p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+{/* *********************************************************************************** */}
+
+
+
+
+
                 {/* Other tabs - Coming Soon */}
-                {['performance', 'accessibility', 'ui_quality', 'images'].includes(activeAnalysisTab) && (
+                {['performance', 'accessibility', 'images'].includes(activeAnalysisTab) && (
                   <div className="text-center py-16">
                     <div className="text-6xl mb-4">🚧</div>
                     <h3 className="text-xl font-semibold mb-2">Coming Soon</h3>
@@ -1500,4 +1613,4 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
       </div>
     </div>
   );
-} 
+}
