@@ -140,71 +140,39 @@ async function performSinglePageAnalysis(
       .update({ analysis_status: "analyzing" })
       .eq("id", page.id);
 
-    const imageUrl: string = await takeScreenshot(page.url, page.id);
-    const screenshotPath = path.join(
-      process.cwd(),
-      "public",
-      `screenshot_${page.id}.png`
-    );
-    const storagePath = `session_${session.id}/screenshot_${page.id}.png`; // Organize by session if you want
-    const publicUrl = await uploadScreenshotToStorage(
-      screenshotPath,
-      storagePath
-    );
+    const screenshots = await takeAllScreenshots(page.url, page.id);
 
-    // Re-scrape the page to get the latest content
-    try {
-      const scraper = new WebScraper(page.url, {
-        maxPages: 1,
-        timeout: 30000,
-        userAgent: "WebAuditBot/1.0 (Analysis)",
-      });
-
-      const freshPageData = await scraper.scrapePage(page.url);
-      console.log(
-        `🔄 Fresh content scraped for page ${page.id}:`,
-        freshPageData
+    // Optionally upload each screenshot and get public URLs
+    const screenshotUrls: Record<string, string | null> = {};
+    for (const device of ["phone", "tablet", "desktop"]) {
+      const localPath = path.join(
+        process.cwd(),
+        "public",
+        `screenshot_${page.id}_${device}.png`
       );
-      // Update the page with fresh content
-      const { error: updateError } = await supabase
-        .from("scraped_pages")
-        .update({
-          title: freshPageData.title || page.title,
-          content: freshPageData.content || page.content,
-          html: freshPageData.html || page.html,
-          status_code: freshPageData.statusCode || page.status_code,
-          scraped_at: new Date().toISOString(),
-          page_screenshot_url: publicUrl || publicUrl, // Save screenshot URL in new field
-        })
-        .eq("id", page.id);
-
-      if (updateError) {
-        console.error("Failed to update page with fresh content:", updateError);
-        // Continue with existing content if update fails
-      } else {
-        console.log(`✅ Updated page ${page.id} with fresh content`);
-        // Update local page object for analysis
-        page = {
-          ...page,
-          title: freshPageData.title || page.title,
-          content: freshPageData.content || page.content,
-          imageUrl: imageUrl || publicUrl,
-          html: freshPageData.html || page.html,
-          status_code: freshPageData.statusCode || page.status_code,
-          scraped_at: new Date().toISOString(),
-        };
-      }
-    } catch (scrapeError) {
-      console.warn(
-        `⚠️ Failed to re-scrape page ${page.url}, using existing content:`,
-        scrapeError
+      const storagePath = `session_${session.id}/screenshot_${page.id}_${device}.png`;
+      screenshotUrls[device] = await uploadScreenshotToStorage(
+        localPath,
+        storagePath
       );
-      // Continue with existing content if re-scraping fails
     }
+
+    // Save these URLs in your DB as needed, e.g. page_screenshot_url_phone, etc.
+    await supabase
+      .from("scraped_pages")
+      .update({
+        page_screenshot_url_phone: screenshotUrls.phone,
+        page_screenshot_url_tablet: screenshotUrls.tablet,
+        page_screenshot_url_desktop: screenshotUrls.desktop,
+        // ...other fields
+      })
+      .eq("id", page.id);
 
     let grammarAnalysis = null;
     let seoAnalysis = null;
-    let uiAnalysis = null;
+    let desktopUiAnalysis = null;
+    let tabletUiAnalysis = null;
+    let phoneUiAnalysis = null;
     let cached = false;
     let cachedAt = null;
 
@@ -240,7 +208,10 @@ async function performSinglePageAnalysis(
         page.content || "",
         session
       );
-      console.log(`Grammar analysis completed for page**`, typeof(grammarAnalysis));
+      console.log(
+        `Grammar analysis completed for page**`,
+        typeof grammarAnalysis
+      );
     }
 
     if (analysisTypes.includes("seo") && !seoAnalysis) {
@@ -252,13 +223,41 @@ async function performSinglePageAnalysis(
         page.status_code
       );
     }
-    if (analysisTypes.includes("ui") && !uiAnalysis) {
+    if (analysisTypes.includes("ui") && !phoneUiAnalysis) {
       console.log(`Running fresh UI analysis for page ${page.id}`);
-      if (publicUrl) {
-        uiAnalysis = await analyzeUIImageWithGemini(publicUrl);
-        console.log(`UI analysis completed for page ${page.id}:`, typeof(uiAnalysis));
+      if (screenshotUrls.phone) {
+        // Use the phone screenshot URL for UI analysis
+        phoneUiAnalysis = await analyzeUIImageWithGemini(screenshotUrls.phone,"phone");
+        console.log(
+          `UI analysis completed for page ${page.id}:`,
+          typeof phoneUiAnalysis
+        );
       } else {
-        uiAnalysis = null;
+        phoneUiAnalysis = null;
+      }
+      if (screenshotUrls.tablet) {
+        // Use the phone screenshot URL for UI analysis
+        tabletUiAnalysis = await analyzeUIImageWithGemini(
+          screenshotUrls.tablet,"table"
+        );
+        console.log(
+          `UI analysis completed for page ${page.id}:`,
+          typeof tabletUiAnalysis
+        );
+      } else {
+        tabletUiAnalysis = null;
+      }
+      if (screenshotUrls.desktop) {
+        // Use the phone screenshot URL for UI analysis
+        desktopUiAnalysis = await analyzeUIImageWithGemini(
+          screenshotUrls.desktop,"desktop"
+        );
+        console.log(
+          `UI analysis completed for page ${page.id}:`,
+          typeof desktopUiAnalysis
+        );
+      } else {
+        desktopUiAnalysis = null;
       }
     }
 
@@ -280,7 +279,9 @@ async function performSinglePageAnalysis(
       page,
       grammarAnalysis,
       seoAnalysis,
-      uiAnalysis,
+      phoneUiAnalysis,
+      tabletUiAnalysis,
+      desktopUiAnalysis,
       overallScore
     );
 
@@ -338,7 +339,9 @@ async function upsertAnalysisResult(
   page: any,
   grammarAnalysis: any,
   seoAnalysis: any,
-  uiAnalysis: any,
+  phoneUiAnalysis: any,
+  tabletUiAnalysis: any,
+  desktopUiAnalysis: any,
   overallScore: number
 ) {
   const status =
@@ -368,11 +371,17 @@ async function upsertAnalysisResult(
   if (seoAnalysis) {
     updateData.seo_analysis = seoAnalysis;
   }
-  if (uiAnalysis) {
-    updateData.ui_quality_analysis = uiAnalysis;
-    console.log(
-      `Saving UI analysis for page ${page.id}: score ${uiAnalysis}`
-    );
+  if (phoneUiAnalysis) {
+    updateData.phone_ui_quality_analysis = phoneUiAnalysis;
+    console.log(`Saving UI analysis for page ${page.id}: score ${phoneUiAnalysis}`);
+  }
+  if (tabletUiAnalysis) {
+    updateData.tablet_ui_quality_analysis = tabletUiAnalysis;
+    console.log(`Saving UI analysis for page ${page.id}: score ${tabletUiAnalysis}`);
+  }
+  if (desktopUiAnalysis) {
+    updateData.desktop_ui_quality_analysis = desktopUiAnalysis;
+    console.log(`Saving UI analysis for page ${page.id}: score ${desktopUiAnalysis}`);
   }
 
   const { error } = await supabase.from("audit_results").upsert(updateData, {
@@ -1222,14 +1231,22 @@ function analyzeLinks(html: string, baseUrl: string) {
 // This version ignores the image and just sends a simple prompt to Gemini for testing.
 
 async function analyzeUIImageWithGemini(
-  imageUrl: string
-): Promise<string | null> {
+  imageUrl: string,
+  device: string
+): Promise<any | null> {
   try {
-    console.log(
-      "[Gemini UI] Analyzing image with Gemini Vision API:",
-      imageUrl
-    );
-const prompt = `
+    console.log("[Gemini UI] Analyzing image with Gemini Vision API:", imageUrl);
+
+    let deviceNote = "";
+    if (device === "phone") {
+      deviceNote = "Focus especially on mobile usability aspects like touch target sizes, finger-friendly spacing, and vertical responsiveness.";
+    } else if (device === "tablet") {
+      deviceNote = "Focus especially on tablet usability aspects like adaptable grid layouts, comfortable spacing for medium screen sizes, and touch interaction design.";
+    } else if (device === "desktop") {
+      deviceNote = "Focus especially on desktop usability aspects like wide-screen layout alignment, hover interactions, and detailed visual hierarchy.";
+    }
+
+    const prompt = `
 You are an expert UI/UX reviewer. Please carefully analyze this image as if you are conducting a detailed design and accessibility review.
 
 Identify and describe all UI-related issues, including but not limited to:
@@ -1244,7 +1261,9 @@ Identify and describe all UI-related issues, including but not limited to:
 - Visual hierarchy and clarity
 - Any other visual or functional issues that could affect usability or user experience
 
-Provide the analysis strictly in the following JSON format, without any extra text or formatting don't add any '\n'. Do not include markdown backticks, code blocks, or escape characters. Only return plain JSON text:
+Consider that this UI is being viewed on a ${device} device. ${deviceNote}
+
+Provide the analysis strictly in the following JSON format, without any extra text or formatting don't add any '\\n'. Do not include markdown backticks, code blocks, or escape characters. Only return plain JSON text:
 
 {
   "issues": [
@@ -1259,8 +1278,6 @@ Provide the analysis strictly in the following JSON format, without any extra te
 }
 `;
 
-
-    // Fetch image from URL
     const response = await axios.get(imageUrl, {
       responseType: "arraybuffer",
     });
@@ -1276,7 +1293,7 @@ Provide the analysis strictly in the following JSON format, without any extra te
           { text: prompt },
           {
             inlineData: {
-              mimeType: "image/png", // or "image/jpeg" — change if needed
+              mimeType: "image/png",
               data: base64Image,
             },
           },
@@ -1289,7 +1306,6 @@ Provide the analysis strictly in the following JSON format, without any extra te
       result = await model.generateContent({ contents });
       console.log("[Gemini UI] Gemini Vision API raw result:", result);
     } catch (err) {
-      // Always log the error and return null for any error (including 503)
       console.error("[Gemini UI] Gemini Vision API error (inner):", err);
       return null;
     }
@@ -1311,40 +1327,72 @@ Provide the analysis strictly in the following JSON format, without any extra te
   }
 }
 
-// Function to take a screenshot of a webpage
+
+async function takeAllScreenshots(url: string, pageId: number) {
+  const devices: Array<"phone" | "tablet" | "desktop"> = [
+    "phone",
+    "tablet",
+    "desktop",
+  ];
+  const screenshots: Record<string, string> = {};
+
+  for (const device of devices) {
+    screenshots[device] = await takeScreenshot(url, pageId, device);
+  }
+  return screenshots;
+}
+
 async function takeScreenshot(
   url: string,
-  pagesCrawled: number
+  pageId: number,
+  device: "phone" | "tablet" | "desktop"
 ): Promise<string> {
   let browser: import("puppeteer").Browser | null = null;
   try {
     browser = await puppeteer.launch({
-      headless: true, // Set to true to prevent opening a visible browser window
+      headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
     const page = await browser.newPage();
+
+    // Set viewport based on device
+    let viewport;
+    let suffix;
+    switch (device) {
+      case "phone":
+        viewport = { width: 375, height: 812 };
+        suffix = "phone";
+        break;
+      case "tablet":
+        viewport = { width: 768, height: 1024 };
+        suffix = "tablet";
+        break;
+      default:
+        viewport = { width: 1440, height: 3000 };
+        suffix = "desktop";
+    }
+    await page.setViewport(viewport);
+
     await page.goto(url, { waitUntil: "networkidle2" });
     await page.waitForSelector("body");
     await new Promise((resolve) => setTimeout(resolve, 4000));
-    await page.setViewport({ width: 1440, height: 3000 });
     await autoScroll(page);
     await page.evaluate(() => window.scrollTo(0, 0));
 
     const screenshotPath = path.join(
       process.cwd(),
       "public",
-      `screenshot_${pagesCrawled}.png`
+      `screenshot_${pageId}_${suffix}.png`
     ) as `${string}.png`;
     await page.screenshot({
       path: screenshotPath,
       fullPage: true,
     });
 
-    return `/screenshot_${pagesCrawled}.png`;
+    return `/screenshot_${pageId}_${suffix}.png`;
   } catch (error) {
     console.error("Error taking screenshot:", error);
-    // Do not throw, just log and return empty string
     return "";
   } finally {
     if (browser) {

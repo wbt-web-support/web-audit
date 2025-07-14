@@ -111,7 +111,9 @@ interface PageAnalysis {
     issues: string[];
     recommendations: string[];
   } | null;
-  uiQuality?: any; // Add this line to allow uiQuality property
+  phone_ui_quality_analysis?: any;
+  tablet_ui_quality_analysis?: any;
+  desktop_ui_quality_analysis?: any;
 }
 
 interface PageDetailSimpleProps {
@@ -137,6 +139,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   const [seoCachedAt, setSeoCachedAt] = useState<string | null>(null);
   const [uiQualityCachedAt, setUiQualityCachedAt] = useState<string | null>(null);
   const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
+  const [activeUiTab, setActiveUiTab] = useState<'phone' | 'tablet' | 'desktop'>('phone');
 
   // Fetch results from audit_results table
   const fetchAnalysisResults = useCallback(async () => {
@@ -164,12 +167,20 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             setSeoCachedAt(data.results.created_at || data.results.updated_at);
             setSeoAnalyzing(false);
           }
-          if (data.results.ui_analysis) {
-            newAnalysis.uiQuality = data.results.ui_analysis;
-            setUiQualityCached(true);
-            setUiQualityCachedAt(data.results.created_at || data.results.updated_at);
-            setUiAnalyzing(false);
+          if (data.results.phone_ui_quality_analysis) {
+            newAnalysis.phone_ui_quality_analysis = data.results.phone_ui_quality_analysis;
           }
+          if (data.results.tablet_ui_quality_analysis) {
+            newAnalysis.tablet_ui_quality_analysis = data.results.tablet_ui_quality_analysis;
+          }
+          if (data.results.desktop_ui_quality_analysis) {
+            newAnalysis.desktop_ui_quality_analysis = data.results.desktop_ui_quality_analysis;
+          }
+          setUiQualityCached(
+            !!(data.results.phone_ui_quality_analysis || data.results.tablet_ui_quality_analysis || data.results.desktop_ui_quality_analysis)
+          );
+          setUiQualityCachedAt(data.results.created_at || data.results.updated_at);
+          setUiAnalyzing(false);
           
           return newAnalysis;
         });
@@ -225,12 +236,22 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               setSeoCachedAt(data.results.created_at || data.results.updated_at);
               hasSeoCache = true;
             }
-            if (data.results.ui_quality_analysis) {
-              basicAnalysis.uiQuality = data.results.ui_quality_analysis;
-              setUiQualityCached(true);
-              setUiQualityCachedAt(data.results.created_at || data.results.updated_at);
+            if (data.results.phone_ui_quality_analysis) {
+              basicAnalysis.phone_ui_quality_analysis = data.results.phone_ui_quality_analysis;
               hasUiQualityCache = true;
             }
+            if (data.results.tablet_ui_quality_analysis) {
+              basicAnalysis.tablet_ui_quality_analysis = data.results.tablet_ui_quality_analysis;
+              hasUiQualityCache = true;
+            }
+            if (data.results.desktop_ui_quality_analysis) {
+              basicAnalysis.desktop_ui_quality_analysis = data.results.desktop_ui_quality_analysis;
+              hasUiQualityCache = true;
+            }
+            setUiQualityCached(
+              !!(data.results.phone_ui_quality_analysis || data.results.tablet_ui_quality_analysis || data.results.desktop_ui_quality_analysis)
+            );
+            setUiQualityCachedAt(data.results.created_at || data.results.updated_at);
           }
           
           setAnalysis(basicAnalysis);
@@ -244,6 +265,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             }
             if (!hasSeoCache) {
               setSeoAnalyzing(true);
+            }
+            if (!hasUiQualityCache) {
+              setUiAnalyzing(true);
             }
           } else if (data.page.analysis_status === 'pending' || !data.page.analysis_status) {
             console.log('📝 Page needs analysis - starting fresh');
@@ -300,6 +324,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               setIsAnalysisRunning(true);
               if (!grammarCached) setGrammarAnalyzing(true);
               if (!seoCached) setSeoAnalyzing(true);
+              if (!uiQualityCached) setUiAnalyzing(true);
             } else if (updatedPage.analysis_status === 'completed') {
               console.log('✅ Analysis completed - fetching results');
               // Fetch the completed results
@@ -310,6 +335,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               setIsAnalysisRunning(false);
               setGrammarAnalyzing(false);
               setSeoAnalyzing(false);
+              setUiAnalyzing(false);
             }
           }
         )
@@ -378,7 +404,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     setIsAnalysisRunning(true);
     setGrammarAnalyzing(true);
     setSeoAnalyzing(true);
-    
+    setUiAnalyzing(true);
     try {
       const response = await fetch(`/api/audit-sessions/${session.id}/analyze`, {
         method: 'POST',
@@ -405,6 +431,95 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
       setSeoAnalyzing(false);
       setUiAnalyzing(false);
     }
+  };
+
+  // --- NEW: Grammar-only analysis ---
+  const analyzeGrammarOnly = async (forceRefresh = false) => {
+    setGrammarAnalyzing(true);
+    setIsAnalysisRunning(true);
+    try {
+      if (!session?.id) {
+        console.error('No session ID available for analysis');
+        return;
+      }
+      console.log('🚀 Starting grammar-only analysis...');
+      const response = await fetch(`/api/audit-sessions/${session.id}/analyze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          page_ids: [pageId],
+          analysis_types: ['grammar'],
+          use_cache: !forceRefresh,
+          background: false,
+          force_refresh: forceRefresh
+        }),
+      });
+      if (response.ok) {
+        const grammarData = await response.json();
+        setGrammarCached(grammarData.cached || false);
+        setGrammarCachedAt(grammarData.cached_at || null);
+        const { cached, cached_at, background, ...analysisData } = grammarData;
+        if (analysisData.wordCount !== undefined) {
+          setAnalysis(prev => prev ? {
+            ...prev,
+            grammarCheck: analysisData
+          } : null);
+          setGrammarAnalyzing(false);
+          setIsAnalysisRunning(false);
+        }
+      }
+    } catch (error) {
+      console.error('Grammar analysis error:', error);
+      setGrammarAnalyzing(false);
+      setIsAnalysisRunning(false);
+    }
+  };
+
+  // --- NEW: UI-only analysis ---
+  const analyzeUiQuality = async (device: 'phone' | 'tablet' | 'desktop', forceRefresh = false) => {
+    setUiAnalyzing(true);
+    setIsAnalysisRunning(true);
+    try {
+      if (!session?.id) {
+        console.error('No session ID available for analysis');
+        return;
+      }
+      console.log(`🚀 Starting UI quality analysis for ${device}...`);
+      const response = await fetch(`/api/audit-sessions/${session.id}/analyze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          page_ids: [pageId],
+          analysis_types: ['ui'],
+          ui_devices: [device],
+          use_cache: !forceRefresh,
+          background: false,
+          force_refresh: forceRefresh
+        }),
+      });
+      if (response.ok) {
+        // UI analysis is async, results will come via realtime or polling
+        setUiAnalyzing(false); // Optionally keep true until realtime update
+        setIsAnalysisRunning(false);
+      }
+    } catch (error) {
+      console.error('UI quality analysis error:', error);
+      setUiAnalyzing(false);
+      setIsAnalysisRunning(false);
+    }
+  };
+
+  // --- Update refresh handlers ---
+  const refreshGrammarAnalysis = () => {
+    analyzeGrammarOnly(true);
+  };
+
+  const refreshUiQualityAnalysis = () => {
+    analyzeUiQuality(activeUiTab, true);
   };
 
   const analyzeContentWithGemini = async (forceRefresh = false) => {
@@ -459,10 +574,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
       setGrammarAnalyzing(false);
       setIsAnalysisRunning(false);
     }
-  };
-
-  const refreshGrammarAnalysis = () => {
-    analyzeContentWithGemini(true);
   };
 
   const analyzeSeoWithAPI = async (forceRefresh = false) => {
@@ -904,7 +1015,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                     { id: 'seo', label: 'SEO & Structure', icon: Tag, analyzing: seoAnalyzing, cached: seoCached },
                     { id: 'performance', label: 'Performance', icon: BarChart3, analyzing: false, cached: false },
                     { id: 'accessibility', label: 'Accessibility', icon: Shield, analyzing: false, cached: false },
-                    { id: 'ui_quality', label: 'UI Quality', icon: Eye, analyzing: uiAnalyzing, cached: uiCached },
+                    { id: 'ui_quality', label: 'UI Quality', icon: Eye, analyzing: uiAnalyzing, cached: uiQualityCached },
                     { id: 'images', label: 'Images', icon: Image, analyzing: false, cached: false },
                   ].map((tab) => {
                     const IconComponent = tab.icon;
@@ -1512,25 +1623,43 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                         <Eye className="h-5 w-5" />
                         <h3 className="text-lg font-semibold">UI Quality</h3>
                         {uiAnalyzing && <Loader2 className="h-4 w-4 animate-spin" />}
-                        {uiCached && !uiAnalyzing && (
+                        {uiQualityCached && !uiAnalyzing && (
                           <Badge variant="outline" className="text-xs">
                             Cached
                           </Badge>
                         )}
               </div>
-                      {analysis.uiQuality && !uiAnalyzing && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          // onClick={refreshGrammarAnalysis}
-                          disabled={uiAnalyzing}
-                        >
-                          <RefreshCw className="h-3 w-3 mr-1" />
-                          Refresh Analysis
-                        </Button>
-              )}
+                      {/* Refresh Button for UI Quality */}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={refreshUiQualityAnalysis}
+                        disabled={uiAnalyzing}
+                      >
+                        <RefreshCw className="h-3 w-3 mr-1" />
+                        Refresh Analysis
+                      </Button>
             </div>
 
+          {/* UI Device Tabs */}
+          <div className="border-b mb-4">
+            <div className="flex gap-1">
+              {['phone', 'tablet', 'desktop'].map((device) => (
+                <button
+                  key={device}
+                  onClick={() => setActiveUiTab(device as 'phone' | 'tablet' | 'desktop')}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    activeUiTab === device
+                      ? 'border-primary text-primary bg-primary/10'
+                      : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                  }`}
+                >
+                  {device.charAt(0).toUpperCase() + device.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Tab Content */}
           {uiAnalyzing ? (
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
@@ -1538,55 +1667,61 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                 <p className="text-sm text-muted-foreground">Analyzing UI screenshot with AI...</p>
               </div>
             </div>
-          ) : !analysis.uiQuality ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">No UI Quality data available.</p>
-            </div>
           ) : (
-            <>
-              {/* Overall Summary */}
-              {analysis.uiQuality.overall_summary && (
-                <Card className="mb-6">
-                  <CardHeader>
-                    <CardTitle className="text-base">Overall Summary</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground">{analysis.uiQuality.overall_summary}</p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Issues List */}
-              <div className="space-y-4">
-                {(analysis.uiQuality.issues && analysis.uiQuality.issues.length > 0) ? (
-                  analysis.uiQuality.issues.map((issue: { type: string; description: string; suggestion: string }, idx: number) => (
-                    <Card key={idx} className="border-l-4 border-yellow-400">
-                      <CardContent className="py-4">
-                        <div className="flex items-start gap-3">
-                          <AlertTriangle className="h-6 w-6 text-yellow-500 mt-1" />
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-semibold text-yellow-700">{issue.type}</span>
-                              <Badge variant="outline" className="text-xs">{`Issue ${idx + 1}`}</Badge>
-                            </div>
-                            <p className="text-sm mb-2">{issue.description}</p>
-                            <div className="text-xs text-muted-foreground">
-                              <span className="font-semibold">Suggestion:</span> {issue.suggestion}
-                            </div>
-                          </div>
-                        </div>
+            (() => {
+              const deviceKey = `${activeUiTab}_ui_quality_analysis` as keyof PageAnalysis;
+              const deviceAnalysis = analysis?.[deviceKey];
+              if (!deviceAnalysis) {
+                return (
+                  <div className="text-center py-12">
+                    <p className="text-muted-foreground">No UI Quality data available for this device.</p>
+                  </div>
+                );
+              }
+              return (
+                <>
+                  {deviceAnalysis.overall_summary && (
+                    <Card className="mb-6">
+                      <CardHeader>
+                        <CardTitle className="text-base">Overall Summary</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-muted-foreground">{deviceAnalysis.overall_summary}</p>
                       </CardContent>
                     </Card>
-                  ))
-                ) : (
-                  <div className="text-center py-8">
-                    <CheckCircle className="h-12 w-12 text-emerald-500 dark:text-emerald-400 mx-auto mb-3" />
-                    <p className="text-lg font-medium">No UI issues found!</p>
-                    <p className="text-sm text-muted-foreground">Your UI looks great.</p>
+                  )}
+                  <div className="space-y-4">
+                    {(deviceAnalysis.issues && deviceAnalysis.issues.length > 0) ? (
+                      deviceAnalysis.issues.map((issue: { type: string; description: string; suggestion: string }, idx: number) => (
+                        <Card key={idx} className="border-l-4 border-yellow-400">
+                          <CardContent className="py-4">
+                            <div className="flex items-start gap-3">
+                              <AlertTriangle className="h-6 w-6 text-yellow-200 mt-1" />
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-semibold text-yellow-700">{issue.type}</span>
+                                  <Badge variant="outline" className="text-xs">{`Issue ${idx + 1}`}</Badge>
+                                </div>
+                                <p className="text-sm mb-2">{issue.description}</p>
+                                <div className="text-xs text-muted-foreground">
+                                  <span className="font-semibold">Suggestion:</span> {issue.suggestion}
+                                </div>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))
+                    ) : (
+                      <div className="text-center py-8">
+                        <CheckCircle className="h-12 w-12 text-emerald-500 dark:text-emerald-400 mx-auto mb-3" />
+                        <p className="text-lg font-medium">No UI issues found!</p>
+                        <p className="text-sm text-muted-foreground">Your UI looks great.</p>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </>
+                </>
+              );
+            })()
           )}
         </div>
       )}
