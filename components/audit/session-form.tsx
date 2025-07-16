@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AuditSession } from '@/lib/types/database';
+import { AuditSession, AuditSessionStatus } from '@/lib/types/database';
 import { 
   Loader2, 
   Save,
@@ -14,17 +14,21 @@ import {
   Mail,
   MapPin,
   FileText,
-  Globe
+  Globe,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'react-toastify';
 
 interface SessionFormProps {
   session?: AuditSession | null;
   mode: 'create' | 'edit';
   onSubmit?: (session: AuditSession) => void;
+  sessions: AuditSession[];
 }
 
-export function SessionForm({ session, mode, onSubmit }: SessionFormProps) {
+export function SessionForm({ session, mode, onSubmit, sessions }: SessionFormProps) {
   const [loading, setLoading] = useState(false);
   const [sessionUrl, setSessionUrl] = useState(session?.base_url || '');
   const [companyName, setCompanyName] = useState(session?.company_name || '');
@@ -32,10 +36,13 @@ export function SessionForm({ session, mode, onSubmit }: SessionFormProps) {
   const [email, setEmail] = useState(session?.email || '');
   const [address, setAddress] = useState(session?.address || '');
   const [customInfo, setCustomInfo] = useState(session?.custom_info || '');
+  const [instructions, setInstructions] = useState<string[]>(['']);
   const [error, setError] = useState('');
   const router = useRouter();
+  const normalizeUrl = (url: string) => url.replace(/\/+$/, "").toLowerCase();
 
   useEffect(() => {
+
     if (session) {
       setSessionUrl(session.base_url || '');
       setCompanyName(session.company_name || '');
@@ -43,8 +50,26 @@ export function SessionForm({ session, mode, onSubmit }: SessionFormProps) {
       setEmail(session.email || '');
       setAddress(session.address || '');
       setCustomInfo(session.custom_info || '');
+      // Optionally: setInstructions(session.instructions || [{ id: Date.now(), text: '' }]);
     }
   }, [session]);
+
+  const handleInstructionChange = (idx: number, value: string) => {
+    setInstructions((prev) =>
+      prev.map((inst, i) => (i === idx ? value : inst))
+    );
+  };
+
+  const handleAddInstruction = () => {
+    setInstructions((prev) => [
+      ...prev,
+      '',
+    ]);
+  };
+
+  const handleRemoveInstruction = (idx: number) => {
+    setInstructions((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +77,14 @@ export function SessionForm({ session, mode, onSubmit }: SessionFormProps) {
 
     setLoading(true);
     setError('');
+    const found = sessions.some(
+      (session) => normalizeUrl(session.base_url) === normalizeUrl(sessionUrl)
+    );
+    if (found) {
+      toast.info("A URL is already present in the sessions.");
+      setLoading(false);
+      return;
+    } 
 
     try {
       const payload = {
@@ -61,6 +94,7 @@ export function SessionForm({ session, mode, onSubmit }: SessionFormProps) {
         email: email.trim() || null,
         address: address.trim() || null,
         custom_info: customInfo.trim() || null,
+        instructions: instructions.filter(Boolean),
       };
 
       const url = mode === 'create' 
@@ -85,7 +119,8 @@ export function SessionForm({ session, mode, onSubmit }: SessionFormProps) {
         } else {
           // Navigate to sessions page or audit page
           if (mode === 'create') {
-            router.push('/audit');
+            router.push(`/audit?session=${data.session.id}`);
+          toast.success("Session created successfully!");
           } else {
             router.push('/sessions');
           }
@@ -100,7 +135,7 @@ export function SessionForm({ session, mode, onSubmit }: SessionFormProps) {
     }
   };
 
-  const title = mode === 'create' ? 'Create New Session' : 'Edit Session';
+  const title = mode === 'create' ? 'Create New Project' : 'Edit Project';
   const description = mode === 'create' 
     ? 'Enter website URL and expected company information for comprehensive audit'
     : 'Update website URL and expected company information';
@@ -109,7 +144,7 @@ export function SessionForm({ session, mode, onSubmit }: SessionFormProps) {
   const isSessionRunning = Boolean(session && (session.status === 'crawling' || session.status === 'analyzing'));
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
+    <div className=" ">
       <Card>
         <CardHeader>
           <CardTitle>{title}</CardTitle>
@@ -231,6 +266,50 @@ export function SessionForm({ session, mode, onSubmit }: SessionFormProps) {
                 className="mt-1"
               />
             </div>
+
+            {/* Instructions textarea list */}
+            {/* <div>
+              <Label className="flex items-center gap-2 mb-1">
+                <FileText className="h-4 w-4" />
+                Instructions
+              </Label>
+              <div className="space-y-3">
+                {instructions.map((inst, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <textarea
+                      value={inst}
+                      onChange={(e) => handleInstructionChange(idx, e.target.value)}
+                      placeholder={`Instruction ${idx + 1}`}
+                      className="flex-1 h-16 rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                      rows={2}
+                      disabled={loading || isSessionRunning}
+                    />
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      onClick={handleAddInstruction}
+                      aria-label="Add instruction"
+                      disabled={loading || isSessionRunning}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                    {instructions.length > 1 && (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="destructive"
+                        onClick={() => handleRemoveInstruction(idx)}
+                        aria-label="Remove instruction"
+                        disabled={loading || isSessionRunning}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div> */}
             
             <div className="flex items-center gap-3 pt-4">
               <Button type="submit" disabled={loading || !sessionUrl.trim() || isSessionRunning}>
@@ -239,7 +318,7 @@ export function SessionForm({ session, mode, onSubmit }: SessionFormProps) {
                 ) : (
                   <Save className="h-4 w-4 mr-2" />
                 )}
-                {mode === 'create' ? 'Create Session' : 'Save Changes'}
+                {mode === 'create' ? 'Create Project' : 'Save Changes'}
               </Button>
               
               <Button 

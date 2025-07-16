@@ -1,0 +1,5 @@
+- [x] Setup Redux Toolkit for global state management (2024-06-09)
+  - Installed @reduxjs/toolkit and react-redux
+  - Created app/store.ts
+  - Wrapped app in Provider in app/layout.tsx
+  - Documented usage in README.md 

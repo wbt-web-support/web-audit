@@ -55,7 +55,8 @@ export async function PUT(
       phone_number, 
       email, 
       address, 
-      custom_info 
+      custom_info,
+      instructions,
     } = body;
 
     if (!base_url) {
@@ -105,6 +106,7 @@ export async function PUT(
       email: email || null,
       address: address || null,
       custom_info: custom_info || null,
+      instructions: instructions || null,
     };
 
     const { data: session, error } = await supabase

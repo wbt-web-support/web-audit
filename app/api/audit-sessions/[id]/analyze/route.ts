@@ -15,7 +15,10 @@ export async function POST(
   try {
     const supabase = await createClient();
     const { id } = await params;
-
+    console.log("id******************",id)
+    const instructions = await supabase.from("audit_sessions").select("instructions").eq("id", id).single();
+    console.log("instructions******************",instructions.data);
+  
     const {
       data: { user },
       error: authError,
@@ -33,7 +36,7 @@ export async function POST(
       background = null, // Auto-determine based on page count
       force_refresh = false, // Force refresh cached results
     } = body;
-
+ console.log("page ids ",body.page_id )
     // Verify the session belongs to the user
     const { data: session, error: sessionError } = await supabase
       .from("audit_sessions")
@@ -140,39 +143,11 @@ async function performSinglePageAnalysis(
       .update({ analysis_status: "analyzing" })
       .eq("id", page.id);
 
-    const screenshots = await takeAllScreenshots(page.url, page.id);
+    console.log(`[ANALYSIS] Starting analysis for page ${page.id} (${page.url})`);
 
-    // Optionally upload each screenshot and get public URLs
-    const screenshotUrls: Record<string, string | null> = {};
-    for (const device of ["phone", "tablet", "desktop"]) {
-      const localPath = path.join(
-        process.cwd(),
-        "public",
-        `screenshot_${page.id}_${device}.png`
-      );
-      const storagePath = `session_${session.id}/screenshot_${page.id}_${device}.png`;
-      screenshotUrls[device] = await uploadScreenshotToStorage(
-        localPath,
-        storagePath
-      );
-    }
-
-    // Save these URLs in your DB as needed, e.g. page_screenshot_url_phone, etc.
-    await supabase
-      .from("scraped_pages")
-      .update({
-        page_screenshot_url_phone: screenshotUrls.phone,
-        page_screenshot_url_tablet: screenshotUrls.tablet,
-        page_screenshot_url_desktop: screenshotUrls.desktop,
-        // ...other fields
-      })
-      .eq("id", page.id);
-
+    // --- Start grammar/content and SEO analysis immediately ---
     let grammarAnalysis = null;
     let seoAnalysis = null;
-    let desktopUiAnalysis = null;
-    let tabletUiAnalysis = null;
-    let phoneUiAnalysis = null;
     let cached = false;
     let cachedAt = null;
 
@@ -192,74 +167,98 @@ async function performSinglePageAnalysis(
           grammarAnalysis = cachedResult.grammar_analysis;
           cached = true;
           cachedAt = cachedResult.created_at;
+          console.log(`[CACHE] Grammar analysis loaded from cache for page ${page.id}`);
         }
         if (analysisTypes.includes("seo") && cachedResult.seo_analysis) {
           seoAnalysis = cachedResult.seo_analysis;
           cached = true;
           cachedAt = cachedResult.created_at;
+          console.log(`[CACHE] SEO analysis loaded from cache for page ${page.id}`);
         }
       }
     }
 
-    // Perform missing analyses with fresh content
-    if (analysisTypes.includes("grammar") && !grammarAnalysis) {
-      console.log(`Running fresh grammar analysis for page ${page.id}`);
-      grammarAnalysis = await analyzeContentWithGemini(
-        page.content || "",
-        session
-      );
-      console.log(
-        `Grammar analysis completed for page**`,
-        typeof grammarAnalysis
-      );
+    // --- Launch grammar/content and SEO analysis in parallel (if not cached) ---
+    const grammarPromise =
+      analysisTypes.includes("grammar") && !grammarAnalysis
+        ? (console.log(`[TASK] Starting grammar/content analysis for page ${page.id}`), analyzeContentWithGemini(page.content || "", session))
+        : Promise.resolve(grammarAnalysis);
+    const seoPromise =
+      analysisTypes.includes("seo") && !seoAnalysis
+        ? (console.log(`[TASK] Starting SEO analysis for page ${page.id}`), analyzeSEO(page.html || "", page.url, page.title, page.status_code))
+        : Promise.resolve(seoAnalysis);
+
+    // --- Screenshot + UI analysis for each device in parallel ---
+    let phoneUiAnalysis = null;
+    let tabletUiAnalysis = null;
+    let desktopUiAnalysis = null;
+    const screenshotUrls: Record<string, string | null> = {
+      phone: null,
+      tablet: null,
+      desktop: null,
+    };
+
+    // Helper to handle screenshot, upload, and UI analysis for a device
+    async function screenshotAndAnalyzeUI(device: "phone" | "tablet" | "desktop") {
+      try {
+        console.log(`[TASK] [${device}] Starting screenshot for page ${page.id}`);
+        // Take screenshot
+        const localPath = path.join(
+          process.cwd(),
+          "public",
+          `screenshot_${page.id}_${device}.png`
+        );
+        const screenshotPath = await takeScreenshot(page.url, page.id, device);
+        console.log(`[DONE] [${device}] Screenshot complete for page ${page.id}`);
+        // Upload screenshot
+        const storagePath = `session_${session.id}/screenshot_${page.id}_${device}.png`;
+        const publicUrl = await uploadScreenshotToStorage(localPath, storagePath);
+        screenshotUrls[device] = publicUrl;
+        console.log(`[DONE] [${device}] Screenshot uploaded for page ${page.id}: ${publicUrl}`);
+        // If UI analysis requested, start it
+        if (analysisTypes.includes("ui") && publicUrl) {
+          console.log(`[TASK] [${device}] Starting UI analysis for page ${page.id}`);
+          const uiResult = await analyzeUIImageWithGemini(publicUrl, device);
+          console.log(`[DONE] [${device}] UI analysis complete for page ${page.id}`);
+          return uiResult;
+        }
+        return null;
+      } catch (err) {
+        console.error(`[ERROR] [${device}] Screenshot/UI analysis failed for page ${page.id}:`, err);
+        return null;
+      }
     }
 
-    if (analysisTypes.includes("seo") && !seoAnalysis) {
-      console.log(`Running fresh SEO analysis for page ${page.id}`);
-      seoAnalysis = await analyzeSEO(
-        page.html || "",
-        page.url,
-        page.title,
-        page.status_code
-      );
-    }
-    if (analysisTypes.includes("ui") && !phoneUiAnalysis) {
-      console.log(`Running fresh UI analysis for page ${page.id}`);
-      if (screenshotUrls.phone) {
-        // Use the phone screenshot URL for UI analysis
-        phoneUiAnalysis = await analyzeUIImageWithGemini(screenshotUrls.phone,"phone");
-        console.log(
-          `UI analysis completed for page ${page.id}:`,
-          typeof phoneUiAnalysis
-        );
-      } else {
-        phoneUiAnalysis = null;
-      }
-      if (screenshotUrls.tablet) {
-        // Use the phone screenshot URL for UI analysis
-        tabletUiAnalysis = await analyzeUIImageWithGemini(
-          screenshotUrls.tablet,"table"
-        );
-        console.log(
-          `UI analysis completed for page ${page.id}:`,
-          typeof tabletUiAnalysis
-        );
-      } else {
-        tabletUiAnalysis = null;
-      }
-      if (screenshotUrls.desktop) {
-        // Use the phone screenshot URL for UI analysis
-        desktopUiAnalysis = await analyzeUIImageWithGemini(
-          screenshotUrls.desktop,"desktop"
-        );
-        console.log(
-          `UI analysis completed for page ${page.id}:`,
-          typeof desktopUiAnalysis
-        );
-      } else {
-        desktopUiAnalysis = null;
-      }
-    }
+    // Start screenshot+UI analysis for each device in parallel
+    const phoneUiPromise = screenshotAndAnalyzeUI("phone");
+    const tabletUiPromise = screenshotAndAnalyzeUI("tablet");
+    const desktopUiPromise = screenshotAndAnalyzeUI("desktop");
+
+    // --- Wait for all analyses to finish ---
+    const [grammarResult, seoResult, phoneUiResult, tabletUiResult, desktopUiResult] = await Promise.all([
+      grammarPromise,
+      seoPromise,
+      phoneUiPromise,
+      tabletUiPromise,
+      desktopUiPromise,
+    ]);
+
+    grammarAnalysis = grammarResult;
+    seoAnalysis = seoResult;
+    phoneUiAnalysis = phoneUiResult;
+    tabletUiAnalysis = tabletUiResult;
+    desktopUiAnalysis = desktopUiResult;
+
+    // Save screenshot URLs in DB
+    await supabase
+      .from("scraped_pages")
+      .update({
+        page_screenshot_url_phone: screenshotUrls.phone,
+        page_screenshot_url_tablet: screenshotUrls.tablet,
+        page_screenshot_url_desktop: screenshotUrls.desktop,
+      })
+      .eq("id", page.id);
+    console.log(`[DB] Screenshot URLs saved for page ${page.id}`);
 
     // Calculate combined score if both analyses are requested
     let overallScore = 0;
@@ -284,12 +283,14 @@ async function performSinglePageAnalysis(
       desktopUiAnalysis,
       overallScore
     );
+    console.log(`[DB] Analysis results saved for page ${page.id}`);
 
     // Mark page as completed
     await supabase
       .from("scraped_pages")
       .update({ analysis_status: "completed" })
       .eq("id", page.id);
+    console.log(`[DONE] Analysis completed for page ${page.id}`);
 
     // Return appropriate response based on what was requested
     if (analysisTypes.includes("grammar") && analysisTypes.includes("seo")) {
@@ -342,6 +343,7 @@ async function upsertAnalysisResult(
   phoneUiAnalysis: any,
   tabletUiAnalysis: any,
   desktopUiAnalysis: any,
+  // performanceAnalysis: any,
   overallScore: number
 ) {
   const status =
@@ -373,15 +375,15 @@ async function upsertAnalysisResult(
   }
   if (phoneUiAnalysis) {
     updateData.phone_ui_quality_analysis = phoneUiAnalysis;
-    console.log(`Saving UI analysis for page ${page.id}: score ${phoneUiAnalysis}`);
+   
   }
   if (tabletUiAnalysis) {
     updateData.tablet_ui_quality_analysis = tabletUiAnalysis;
-    console.log(`Saving UI analysis for page ${page.id}: score ${tabletUiAnalysis}`);
+   
   }
   if (desktopUiAnalysis) {
     updateData.desktop_ui_quality_analysis = desktopUiAnalysis;
-    console.log(`Saving UI analysis for page ${page.id}: score ${desktopUiAnalysis}`);
+  
   }
 
   const { error } = await supabase.from("audit_results").upsert(updateData, {
@@ -407,14 +409,7 @@ async function analyzePages(
 ) {
   const supabase = await createClient();
 
-  // Configure rolling batch processing
-  const MAX_CONCURRENT = 5; // Maximum number of pages analyzing simultaneously
-
   try {
-    let analyzedCount = 0;
-    let failedCount = 0;
-    const failedPages: Array<{ id: string; error: string }> = [];
-
     // Get session data for company information verification
     const { data: session, error: sessionError } = await supabase
       .from("audit_sessions")
@@ -427,12 +422,8 @@ async function analyzePages(
     }
 
     console.log(
-      `🚀 Starting rolling batch analysis for ${pages.length} pages with max ${MAX_CONCURRENT} concurrent`
+      `🚀 Starting parallel analysis for ${pages.length} pages (no concurrency limit)`
     );
-
-    // Create a queue of pages to process
-    const pageQueue = [...pages];
-    const activePromises = new Map<string, Promise<any>>();
 
     // Function to start analysis for a single page
     const startPageAnalysis = async (page: any) => {
@@ -440,7 +431,7 @@ async function analyzePages(
         console.log(
           `  ⚡ Starting analysis for page ${page.id}: ${
             page.title || page.url
-          } (${analyzedCount + failedCount + 1}/${pages.length})`
+          }`
         );
         await performSinglePageAnalysis(
           supabase,
@@ -453,13 +444,11 @@ async function analyzePages(
         return { success: true, pageId: page.id };
       } catch (error: any) {
         console.error(`  ❌ Failed to analyze page ${page.id}:`, error.message);
-
         // Mark the page as failed but continue with others
         await supabase
           .from("scraped_pages")
           .update({ analysis_status: "failed" })
           .eq("id", page.id);
-
         return {
           success: false,
           pageId: page.id,
@@ -468,96 +457,13 @@ async function analyzePages(
       }
     };
 
-    // Function to check if analysis should stop
-    const shouldStop = async () => {
-      const { data: currentSession } = await supabase
-        .from("audit_sessions")
-        .select("status")
-        .eq("id", sessionId)
-        .single();
-      return currentSession?.status === "failed";
-    };
+    // Run all analyses in parallel (no concurrency limit)
+    const results = await Promise.all(pages.map(startPageAnalysis));
 
-    // Start initial batch of analyses
-    while (pageQueue.length > 0 && activePromises.size < MAX_CONCURRENT) {
-      if (await shouldStop()) {
-        throw new Error("Analysis stopped by user");
-      }
-
-      const page = pageQueue.shift()!;
-      const promise = startPageAnalysis(page);
-      activePromises.set(page.id, promise);
-    }
-
-    // Process remaining pages as soon as slots become available
-    while (activePromises.size > 0) {
-      if (await shouldStop()) {
-        throw new Error("Analysis stopped by user");
-      }
-
-      // Wait for at least one analysis to complete
-      const completedPromise = await Promise.race(
-        Array.from(activePromises.values())
-      );
-
-      // Find which promise completed and remove it
-      let completedPageId = "";
-      for (const [pageId, promise] of activePromises.entries()) {
-        if (promise === completedPromise) {
-          completedPageId = pageId;
-          activePromises.delete(pageId);
-          break;
-        }
-      }
-
-      // Process the result
-      try {
-        const result = await completedPromise;
-
-        if (result.success) {
-          analyzedCount++;
-          console.log(
-            `  ✅ Completed analysis for page ${result.pageId} (${
-              analyzedCount + failedCount
-            }/${pages.length})`
-          );
-        } else {
-          failedCount++;
-          failedPages.push({
-            id: result.pageId,
-            error: result.error || "Unknown error",
-          });
-          console.log(
-            `  ❌ Failed analysis for page ${result.pageId} (${
-              analyzedCount + failedCount
-            }/${pages.length})`
-          );
-        }
-
-        // Update progress in database
-        await supabase
-          .from("audit_sessions")
-          .update({ pages_analyzed: analyzedCount })
-          .eq("id", sessionId);
-      } catch (error: any) {
-        failedCount++;
-        console.error(
-          `  ❌ Unexpected error for page ${completedPageId}:`,
-          error.message
-        );
-      }
-
-      // Start analysis for next page if available
-      if (pageQueue.length > 0 && activePromises.size < MAX_CONCURRENT) {
-        const nextPage = pageQueue.shift()!;
-        const nextPromise = startPageAnalysis(nextPage);
-        activePromises.set(nextPage.id, nextPromise);
-
-        console.log(
-          `  🎯 Started next page analysis (${activePromises.size}/${MAX_CONCURRENT} slots used, ${pageQueue.length} remaining)`
-        );
-      }
-    }
+    // Count analyzed and failed pages
+    const analyzedCount = results.filter(r => r.success).length;
+    const failedPages = results.filter(r => !r.success);
+    const failedCount = failedPages.length;
 
     // Determine final status based on results
     let finalStatus = "completed";
@@ -582,40 +488,31 @@ async function analyzePages(
       })
       .eq("id", sessionId);
 
-    console.log(`🎉 Rolling batch analysis completed for session ${sessionId}`);
+    console.log(`🎉 Parallel analysis completed for session ${sessionId}`);
     console.log(`   Total analyzed: ${analyzedCount}/${pages.length}`);
-    console.log(`   Max concurrent maintained: ${MAX_CONCURRENT} pages`);
     if (failedCount > 0) {
       console.log(`   Failed pages: ${failedCount}`);
       failedPages.forEach((fp) => {
-        console.log(`     - Page ${fp.id}: ${fp.error}`);
+        console.log(`     - Page ${fp.pageId}: ${fp.error}`);
       });
     }
   } catch (error: any) {
-    console.error("Rolling batch analysis failed:", error);
+    console.error("Parallel analysis failed:", error);
 
-    // Check if it was stopped by user
-    const { data: currentSession } = await supabase
+    // Update session status to failed
+    await supabase
       .from("audit_sessions")
-      .select("status")
-      .eq("id", sessionId)
-      .single();
-
-    if (currentSession?.status !== "failed") {
-      // Update session status to failed only if not already set to failed (stopped)
-      await supabase
-        .from("audit_sessions")
-        .update({
-          status: "failed",
-          error_message: error.message || "Analysis failed",
-        })
-        .eq("id", sessionId);
-    }
+      .update({
+        status: "failed",
+        error_message: error.message || "Analysis failed",
+      })
+      .eq("id", sessionId);
   }
 }
 
 async function analyzeContentWithGemini(content: string, session?: any) {
   try {
+    console.log("analyzing content with gemini");
     if (!content.trim()) {
       return {
         wordCount: 0,
@@ -632,7 +529,7 @@ async function analyzeContentWithGemini(content: string, session?: any) {
       };
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
     // Build comprehensive company information verification section
     let expectedCompanyInfo = "";
@@ -949,7 +846,7 @@ Focus on being helpful and educational. Each error should teach the user somethi
           );
         }
       }
-
+      console.log("endanalyzing content with gemini");
       return result;
     } catch (parseError) {
       console.error("Failed to parse Gemini response:", cleanedText);
@@ -967,6 +864,7 @@ async function analyzeSEO(
   pageTitle: string | null,
   statusCode: number | null
 ) {
+  console.log("analyzing seo");
   // Meta tags analysis
   const cleanTitle = extractTitle(html) || pageTitle;
   const metaTags = {
@@ -1117,7 +1015,7 @@ async function analyzeSEO(
     issues.push("Missing Open Graph tags");
     recommendations.push("Add Open Graph tags for better social media sharing");
   }
-
+  console.log("end analyzing seo");
   return {
     metaTags,
     headingStructure,
@@ -1235,7 +1133,7 @@ async function analyzeUIImageWithGemini(
   device: string
 ): Promise<any | null> {
   try {
-    console.log("[Gemini UI] Analyzing image with Gemini Vision API:", imageUrl);
+ console.log("analyzing ui image with gemini for device", device);
 
     let deviceNote = "";
     if (device === "phone") {
@@ -1262,7 +1160,7 @@ Identify and describe all UI-related issues, including but not limited to:
 - Any other visual or functional issues that could affect usability or user experience
 
 Consider that this UI is being viewed on a ${device} device. ${deviceNote}
-
+In addition to pointing out issues, also mention what aspects of the design are good, effective, or well executed. Highlight strengths such as visual consistency, clear hierarchy, good readability, effective use of space, appealing color schemes, or any strong points that contribute positively to the user experience.
 Provide the analysis strictly in the following JSON format, without any extra text or formatting don't add any '\\n'. Do not include markdown backticks, code blocks, or escape characters. Only return plain JSON text:
 
 {
@@ -1284,7 +1182,7 @@ Provide the analysis strictly in the following JSON format, without any extra te
 
     const base64Image = Buffer.from(response.data, "binary").toString("base64");
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
     const contents = [
       {
@@ -1304,7 +1202,7 @@ Provide the analysis strictly in the following JSON format, without any extra te
     let result;
     try {
       result = await model.generateContent({ contents });
-      console.log("[Gemini UI] Gemini Vision API raw result:", result);
+      
     } catch (err) {
       console.error("[Gemini UI] Gemini Vision API error (inner):", err);
       return null;
@@ -1319,8 +1217,20 @@ Provide the analysis strictly in the following JSON format, without any extra te
       geminiResponse = null;
     }
 
-    console.log("[Gemini UI] Gemini Vision API response text:", geminiResponse);
-    return JSON.parse(geminiResponse || "{}");
+    // Clean up Gemini's response: remove markdown/code block markers and extract JSON
+    let cleaned = (geminiResponse || "").replace(/```json|```/g, "").trim();
+    // Try to extract the first JSON object if extra text is present
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
+    }
+
+    try {
+      return JSON.parse(cleaned);
+    } catch (e) {
+      console.error("[Gemini UI] Failed to parse Gemini response:", geminiResponse);
+      return null;
+    }
   } catch (error) {
     console.error("[Gemini UI] Gemini Vision API error (outer):", error);
     return null;
@@ -1334,11 +1244,12 @@ async function takeAllScreenshots(url: string, pageId: number) {
     "tablet",
     "desktop",
   ];
-  const screenshots: Record<string, string> = {};
 
-  for (const device of devices) {
-    screenshots[device] = await takeScreenshot(url, pageId, device);
-  }
+  const screenshotPromises = devices.map(device =>
+    takeScreenshot(url, pageId, device).then(result => [device, result])
+  );
+  const results = await Promise.all(screenshotPromises);
+  const screenshots: Record<string, string> = Object.fromEntries(results);
   return screenshots;
 }
 
@@ -1349,6 +1260,7 @@ async function takeScreenshot(
 ): Promise<string> {
   let browser: import("puppeteer").Browser | null = null;
   try {
+    console.log("taking screenshot for device", device);
     browser = await puppeteer.launch({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -1376,7 +1288,7 @@ async function takeScreenshot(
 
     await page.goto(url, { waitUntil: "networkidle2" });
     await page.waitForSelector("body");
-    await new Promise((resolve) => setTimeout(resolve, 4000));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
     await autoScroll(page);
     await page.evaluate(() => window.scrollTo(0, 0));
 
@@ -1409,7 +1321,7 @@ async function autoScroll(page: Page) {
   await page.evaluate(async () => {
     await new Promise<void>((resolve) => {
       let totalHeight = 0;
-      const distance = 800; // Adjust distance for smoother scroll
+      const distance = 500; // Adjust distance for smoother scroll
       const timer = setInterval(() => {
         window.scrollBy(0, distance);
         totalHeight += distance;
@@ -1418,7 +1330,7 @@ async function autoScroll(page: Page) {
           clearInterval(timer);
           resolve();
         }
-      }, 800); // slow scroll
+      }, 500); // slow scroll
     });
   });
 }
@@ -1427,6 +1339,7 @@ async function uploadScreenshotToStorage(
   localPath: string,
   storagePath: string
 ): Promise<string | null> {
+  console.log("uploading screenshot to storage");
   const supabase = await createClient();
   const fileBuffer = await fs.readFile(localPath);
   const { data, error } = await supabase.storage
@@ -1440,13 +1353,83 @@ async function uploadScreenshotToStorage(
     console.error("Supabase Storage upload error:", error);
     return null;
   }
-  console.log(
-    `Screenshot uploaded to Supabase Storage at path: ${storagePath}`
-  );
-  console.log(`File metadata:`, data);
+
   // Get public URL
   const {
     data: { publicUrl },
   } = supabase.storage.from("screenshots").getPublicUrl(storagePath);
   return publicUrl;
 }
+
+
+// async function analyzePerformance(url: string): Promise<any> {
+//   /**
+//    * Analyzes web performance metrics for a given URL using Puppeteer and web-vitals.
+//    *
+//    * Args:
+//    *   url (string): The URL of the page to analyze.
+//    *
+//    * Returns:
+//    *   dict: Object containing web vitals and page load time.
+//    */
+//   const puppeteer = (await import("puppeteer")).default;
+//   let browser: import("puppeteer").Browser | null = null;
+//   try {
+//     browser = await puppeteer.launch({ headless: true, args: ["--no-sandbox", "--disable-setuid-sandbox"] });
+//     const page = await browser.newPage();
+//     await page.goto(url, { waitUntil: "networkidle0" });
+//     await page.addScriptTag({ url: "https://unpkg.com/web-vitals/dist/web-vitals.iife.js" });
+
+//     // Collect web vitals
+//     const vitals = await page.evaluate(() => {
+//       return new Promise<any>(resolve => {
+//         function waitForWebVitals(callback: () => void) {
+//           // @ts-ignore
+//           if (window.webVitals && window.webVitals.getCLS) {
+//             callback();
+//           } else {
+//             setTimeout(() => waitForWebVitals(callback), 100);
+//           }
+//         }
+//         waitForWebVitals(() => {
+//           const results = {};
+//           // @ts-ignore
+//           window.webVitals.getCLS(value => results.cls = value.value);
+//           // @ts-ignore
+//           window.webVitals.getFID(value => results.fid = value.value);
+//           // @ts-ignore
+//           window.webVitals.getLCP(value => results.lcp = value.value);
+//           // @ts-ignore
+//           window.webVitals.getFCP(value => results.fcp = value.value);
+//           // @ts-ignore
+//           window.webVitals.getTTFB(value => results.ttfb = value.value);
+//           setTimeout(() => resolve(results), 5000); // Wait to collect
+//         });
+//       });
+//     });
+
+//     // Collect page load time
+//     const pageLoadTime = await page.evaluate(() => {
+//       const perf = window.performance.timing;
+//       return perf.loadEventEnd - perf.navigationStart;
+//     });
+
+//     return {
+//       ...vitals,
+//       pageLoadTimeMs: pageLoadTime,
+//     };
+//   } catch (error) {
+//     console.error("Error in analyzePerformance:", error);
+//     return {
+//       error: error instanceof Error ? error.message : String(error),
+//     };
+//   } finally {
+//     if (browser) {
+//       try {
+//         await browser.close();
+//       } catch (closeError) {
+//         console.error("Error closing browser in analyzePerformance:", closeError);
+//       }
+//     }
+//   }
+// }

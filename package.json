@@ -13,6 +13,7 @@
     "@radix-ui/react-label": "^2.1.6",
     "@radix-ui/react-progress": "^1.1.7",
     "@radix-ui/react-slot": "^1.2.2",
+    "@reduxjs/toolkit": "^2.8.2",
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
     "axios": "^1.10.0",
@@ -25,6 +26,8 @@
     "puppeteer": "^24.12.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-redux": "^9.2.0",
+    "react-toastify": "^11.0.5",
     "robots-parser": "^3.0.1",
     "tailwind-merge": "^3.3.0",
     "url-parse": "^1.5.10"

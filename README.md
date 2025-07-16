@@ -94,6 +94,24 @@ If you wish to just develop locally and not deploy to Vercel, [follow the steps 
 
 > Check out [the docs for Local Development](https://supabase.com/docs/guides/getting-started/local-development) to also run Supabase locally.
 
+## State Management (Redux Toolkit)
+
+This project uses [Redux Toolkit](https://redux-toolkit.js.org/) for global state management.
+
+- The Redux store is set up in `app/store.ts`.
+- The store is provided to the app in `app/layout.tsx` using the `Provider` from `react-redux`.
+- To add new global state, create a slice (see Redux Toolkit docs) and add its reducer to the `reducer` field in `store.ts`.
+- Use `useSelector` and `useDispatch` from `react-redux` in your components to access and update state.
+
+Example usage:
+```tsx
+import { useSelector, useDispatch } from 'react-redux';
+import type { RootState, AppDispatch } from '@/app/store';
+
+const value = useSelector((state: RootState) => state.example.value);
+const dispatch = useDispatch<AppDispatch>();
+```
+
 ## Feedback and issues
 
 Please file feedback and issues over on the [Supabase GitHub org](https://github.com/supabase/supabase/issues/new/choose).

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { WebScraper } from "@/lib/services/web-scraper";
 import { NextResponse } from "next/server";
+import { toast } from "react-toastify";
 
 // URL normalization function (same as in WebScraper)
 function normalizeUrl(url: string): string {
@@ -86,7 +87,7 @@ export async function POST(request: Request) {
       .eq("id", session_id);
 
     // Start crawling in the background
-    crawlWebsite(session_id, session.base_url, user.id, existingUrls);
+    await crawlWebsite(session_id, session.base_url, user.id, existingUrls);
 
     return NextResponse.json({
       message: "Crawling started",

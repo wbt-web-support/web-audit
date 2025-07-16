@@ -47,7 +47,8 @@ export async function POST(request: Request) {
       phone_number, 
       email, 
       address, 
-      custom_info 
+      custom_info,
+      instructions
     } = body;
 
     if (!base_url) {
@@ -78,6 +79,7 @@ export async function POST(request: Request) {
         phone_number: phone_number || null,
         email: email || null,
         address: address || null,
+        instructions: instructions || null,
         custom_info: custom_info || null,
       })
       .select()

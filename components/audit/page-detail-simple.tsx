@@ -197,7 +197,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     try {
       const response = await fetch(`/api/pages/${pageId}`);
       const data = await response.json();
-      console.log("Fetching page data for ID:",typeof(data.results.ui_quality_analysis));  
+      console.log("Fetching page data for ID:",typeof(data.results.phone_ui_quality_analysis));  
+      console.log("Fetching page data for ID:",typeof(data.results.tablet_ui_quality_analysis));  
+      console.log("Fetching page data for ID:",typeof(data.results.desktop_ui_quality_analysis));  
       if (response.ok) {
         console.log('🔍 Page data received:', {
           pageId: data.page?.id,
@@ -890,9 +892,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
      
 
       {/* Main Content - Side by Side Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1  gap-6">
         {/* Page Info - 1/4 width on large screens */}
-        <div className="lg:col-span-1">
+        {/* <div className="lg:col-span-1">
           <Card className="h-fit">
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -935,7 +937,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               </div>
               </div>
 
-              {/* Quick Stats */}
+       
               <div className="pt-4 border-t">
                 <h4 className="font-medium mb-3">Quick Stats</h4>
                 <div className="space-y-2">
@@ -966,7 +968,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               </div>
             </div>
 
-              {/* Overall Scores */}
+       
               <div className="pt-4 border-t">
                 <h4 className="font-medium mb-3">Overall Scores</h4>
                 <div className="space-y-2">
@@ -997,10 +999,10 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               </div>
             </CardContent>
           </Card>
-              </div>
+              </div> */}
 
         {/* Analysis Tabs - 3/4 width on large screens */}
-        <div className="lg:col-span-3">
+        <div className="">
           <Card>
             <CardHeader>
               <CardTitle>Analysis Results</CardTitle>

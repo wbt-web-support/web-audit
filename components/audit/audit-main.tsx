@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,10 +30,12 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Zap
+  Zap,
+  CodeSquare
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { toast } from 'react-toastify';
 
 interface AnalyzedPage {
   page: ScrapedPage & {
@@ -71,10 +73,13 @@ export function AuditMain() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedSessionId = searchParams.get('session');
+  const crawlingStartedRef = useRef(false);
 
   useEffect(() => {
     fetchData();
   }, [selectedSessionId]);
+
+
 
   // Manual refresh function for user control
   const manualRefresh = async () => {
@@ -144,19 +149,21 @@ export function AuditMain() {
       // Fetch the selected session
       const sessionResponse = await fetch(`/api/audit-sessions/${selectedSessionId}`);
       const sessionData = await sessionResponse.json();
-      
       if (sessionResponse.ok) {
         setSessions([sessionData.session]);
-        
         // Fetch analyzed pages from the selected session
         try {
           const resultsResponse = await fetch(`/api/audit-sessions/${selectedSessionId}/results`);
             const resultsData = await resultsResponse.json();
-            
+            if(resultsData.session.status=="pending" && !crawlingStartedRef.current){
+              crawlingStartedRef.current = true;
+              startCrawling(sessionData.session.id)
+            }
             if (resultsResponse.ok && resultsData.pageResults) {
+              
             const pages = resultsData.pageResults.map((pageResult: any) => {
               const results = pageResult.results;
-              
+             
               // Count how many analysis types have been completed
               const analysisTypes = ['grammar_analysis', 'content_analysis', 'seo_analysis', 'performance_analysis', 'accessibility_analysis', 'ui_quality_analysis', 'image_relevance_analysis', 'context_analysis'];
               const completedAnalyses = results ? analysisTypes.filter(type => results[type]).length : 0;
@@ -200,6 +207,8 @@ export function AuditMain() {
                 setCurrentAction('');
               }
               
+              
+              
               return newAnalyzing;
             });
           }
@@ -221,7 +230,7 @@ export function AuditMain() {
     setCrawling(true);
     setCurrentAction(`Starting crawl for session ${sessionId}`);
     setError('');
-
+toast("crawling is started");
     try {
       const response = await fetch('/api/scrape/start', {
         method: 'POST',
@@ -232,7 +241,8 @@ export function AuditMain() {
       });
 
       const data = await response.json();
-
+      fetchData();
+      toast("crawling is end");
       if (!response.ok) {
         setError(data.error || 'Failed to start crawling');
       }
@@ -256,7 +266,8 @@ export function AuditMain() {
     
     // Mark pages as analyzing
     setAnalyzingPages(new Set(pageIds));
-
+console.log("session id ",sessionId)
+console.log("pageIds ",pageIds)
     try {
       const response = await fetch(`/api/audit-sessions/${sessionId}/analyze`, {
         method: 'POST',
@@ -539,11 +550,11 @@ export function AuditMain() {
       case 'warning':
         return <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" />;
       case 'fail':
-        return <XCircle className="h-4 w-4 text-red-500 dark:text-red-400 w-full" />;
+        return <XCircle className="h-4  text-red-500 dark:text-red-400 w-full" />;
       case 'pending':
-        return <Clock className="h-4 w-4 text-muted-foreground w-full" />;
+        return <Clock className="h-4 text-muted-foreground w-full" />;
       default:
-          return <AlertTriangle className="h-4 w-4 text-muted-foreground w-full" />;
+          return <AlertTriangle className="h-4  text-muted-foreground w-full" />;
     }
   };
 
@@ -695,8 +706,8 @@ export function AuditMain() {
       {activeSessions.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Active Sessions</CardTitle>
-            <CardDescription>Sessions currently crawling or analyzing</CardDescription>
+            <CardTitle>Active Projects</CardTitle>
+            <CardDescription>Projects currently crawling or analyzing</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -732,7 +743,7 @@ export function AuditMain() {
           <CardHeader>
             <div className="flex items-center justify-between">
                     <div>
-                <CardTitle>Current Session</CardTitle>
+                <CardTitle>Current Project</CardTitle>
                 <CardDescription>{sessions[0].base_url}</CardDescription>
                     </div>
               <div className="flex items-center gap-2">
@@ -752,8 +763,8 @@ export function AuditMain() {
                     onClick={() => startCrawling(sessions[0].id)}
                         disabled={crawling}
                       >
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Recrawl
+                    <RefreshCw className={`h-4 w-4 transition-all ${crawling ? "animate-spin" : ""}`} />
+                     {crawling?"Recrawling":"Recrawl"} 
                       </Button>
                     )}
                 {sessions[0].status === 'crawling' && (
