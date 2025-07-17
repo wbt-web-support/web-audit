@@ -1,13 +1,19 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { AuditSession, AuditSessionStatus } from '@/lib/types/database';
-import { 
-  Loader2, 
+import { useState, useEffect } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { AuditSession, AuditSessionStatus } from "@/lib/types/database";
+import {
+  Loader2,
   Save,
   Building,
   Phone,
@@ -16,75 +22,76 @@ import {
   FileText,
   Globe,
   Plus,
-  Trash2
-} from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { toast } from 'react-toastify';
+  Trash2,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { toast } from "react-toastify";
+import { useDispatch } from "react-redux";
+import {
+  setCompanyDetails,
+  setCrawlType,
+} from "@/app/stores/dashboardFormSlice";
+import CustomInstructions from "@/app/(dashboard)/dashboard/components/CustomInstructions";
 
 interface SessionFormProps {
   session?: AuditSession | null;
-  mode: 'create' | 'edit';
+  mode: "create" | "edit";
   onSubmit?: (session: AuditSession) => void;
-  sessions: AuditSession[];
 }
 
-export function SessionForm({ session, mode, onSubmit, sessions }: SessionFormProps) {
+export function SessionForm({ session, mode, onSubmit }: SessionFormProps) {
   const [loading, setLoading] = useState(false);
-  const [sessionUrl, setSessionUrl] = useState(session?.base_url || '');
-  const [companyName, setCompanyName] = useState(session?.company_name || '');
-  const [phoneNumber, setPhoneNumber] = useState(session?.phone_number || '');
-  const [email, setEmail] = useState(session?.email || '');
-  const [address, setAddress] = useState(session?.address || '');
-  const [customInfo, setCustomInfo] = useState(session?.custom_info || '');
-  const [instructions, setInstructions] = useState<string[]>(['']);
-  const [error, setError] = useState('');
+  const [sessionUrl, setSessionUrl] = useState(session?.base_url || "");
+  const [companyName, setCompanyName] = useState(session?.company_name || "");
+  const [phoneNumber, setPhoneNumber] = useState(session?.phone_number || "");
+  const [email, setEmail] = useState(session?.email || "");
+  const [address, setAddress] = useState(session?.address || "");
+  const [customInfo, setCustomInfo] = useState(session?.custom_info || "");
+  const [crawlType, setCrawlTypeState] = useState<"full" | "single">(
+    session?.crawl_type === "single" ? "single" : "full"
+  );
+
+  const [error, setError] = useState("");
   const router = useRouter();
   const normalizeUrl = (url: string) => url.replace(/\/+$/, "").toLowerCase();
+  const dispatch = useDispatch();
 
   useEffect(() => {
-
     if (session) {
-      setSessionUrl(session.base_url || '');
-      setCompanyName(session.company_name || '');
-      setPhoneNumber(session.phone_number || '');
-      setEmail(session.email || '');
-      setAddress(session.address || '');
-      setCustomInfo(session.custom_info || '');
+      setSessionUrl(session.base_url || "");
+      setCompanyName(session.company_name || "");
+      setPhoneNumber(session.phone_number || "");
+      setEmail(session.email || "");
+      setAddress(session.address || "");
+      setCustomInfo(session.custom_info || "");
+      setCrawlTypeState(session.crawl_type === "single" ? "single" : "full");
+      console.log("session**********", session);
       // Optionally: setInstructions(session.instructions || [{ id: Date.now(), text: '' }]);
     }
   }, [session]);
 
-  const handleInstructionChange = (idx: number, value: string) => {
-    setInstructions((prev) =>
-      prev.map((inst, i) => (i === idx ? value : inst))
+  useEffect(() => {
+    console.log("crawlType**********", crawlType);
+  }, [crawlType]);
+  // Sync company details to Redux store
+  useEffect(() => {
+    dispatch(
+      setCompanyDetails({
+        companyName,
+        phoneNumber,
+        email,
+        address,
+        customInfo,
+      })
     );
-  };
-
-  const handleAddInstruction = () => {
-    setInstructions((prev) => [
-      ...prev,
-      '',
-    ]);
-  };
-
-  const handleRemoveInstruction = (idx: number) => {
-    setInstructions((prev) => prev.filter((_, i) => i !== idx));
-  };
+  }, [companyName, phoneNumber, email, address, customInfo, dispatch]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sessionUrl.trim()) return;
 
     setLoading(true);
-    setError('');
-    const found = sessions.some(
-      (session) => normalizeUrl(session.base_url) === normalizeUrl(sessionUrl)
-    );
-    if (found) {
-      toast.info("A URL is already present in the sessions.");
-      setLoading(false);
-      return;
-    } 
+    setError("");
 
     try {
       const payload = {
@@ -94,35 +101,43 @@ export function SessionForm({ session, mode, onSubmit, sessions }: SessionFormPr
         email: email.trim() || null,
         address: address.trim() || null,
         custom_info: customInfo.trim() || null,
-        instructions: instructions.filter(Boolean),
+        crawl_type: crawlType,
       };
+      console.log('Submitting payload:', payload); // Debug log
+      console.log('mode:', mode); // Debug log
 
-      const url = mode === 'create' 
-        ? '/api/audit-sessions'
-        : `/api/audit-sessions/${session?.id}`;
-      
-      const method = mode === 'create' ? 'POST' : 'PUT';
+      const url = `/api/audit-sessions/${session?.id}`;
+
+      const method = mode === "create" ? "POST" : "PUT";
 
       const response = await fetch(url, {
         method,
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
       });
 
       const data = await response.json();
-
+      console.log('Response data:', data); // Debug log
       if (response.ok) {
         if (onSubmit && data.session) {
           onSubmit(data.session);
         } else {
           // Navigate to sessions page or audit page
-          if (mode === 'create') {
+          if (mode === "create") {
             router.push(`/audit?session=${data.session.id}`);
-          toast.success("Session created successfully!");
+            toast.success("Session created successfully!");
           } else {
-            router.push('/sessions');
+            // Update local state to reflect saved session values
+            setSessionUrl(data.session.base_url || "");
+            setCompanyName(data.session.company_name || "");
+            setPhoneNumber(data.session.phone_number || "");
+            setEmail(data.session.email || "");
+            setAddress(data.session.address || "");
+            setCustomInfo(data.session.custom_info || "");
+            setCrawlTypeState(data.session.crawl_type === "single" ? "single" : "full");
+            router.push(`/audit?session=${data.session.id}`);
           }
         }
       } else {
@@ -135,13 +150,16 @@ export function SessionForm({ session, mode, onSubmit, sessions }: SessionFormPr
     }
   };
 
-  const title = mode === 'create' ? 'Create New Project' : 'Edit Project';
-  const description = mode === 'create' 
-    ? 'Enter website URL and expected company information for comprehensive audit'
-    : 'Update website URL and expected company information';
+  const title = mode === "create" ? "Add Your Company Details" : "Edit Project";
+  const description =
+    mode === "create"
+      ? "Enter website URL and company details to verify consistency across all pages"
+      : "Update website URL and company information for verification";
 
   // Check if session is running and prevent editing
-  const isSessionRunning = Boolean(session && (session.status === 'crawling' || session.status === 'analyzing'));
+  const isSessionRunning = Boolean(
+    session && (session.status === "crawling" || session.status === "analyzing")
+  );
 
   return (
     <div className=" ">
@@ -154,7 +172,10 @@ export function SessionForm({ session, mode, onSubmit, sessions }: SessionFormPr
           {isSessionRunning && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
               <div className="flex items-center gap-2 text-amber-700">
-                <span>This session is currently {session?.status}. You cannot edit it while it's running.</span>
+                <span>
+                  This session is currently {session?.status}. You cannot edit
+                  it while it's running.
+                </span>
               </div>
             </div>
           )}
@@ -168,26 +189,73 @@ export function SessionForm({ session, mode, onSubmit, sessions }: SessionFormPr
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <Label htmlFor="url" className="flex items-center gap-2">
-                <Globe className="h-4 w-4" />
-                Website URL *
-              </Label>
-              <Input
-                id="url"
-                type="url"
-                placeholder="https://example.com"
-                value={sessionUrl}
-                onChange={(e) => setSessionUrl(e.target.value)}
-                disabled={loading || isSessionRunning}
-                required
-                className="mt-1"
-              />
-            </div>
-            
+            {mode === "edit" && (
+              <>
+                <div>
+                  <Label htmlFor="url" className="flex items-center gap-2">
+                    <Globe className="h-4 w-4" />
+                    Website URL *
+                  </Label>
+                  <Input
+                    id="url"
+                    type="url"
+                    placeholder="https://example.com"
+                    value={sessionUrl}
+                    onChange={(e) => setSessionUrl(e.target.value)}
+                    disabled={loading || isSessionRunning}
+                    required
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 ml-0 sm:ml-2">
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-1 text-sm">
+                        <input
+                          type="radio"
+                          name="crawlType"
+                          value="full"
+                          checked={crawlType === "full"}
+                          onChange={() => {
+                            setCrawlTypeState("full");
+                            dispatch(setCrawlType("full"));
+                          }}
+                        />
+                        Full Website
+                      </label>
+                      <label className="flex items-center gap-1 text-sm">
+                        <input
+                          type="radio"
+                          name="crawlType"
+                          value="single"
+                          checked={crawlType === "single"}
+                          onChange={() => {
+                            setCrawlTypeState("single");
+                            dispatch(setCrawlType("single"));
+                          }}
+                        />
+                        Single Page
+                      </label>
+                    </div>
+                    {/* Services Dropdown */}
+                  </div>
+                </div>
+                {/* Custom Instructions for edit mode */}
+                <div className="mt-4">
+                  <CustomInstructions
+                    sessionInstructions={session?.instructions || []}
+                    loading={loading}
+                    isSessionRunning={isSessionRunning}
+                  />
+                </div>
+              </>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="companyName" className="flex items-center gap-2">
+                <Label
+                  htmlFor="companyName"
+                  className="flex items-center gap-2"
+                >
                   <Building className="h-4 w-4" />
                   Company Name
                 </Label>
@@ -201,9 +269,12 @@ export function SessionForm({ session, mode, onSubmit, sessions }: SessionFormPr
                   className="mt-1"
                 />
               </div>
-              
+
               <div>
-                <Label htmlFor="phoneNumber" className="flex items-center gap-2">
+                <Label
+                  htmlFor="phoneNumber"
+                  className="flex items-center gap-2"
+                >
                   <Phone className="h-4 w-4" />
                   Phone Number
                 </Label>
@@ -217,7 +288,7 @@ export function SessionForm({ session, mode, onSubmit, sessions }: SessionFormPr
                   className="mt-1"
                 />
               </div>
-              
+
               <div>
                 <Label htmlFor="email" className="flex items-center gap-2">
                   <Mail className="h-4 w-4" />
@@ -233,7 +304,7 @@ export function SessionForm({ session, mode, onSubmit, sessions }: SessionFormPr
                   className="mt-1"
                 />
               </div>
-              
+
               <div>
                 <Label htmlFor="address" className="flex items-center gap-2">
                   <MapPin className="h-4 w-4" />
@@ -250,7 +321,7 @@ export function SessionForm({ session, mode, onSubmit, sessions }: SessionFormPr
                 />
               </div>
             </div>
-            
+
             <div>
               <Label htmlFor="customInfo" className="flex items-center gap-2">
                 <FileText className="h-4 w-4" />
@@ -267,72 +338,33 @@ export function SessionForm({ session, mode, onSubmit, sessions }: SessionFormPr
               />
             </div>
 
-            {/* Instructions textarea list */}
-            {/* <div>
-              <Label className="flex items-center gap-2 mb-1">
-                <FileText className="h-4 w-4" />
-                Instructions
-              </Label>
-              <div className="space-y-3">
-                {instructions.map((inst, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <textarea
-                      value={inst}
-                      onChange={(e) => handleInstructionChange(idx, e.target.value)}
-                      placeholder={`Instruction ${idx + 1}`}
-                      className="flex-1 h-16 rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-                      rows={2}
-                      disabled={loading || isSessionRunning}
-                    />
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="outline"
-                      onClick={handleAddInstruction}
-                      aria-label="Add instruction"
-                      disabled={loading || isSessionRunning}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                    {instructions.length > 1 && (
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="destructive"
-                        onClick={() => handleRemoveInstruction(idx)}
-                        aria-label="Remove instruction"
-                        disabled={loading || isSessionRunning}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
+            {mode === "edit" && (
+              <div className="flex items-center gap-3 pt-4">
+                <Button
+                  type="submit"
+                  disabled={loading || !sessionUrl.trim() || isSessionRunning}
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-2" />
+                  )}
+                  Save Changes
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => router.push("/sessions")}
+                  disabled={loading}
+                >
+                  Cancel
+                </Button>
               </div>
-            </div> */}
-            
-            <div className="flex items-center gap-3 pt-4">
-              <Button type="submit" disabled={loading || !sessionUrl.trim() || isSessionRunning}>
-                {loading ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4 mr-2" />
-                )}
-                {mode === 'create' ? 'Create Project' : 'Save Changes'}
-              </Button>
-              
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => router.push('/sessions')}
-                disabled={loading}
-              >
-                Cancel
-              </Button>
-            </div>
+            )}
           </form>
         </CardContent>
       </Card>
     </div>
   );
-} 
+}

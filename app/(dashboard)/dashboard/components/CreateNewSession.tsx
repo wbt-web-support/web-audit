@@ -1,23 +1,33 @@
+"use client"
 import { AuditSession } from "@/lib/types/database";
 import { useRouter } from "next/navigation";
-import React, { useState } from "react";
+import React, { useEffect } from "react";
 import { toast } from "react-toastify";
+import { useSelector, useDispatch } from 'react-redux';
+import { RootState } from '@/app/stores/store';
+import { setInputUrl, setCrawlType, clearForm } from '@/app/stores/dashboardFormSlice';
 import ServicesDropdown from "./ServicesDropdown";
+import { SessionForm } from "@/components/audit/session-form";
+import CustomInstructions from "./CustomInstructions";
 
 interface RecentSessionsProps {
   sessions: AuditSession[];
 }
 
-
-
-
 export function CreateNewSession({ sessions }: RecentSessionsProps) {
-  const [inputUrl, setInputUrl] = useState("");
-  const [crawlType, setCrawlType] = useState<"full" | "single">("full");
   const router = useRouter();
+  const dispatch = useDispatch();
+  const { inputUrl, crawlType, selectedServices, companyDetails,instructions } = useSelector((state: RootState) => state.dashboardForm);
+  
+    useEffect(() => {
+      console.log("**************selectedServices**************",selectedServices);
+    }, [selectedServices]);
+
   const normalizeUrl = (url: string) => url.replace(/\/+$/, "").toLowerCase();
 
   const handleCreateSession = async () => {
+    // Log companyDetails from Redux
+    console.log('companyDetails:', companyDetails);
     const found = sessions.some(
       (session) => normalizeUrl(session.base_url) === normalizeUrl(inputUrl)
     );
@@ -31,7 +41,12 @@ export function CreateNewSession({ sessions }: RecentSessionsProps) {
       try {
         const payload = {
           base_url: inputUrl.trim(),
+          crawlType: crawlType,
+          services: selectedServices,
+          companyDetails: companyDetails,
+          instructions: instructions,
         };
+   
         const response = await fetch("/api/audit-sessions", {
           method: "POST",
           headers: {
@@ -43,8 +58,8 @@ export function CreateNewSession({ sessions }: RecentSessionsProps) {
         if (response.ok) {
           router.push(`/audit?session=${data.session.id}`);
           toast.success("Session created successfully!");
-          // Optionally, you can clear the input or refresh the session list here
-          setInputUrl("");
+          // Clear the form after successful creation
+          dispatch(clearForm());
         } else {
           toast.error(data.error || "Failed to create session.");
         }
@@ -65,7 +80,7 @@ export function CreateNewSession({ sessions }: RecentSessionsProps) {
             id="base-url"
             className="border rounded-xl w-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
             value={inputUrl}
-            onChange={(e) => setInputUrl(e.target.value)}
+            onChange={(e) => dispatch(setInputUrl(e.target.value))}
           />
           <button
             className="border rounded-xl px-8 py-2 bg-primary text-white font-semibold hover:bg-primary/90 transition w-full sm:w-auto"
@@ -82,7 +97,7 @@ export function CreateNewSession({ sessions }: RecentSessionsProps) {
                 name="crawlType"
                 value="full"
                 checked={crawlType === "full"}
-                onChange={() => setCrawlType("full")}
+                onChange={() => dispatch(setCrawlType("full"))}
               />
               Full Website
             </label>
@@ -92,7 +107,7 @@ export function CreateNewSession({ sessions }: RecentSessionsProps) {
                 name="crawlType"
                 value="single"
                 checked={crawlType === "single"}
-                onChange={() => setCrawlType("single")}
+                onChange={() => dispatch(setCrawlType("single"))}
               />
               Single Page
             </label>
@@ -102,6 +117,16 @@ export function CreateNewSession({ sessions }: RecentSessionsProps) {
           <div className="w-full ">
             <ServicesDropdown />
           </div>
+            {selectedServices.includes('contact_details_consistency') && (
+              <div className="contact_details_consistency">
+                <SessionForm mode='create'/>
+              </div>
+            )}
+            {selectedServices.includes('custom_instructions') && (
+              <div className="custom_instructions">
+                <CustomInstructions />
+              </div>
+            )}
       </div>
     </div>
   );

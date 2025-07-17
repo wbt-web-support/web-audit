@@ -41,16 +41,23 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     console.log("Received body:", body);
+    
     const { 
       base_url, 
-      company_name, 
-      phone_number, 
-      email, 
-      address, 
-      custom_info,
+      crawlType, 
+      services, 
+      companyDetails,
       instructions
     } = body;
 
+    const {
+      companyName,
+      phoneNumber,
+      email,
+      address,
+      customInfo
+    } = companyDetails || {};
+   
     if (!base_url) {
       return NextResponse.json(
         { error: 'base_url is required' },
@@ -74,13 +81,16 @@ export async function POST(request: Request) {
       .insert({
         user_id: user.id,
         base_url,
+        crawl_type: crawlType,
+        instructions: instructions || null,
+        services: services || null,
         status: 'pending',
-        company_name: company_name || null,
-        phone_number: phone_number || null,
+        company_name: companyName || null,
+        phone_number: phoneNumber || null,
         email: email || null,
         address: address || null,
-        instructions: instructions || null,
-        custom_info: custom_info || null,
+        custom_info: customInfo || null,
+        // if you have this in the body
       })
       .select()
       .single();

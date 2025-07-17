@@ -95,7 +95,7 @@ export function DashboardMain() {
         totalPagesAnalyzed={stats.totalPagesAnalyzed}
         averageScore={stats.averageScore}
       /> */}
-      {/* <SessionForm mode='create' sessions={stats.recentSessions}/> */}
+      
       {/* Recent Sessions */}
     </div>
   );

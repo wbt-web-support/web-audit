@@ -1,23 +1,20 @@
+"use client"
 import React, { useRef, useEffect } from 'react'
 import { ArrowUp, ArrowDown } from "lucide-react";
 import { useDispatch, useSelector } from 'react-redux';
-import { setSelectedServices } from '../store/servicesSlice'; // adjust path as needed
-import type { RootState } from 'app/store'; // adjust path as needed
-
+import { RootState } from '@/app/stores/store';
+import { setSelectedServices } from '@/app/stores/dashboardFormSlice';
 
 const SERVICES = [
-    { label: "Company Info Check", value: "company_info" },
-    { label: "Check Content Consistency", value: "content_consistency" },
-    { label: "SEO Audit", value: "seo_audit" },
-    { label: "Accessibility Review", value: "accessibility" },
-    { label: "Performance Analysis", value: "performance" },
+    { label: "Check Contact details Consistency", value: "contact_details_consistency" },
+    { label: "Add custom instructions", value: "custom_instructions" },
   ];
   
 
 export default  function ServicesDropdown() {
     const [open, setOpen] = React.useState(false);
     const dispatch = useDispatch();
-    const selected = useSelector((state: RootState) => state.services.selected);
+    const selected = useSelector((state: RootState) => state.dashboardForm.selectedServices);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -51,7 +48,7 @@ export default  function ServicesDropdown() {
           onClick={() => setOpen((o) => !o)}
         >
           <span>
-            Services {selected.length > 0 ? `(${selected.length})` : ""}
+          Other Services {selected.length > 0 ? `(${selected.length})` : ""}
           </span>
           <span className="ml-2 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
             {open ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}

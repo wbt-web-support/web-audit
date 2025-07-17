@@ -114,10 +114,19 @@ interface PageAnalysis {
   phone_ui_quality_analysis?: any;
   tablet_ui_quality_analysis?: any;
   desktop_ui_quality_analysis?: any;
+  imgTags?: {
+    total: number;
+    missingAltCount: number;
+    imgTags: Array<{ src: string; hasAlt: boolean }>;
+  };
 }
 
 interface PageDetailSimpleProps {
   pageId: string;
+}
+
+function hasImgTags(obj: unknown): obj is { imgTags: { total: number; missingAltCount: number; imgTags: Array<{ src: string; hasAlt: boolean }> } } {
+  return !!obj && typeof obj === 'object' && 'imgTags' in obj && typeof (obj as any).imgTags === 'object' && Array.isArray((obj as any).imgTags.imgTags);
 }
 
 export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
@@ -163,6 +172,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
           
           if (data.results.seo_analysis) {
             newAnalysis.seoAnalysis = data.results.seo_analysis;
+           
             setSeoCached(true);
             setSeoCachedAt(data.results.created_at || data.results.updated_at);
             setSeoAnalyzing(false);
@@ -208,7 +218,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
           grammar_result: !!data.results?.grammar_analysis,
           seo_result: !!data.results?.seo_analysis
         });
-        
+        console.log("seoAnalysis**********", data.results.seo_analysis);
         setSession(data.session);
         setPage(data.page);
         
@@ -1562,6 +1572,33 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                                   <div className="text-xs text-muted-foreground">External</div>
             </div>
           </div>
+                              {/* Image Tag Analysis */}
+                              
+                              {hasImgTags(analysis.seoAnalysis) && (
+                                <>
+                                  <div className="grid grid-cols-2 gap-3 text-center mt-4">
+                                    <div className="p-3 border rounded">
+                                      <div className="text-2xl font-bold">{analysis.seoAnalysis.imgTags.total || 0}</div>
+                                      <div className="text-xs text-muted-foreground">Images (&lt;img&gt; tags)</div>
+                                    </div>
+                                    <div className="p-3 border rounded">
+                                      <div className="text-2xl font-bold">{analysis.seoAnalysis.imgTags.missingAltCount || 0}</div>
+                                      <div className="text-xs text-muted-foreground">Missing alt attribute</div>
+                                    </div>
+                                  </div>
+                                  {/* List images missing alt */}
+                                  {Array.isArray(analysis.seoAnalysis.imgTags.imgTags) && analysis.seoAnalysis.imgTags.imgTags.filter((img: any) => !img.hasAlt).length > 0 && (
+                                    <div className="mt-4 text-left">
+                                      <div className="font-medium text-destructive mb-2 text-sm">Images missing alt attribute:</div>
+                                      <ul className="list-disc list-inside text-xs text-muted-foreground space-y-1">
+                                        {analysis.seoAnalysis.imgTags.imgTags.filter((img: any) => !img.hasAlt).map((img: any, idx: number) => (
+                                          <li key={idx} className="break-all">{img.src}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                </>
+                              )}
         </CardContent>
       </Card>
                         </div>

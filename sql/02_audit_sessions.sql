@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS audit_sessions (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   base_url TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'crawling', 'analyzing', 'completed', 'failed')),
+  crawl_type TEXT DEFAULT 'full' CHECK (crawl_type IN ('single', 'full')),
   total_pages INTEGER DEFAULT 0,
   pages_crawled INTEGER DEFAULT 0,
   pages_analyzed INTEGER DEFAULT 0,

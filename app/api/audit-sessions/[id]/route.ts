@@ -57,6 +57,8 @@ export async function PUT(
       address, 
       custom_info,
       instructions,
+      crawlType,
+      services,
     } = body;
 
     if (!base_url) {
@@ -107,6 +109,8 @@ export async function PUT(
       address: address || null,
       custom_info: custom_info || null,
       instructions: instructions || null,
+      crawl_type: crawlType || null,
+      services: services || null,
     };
 
     const { data: session, error } = await supabase
@@ -126,7 +130,54 @@ export async function PUT(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
+    if (session.status !== 'pending') {
+      // Set session status to 'pending' after update
+      const { data: updatedSession, error: statusError } = await supabase
+        .from('audit_sessions')
+        .update({ status: 'pending' })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+      if (!statusError && updatedSession) {
+        session.status = updatedSession.status;
+      } else if (statusError) {
+        console.error('Error setting session status to pending:', statusError);
+      }
+    }
+
     console.log('Session updated successfully:', session.id);
+
+    // Fetch all scraped_pages for this session
+    const { data: pages, error: pagesError } = await supabase
+      .from('scraped_pages')
+      .select('id')
+      .eq('audit_session_id', id);
+
+    if (pagesError) {
+      console.error('Error fetching scraped pages:', pagesError);
+    } else if (pages && pages.length > 0) {
+      const pageIds = pages.map((p: { id: string }) => p.id);
+      // 2. Delete all audit_results for these page ids
+      const { error: deleteError } = await supabase
+        .from('audit_results')
+        .delete()
+        .in('scraped_page_id', pageIds);
+      if (deleteError) {
+        console.error('Error deleting audit results:', deleteError);
+        // Not a fatal error, continue
+      }
+      // 3. Delete all scraped_pages for this session
+      const { error: deletePagesError } = await supabase
+        .from('scraped_pages')
+        .delete()
+        .in('id', pageIds);
+      if (deletePagesError) {
+        console.error('Error deleting scraped pages:', deletePagesError);
+        // Not a fatal error, continue
+      }
+    }
+
     return NextResponse.json({ session });
   } catch (error) {
     console.error('PUT route error:', error);

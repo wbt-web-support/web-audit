@@ -39,7 +39,19 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const { session_id } = body;
+    const { data: sessionData } = await supabase.from("audit_sessions").select("crawl_type").eq("id", session_id).single();
+    const crawl_type = sessionData?.crawl_type;
+    console.log("**************crawl_type**************",crawl_type);
     console.log("Received body:", body);
+    
+    // Validate crawl_type - if not specified, default to 'full'
+    if (crawl_type && !['single', 'full'].includes(crawl_type)) {
+      return NextResponse.json(
+        { error: "Invalid crawl_type. Must be 'single' or 'full'" },
+        { status: 400 }
+      );
+    }
+    
     if (!session_id) {
       return NextResponse.json(
         { error: "session_id is required" },
@@ -86,8 +98,8 @@ export async function POST(request: Request) {
       .update({ status: "crawling" })
       .eq("id", session_id);
 
-    // Start crawling in the background
-    await crawlWebsite(session_id, session.base_url, user.id, existingUrls);
+    // Start crawling in the background based on crawl_type
+    await crawlWebsite(session_id, session.base_url, user.id, existingUrls, crawl_type);
 
     return NextResponse.json({
       message: "Crawling started",
@@ -106,15 +118,25 @@ async function crawlWebsite(
   sessionId: string,
   baseUrl: string,
   userId: string,
-  existingUrls: Set<string>
+  existingUrls: Set<string>,
+  crawlType?: string
 ) {
   const supabase = await createClient();
-  const scraper = new WebScraper(baseUrl, {
-    maxPages: 50,
-    maxDepth: 3,
+  
+  // Configure scraper based on crawl type
+  // - 'single': Crawl only the base URL (maxPages: 1, maxDepth: 0)
+  // - 'full': Crawl the entire website (maxPages: 50, maxDepth: 3)
+  const scraperOptions = {
+    maxPages: crawlType === 'single' ? 1 : 50,
+    maxDepth: crawlType === 'single' ? 0 : 3,
     followExternal: false,
     respectRobotsTxt: true,
-  });
+  };
+  
+  const scraper = new WebScraper(baseUrl, scraperOptions);
+
+  console.log(`Starting crawl with type: ${crawlType || 'full'}`);
+  console.log(`Scraper options:`, scraperOptions);
 
   try {
     let pagesCrawled = 0;
@@ -200,7 +222,7 @@ async function crawlWebsite(
       })
       .eq("id", sessionId);
 
-    console.log(`Crawling completed: ${pagesCrawled} pages crawled`);
+    console.log(`Crawling completed (${crawlType || 'full'}): ${pagesCrawled} pages crawled`);
     
   } catch (error: any) {
     // Check if it was stopped by user

@@ -74,7 +74,6 @@ export function AuditMain() {
   const searchParams = useSearchParams();
   const selectedSessionId = searchParams.get('session');
   const crawlingStartedRef = useRef(false);
-
   useEffect(() => {
     fetchData();
   }, [selectedSessionId]);
@@ -266,8 +265,8 @@ toast("crawling is started");
     
     // Mark pages as analyzing
     setAnalyzingPages(new Set(pageIds));
-console.log("session id ",sessionId)
-console.log("pageIds ",pageIds)
+    console.log("session id ",sessionId)
+    console.log("pageIds ",pageIds)
     try {
       const response = await fetch(`/api/audit-sessions/${sessionId}/analyze`, {
         method: 'POST',
@@ -670,10 +669,10 @@ console.log("pageIds ",pageIds)
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
-          <Link href="/sessions">
+          <Link href={`/sessions/edit/${sessions[0].id}`}>
             <Button variant="outline">
               <Settings className="h-4 w-4 mr-2" />
-              Manage Sessions
+              Edit Projects
             </Button>
           </Link>
         </div>

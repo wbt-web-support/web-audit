@@ -25,6 +25,9 @@ export type AuditSession = {
   email: string | null;
   address: string | null;
   custom_info: string | null;
+  instructions?: string[] | null;
+  crawl_type?: string | null;
+  services?: string[] | null;
 };
 
 export interface ScrapedPage {

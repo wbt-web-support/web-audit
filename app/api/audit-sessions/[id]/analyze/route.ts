@@ -16,8 +16,8 @@ export async function POST(
     const supabase = await createClient();
     const { id } = await params;
     console.log("id******************",id)
-    const instructions = await supabase.from("audit_sessions").select("instructions").eq("id", id).single();
-    console.log("instructions******************",instructions.data);
+    const services = await supabase.from("audit_sessions").select("services").eq("id", id).single();
+    console.log("services******************",services.data);
   
     const {
       data: { user },
@@ -36,7 +36,7 @@ export async function POST(
       background = null, // Auto-determine based on page count
       force_refresh = false, // Force refresh cached results
     } = body;
- console.log("page ids ",body.page_id )
+  
     // Verify the session belongs to the user
     const { data: session, error: sessionError } = await supabase
       .from("audit_sessions")
@@ -150,7 +150,9 @@ async function performSinglePageAnalysis(
     let seoAnalysis = null;
     let cached = false;
     let cachedAt = null;
-
+    let instructions = session.instructions;
+    console.log("instructions**********", instructions);
+  
     // Check for cached results first (unless force refresh)
     if (useCache && !forceRefresh) {
       const { data: cachedResult, error: cacheError } = await supabase
@@ -260,6 +262,25 @@ async function performSinglePageAnalysis(
       .eq("id", page.id);
     console.log(`[DB] Screenshot URLs saved for page ${page.id}`);
 
+    // --- Custom Instructions Analysis ---
+    let customInstructionsAnalysis = null;
+    // Defensive: handle both array and string for services
+    let servicesArr = Array.isArray(session.services)
+      ? session.services
+      : typeof session.services === "string"
+        ? session.services.split(",").map((s: string) => s.trim())
+        : [];
+    if (
+      session.instructions &&
+      servicesArr.includes("custom_instructions")
+    ) {
+      customInstructionsAnalysis = await analyzeWithCustomInstructions(
+        session.instructions,
+        page.html || "",
+        screenshotUrls
+      );
+    }
+    console.log("customInstructionsAnalysis**********", customInstructionsAnalysis);
     // Calculate combined score if both analyses are requested
     let overallScore = 0;
     if (grammarAnalysis && seoAnalysis) {
@@ -302,6 +323,7 @@ async function performSinglePageAnalysis(
         cached,
         cached_at: cachedAt,
         freshly_scraped: true,
+        custom_instructions_analysis: customInstructionsAnalysis,
       };
     } else if (analysisTypes.includes("grammar")) {
       return {
@@ -310,6 +332,7 @@ async function performSinglePageAnalysis(
         cached,
         cached_at: cachedAt,
         freshly_scraped: true,
+        custom_instructions_analysis: customInstructionsAnalysis,
       };
     } else if (analysisTypes.includes("seo")) {
       return {
@@ -318,6 +341,7 @@ async function performSinglePageAnalysis(
         cached,
         cached_at: cachedAt,
         freshly_scraped: true,
+        custom_instructions_analysis: customInstructionsAnalysis,
       };
     }
 
@@ -890,7 +914,8 @@ async function analyzeSEO(
 
   // Links analysis
   const linksCheck = analyzeLinks(html, url);
-
+  const imgTags = analyzeImgTags(html);
+  console.log("imgTags**********", imgTags);
   // Redirect check
   const redirectCheck = {
     hasRedirect: statusCode !== 200,
@@ -1015,6 +1040,15 @@ async function analyzeSEO(
     issues.push("Missing Open Graph tags");
     recommendations.push("Add Open Graph tags for better social media sharing");
   }
+
+  if(imgTags.missingAltCount > 0) {
+    score -= 5;
+    issues.push(`${imgTags.missingAltCount} images are missing alt tags`);
+    recommendations.push("Add alt tags to all images");
+  }
+  else{
+    score += 5;
+  }
   console.log("end analyzing seo");
   return {
     metaTags,
@@ -1026,6 +1060,7 @@ async function analyzeSEO(
     overallScore: Math.min(100, score),
     issues,
     recommendations,
+    imgTags
   };
 }
 
@@ -1125,6 +1160,22 @@ function analyzeLinks(html: string, baseUrl: string) {
   };
 }
 
+function analyzeImgTags(html: string) {
+  const imgMatches = html.match(/<img[^>]*src=["']([^"']*?)["'][^>]*>/gi) || [];
+  const imgTags = imgMatches.map((match) => {
+    const src = match.match(/src=["']([^"']*?)["']/)?.[1] || "";
+    const hasAlt = /alt=["'][^"']*["']/i.test(match);
+    return { src, hasAlt };
+  });
+  const total = imgTags.length;
+  const missingAlt = imgTags.filter(img => !img.hasAlt);
+  return {
+    total,
+    missingAltCount: missingAlt.length,
+    missingAltSrcs: missingAlt.map(img => img.src),
+    imgTags // for reference, can be removed if not needed
+  };
+}
 // Analyze UI image using Gemini Vision API
 // This version ignores the image and just sends a simple prompt to Gemini for testing.
 
@@ -1237,6 +1288,63 @@ Provide the analysis strictly in the following JSON format, without any extra te
   }
 }
 
+async function analyzeWithCustomInstructions(
+  instructions: string,
+  pageHtml: string,
+  screenshotUrls: Record<string, string | null>
+): Promise<any> {
+  try {
+    console.log("instructions start**********", instructions);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+    let prompt = `You are an expert web auditor.\n\nFollow these custom instructions:\n${instructions}\n\nYou are provided with the following page HTML and screenshots.\n\nIMPORTANT LIMITATION: Only use the provided page HTML and screenshots. Do NOT use any external or general knowledge. Limit your response strictly to what is present in the data. If you cannot answer something based on the provided data, say so.\n\nPage HTML:\n${pageHtml}\n`;
+    // Add screenshot references
+    for (const device of ["phone", "tablet", "desktop"]) {
+      if (screenshotUrls[device]) {
+        prompt += `\nScreenshot (${device}): [image attached]`;
+      }
+    }
+    // Prepare Gemini content parts
+    const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [{ text: prompt }];
+    for (const device of ["phone", "tablet", "desktop"]) {
+      if (screenshotUrls[device]) {
+        // Fetch and attach image as base64
+        const response = await axios.get(screenshotUrls[device]!, { responseType: "arraybuffer" });
+        const base64Image = Buffer.from(response.data, "binary").toString("base64");
+        parts.push({
+          inlineData: {
+            mimeType: "image/png",
+            data: base64Image,
+          },
+        });
+      }
+    }
+    const contents = [{ role: "user", parts }];
+    let result;
+    try {
+      result = await model.generateContent({ contents });
+    } catch (err) {
+      console.error("[Gemini Custom Instructions] Gemini API error:", err);
+      return { error: "Gemini API error" };
+    }
+    let geminiResponse = typeof result?.response?.text === "function" ? result.response.text() : result?.response?.text || null;
+    // Clean up Gemini's response
+    let cleaned = (geminiResponse || "").replace(/```json|```/g, "").trim();
+    // Try to extract the first JSON object if extra text is present
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
+    }
+    try {
+      return JSON.parse(cleaned);
+    } catch (e) {
+      // If not JSON, just return the text
+      return { response: geminiResponse };
+    }
+  } catch (error) {
+    console.error("[Gemini Custom Instructions] Error:", error);
+    return { error: "Failed to process custom instructions" };
+  }
+}
 
 async function takeAllScreenshots(url: string, pageId: number) {
   const devices: Array<"phone" | "tablet" | "desktop"> = [

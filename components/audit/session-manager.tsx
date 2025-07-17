@@ -113,14 +113,14 @@ export function SessionManager() {
     <div className="container mx-auto px-4 py-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Session Management</h1>
-          <p className="text-muted-foreground">Create and manage your website audit sessions</p>
+          <h1 className="text-3xl font-bold">Projects Management</h1>
+          <p className="text-muted-foreground">Create and manage your website audit Projects</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => router.push('/sessions/create')}>
+          {/* <Button onClick={() => router.push('/sessions/create')}>
             <Plus className="h-4 w-4 mr-2" />
-            Create New Session
-          </Button>
+            Create New Project
+          </Button> */}
         
         </div>
       </div>
@@ -137,16 +137,16 @@ export function SessionManager() {
 
       {/* Sessions List */}
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Your Sessions</h2>
+        <h2 className="text-xl font-semibold">Your Projects</h2>
         
         {sessions.length === 0 ? (
           <Card>
             <CardContent className="pt-6">
               <div className="text-center py-8">
                 <Globe className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">No sessions found</p>
+                    <p className="text-muted-foreground">No projects found</p>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Create your first session to get started
+                  Create your first project to get started
                 </p>
               </div>
             </CardContent>
