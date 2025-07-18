@@ -791,7 +791,7 @@ toast("crawling is started");
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Pages Analyzed</p>
-                <p className="font-medium">{sessions[0].pages_analyzed || 0}</p>
+                <p className="font-medium">{analyzedPages.filter(p => getAnalysisStatus(p) === 'analyzed').length}</p>
               </div>
             </div>
           </CardContent>

@@ -29,6 +29,28 @@ export async function GET(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
+    // Calculate the actual pages_analyzed count dynamically
+    const { data: analyzedPages, error: countError } = await supabase
+      .from('scraped_pages')
+      .select('id')
+      .eq('audit_session_id', id)
+      .not('analysis_status', 'is', null)
+      .neq('analysis_status', 'pending');
+
+    if (!countError && analyzedPages) {
+      const actualAnalyzedCount = analyzedPages.length;
+      
+      // Update the session with the correct count if it's different
+      if (session.pages_analyzed !== actualAnalyzedCount) {
+        await supabase
+          .from('audit_sessions')
+          .update({ pages_analyzed: actualAnalyzedCount })
+          .eq('id', id);
+        
+        session.pages_analyzed = actualAnalyzedCount;
+      }
+    }
+
     return NextResponse.json({ session }, { status: 200 });
   } catch (error) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

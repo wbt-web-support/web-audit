@@ -8,6 +8,39 @@ import fs from "fs/promises";
 import axios from "axios";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
+async function updatePagesAnalyzedCount(supabase: any, sessionId: string) {
+  try {
+    // Count pages that have been analyzed (have audit_results)
+    const { data: analyzedPages, error: countError } = await supabase
+      .from('scraped_pages')
+      .select('id')
+      .eq('audit_session_id', sessionId)
+      .not('analysis_status', 'is', null)
+      .neq('analysis_status', 'pending');
+
+    if (countError) {
+      console.error('Error counting analyzed pages:', countError);
+      return;
+    }
+
+    const analyzedCount = analyzedPages?.length || 0;
+
+    // Update the session with the correct count
+    const { error: updateError } = await supabase
+      .from('audit_sessions')
+      .update({ pages_analyzed: analyzedCount })
+      .eq('id', sessionId);
+
+    if (updateError) {
+      console.error('Error updating pages_analyzed count:', updateError);
+    } else {
+      console.log(`Updated pages_analyzed count to ${analyzedCount} for session ${sessionId}`);
+    }
+  } catch (error) {
+    console.error('Error in updatePagesAnalyzedCount:', error);
+  }
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -151,8 +184,8 @@ async function performSinglePageAnalysis(
     let cached = false;
     let cachedAt = null;
     let instructions = session.instructions;
-    console.log("instructions**********", instructions);
-  
+    console.log("instructions**********", session);
+
     // Check for cached results first (unless force refresh)
     if (useCache && !forceRefresh) {
       const { data: cachedResult, error: cacheError } = await supabase
@@ -313,6 +346,9 @@ async function performSinglePageAnalysis(
       .eq("id", page.id);
     console.log(`[DONE] Analysis completed for page ${page.id}`);
 
+    // Update the pages_analyzed count for the session
+    await updatePagesAnalyzedCount(supabase, session.id);
+
     // Return appropriate response based on what was requested
     if (analysisTypes.includes("grammar") && analysisTypes.includes("seo")) {
       return {
@@ -354,6 +390,9 @@ async function performSinglePageAnalysis(
       .from("scraped_pages")
       .update({ analysis_status: "failed" })
       .eq("id", page.id);
+
+    // Update the pages_analyzed count for the session (even for failed pages)
+    await updatePagesAnalyzedCount(supabase, session.id);
 
     throw error;
   }
@@ -484,8 +523,7 @@ async function analyzePages(
     // Run all analyses in parallel (no concurrency limit)
     const results = await Promise.all(pages.map(startPageAnalysis));
 
-    // Count analyzed and failed pages
-    const analyzedCount = results.filter(r => r.success).length;
+    // Count failed pages
     const failedPages = results.filter(r => !r.success);
     const failedCount = failedPages.length;
 
@@ -493,7 +531,10 @@ async function analyzePages(
     let finalStatus = "completed";
     let errorMessage = null;
 
-    if (analyzedCount === 0) {
+    if (results.length === 0) {
+      finalStatus = "failed";
+      errorMessage = "No pages were processed";
+    } else if (failedCount === results.length) {
       finalStatus = "failed";
       errorMessage = "All pages failed to analyze";
     } else if (failedCount > 0) {
@@ -501,19 +542,20 @@ async function analyzePages(
       errorMessage = `Analysis completed with ${failedCount} failures`;
     }
 
+    // Update the pages_analyzed count for the session
+    await updatePagesAnalyzedCount(supabase, sessionId);
+
     // Update session status to completed
     await supabase
       .from("audit_sessions")
       .update({
         status: finalStatus,
-        pages_analyzed: analyzedCount,
         completed_at: new Date().toISOString(),
         error_message: errorMessage,
       })
       .eq("id", sessionId);
 
-    console.log(`🎉 Parallel analysis completed for session ${sessionId}`);
-    console.log(`   Total analyzed: ${analyzedCount}/${pages.length}`);
+  
     if (failedCount > 0) {
       console.log(`   Failed pages: ${failedCount}`);
       failedPages.forEach((fp) => {

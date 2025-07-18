@@ -5,11 +5,10 @@ import { Button } from "@/components/ui/button";
 import { XCircle, Loader2 } from "lucide-react";
 import { DashboardStatsCards } from './dashboard-stats-cards';
 import { RecentSessions } from './recent-sessions';
-import { CreateNewSession } from './CreateNewSession';
+import { SessionForm } from '@/components/audit/session-form';
 import type { AuditSession } from '@/lib/types/database';
 import { createClient } from '@/lib/supabase/client';
 import type { UserProfile } from '@/lib/types/database';
-import { SessionForm } from '@/components/audit/session-form';
 
 export interface DashboardStats {
   totalSessions: number;
@@ -23,11 +22,9 @@ export function DashboardMain() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Remove userName state and fetchUserName logic
 
   useEffect(() => {
     fetchDashboardStats();
-    // Remove userName fetch
   }, []);
 
   const fetchDashboardStats = async () => {
@@ -44,8 +41,6 @@ export function DashboardMain() {
       setLoading(false);
     }
   };
-
-  // Remove userName fetch
 
   if (loading) {
     return (
@@ -85,7 +80,13 @@ export function DashboardMain() {
           We audit your web pages for SEO, accessibility, performance, and content quality. Get actionable insights and detailed reports to help you improve your website. Start a new audit session or review your recent results below.
         </p>
       </div>
-      <CreateNewSession sessions={stats.recentSessions}/>
+      
+      {/* Unified SessionForm for creating new sessions */}
+      <SessionForm 
+        mode="create" 
+        sessions={stats.recentSessions}
+      />
+      
       <RecentSessions sessions={stats.recentSessions} />
       
       {/* Statistics Cards */}
@@ -95,8 +96,6 @@ export function DashboardMain() {
         totalPagesAnalyzed={stats.totalPagesAnalyzed}
         averageScore={stats.averageScore}
       /> */}
-      
-      {/* Recent Sessions */}
     </div>
   );
 } 
