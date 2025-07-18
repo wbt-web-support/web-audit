@@ -147,6 +147,8 @@ export function AuditMain() {
 
       // Fetch the selected project
       const projectResponse = await fetch(`/api/audit-projects/${selectedProjectId}`);
+
+      
       const projectData = await projectResponse.json();
       if (projectResponse.ok) {
         setProjects([projectData.project]);
@@ -154,8 +156,12 @@ export function AuditMain() {
         try {
           const resultsResponse = await fetch(`/api/audit-projects/${selectedProjectId}/results`);
             const resultsData = await resultsResponse.json();
+            console.log("resultsData **********",resultsData)
+            console.log("crawlingStartedRef **********",crawlingStartedRef)
+
             if(resultsData.project.status=="pending" && !crawlingStartedRef.current){
               crawlingStartedRef.current = true;
+              console.log("projectResponse **********",projectResponse)
               startCrawling(projectData.project.id)
             }
             if (resultsResponse.ok && resultsData.pageResults) {
