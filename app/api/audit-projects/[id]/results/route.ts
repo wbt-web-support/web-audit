@@ -14,26 +14,26 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // First verify the session belongs to the user
-    const { data: session, error: sessionError } = await supabase
-      .from('audit_sessions')
+    // First verify the project belongs to the user
+    const { data: project, error: projectError } = await supabase
+      .from('audit_projects')
       .select('*')
       .eq('id', id)
       .eq('user_id', user.id)
       .single();
 
-    if (sessionError || !session) {
-      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    if (projectError || !project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    // Get all pages for this session with their analysis results
+    // Get all pages for this project with their analysis results
     const { data: pagesWithResults, error } = await supabase
       .from('scraped_pages')
       .select(`
         *,
         audit_results (*)
       `)
-      .eq('audit_session_id', id)
+      .eq('audit_project_id', id)
       .order('scraped_at', { ascending: true });
 
     if (error) {
@@ -47,7 +47,7 @@ export async function GET(
         url: page.url,
         title: page.title,
         status_code: page.status_code,
-        audit_session_id: page.audit_session_id,
+        audit_project_id: page.audit_project_id,
         scraped_at: page.scraped_at,
         analysis_status: page.analysis_status || 'pending'
       },
@@ -55,7 +55,7 @@ export async function GET(
     }));
 
     return NextResponse.json({ 
-      session,
+      project,
       pageResults,
       totalResults: pageResults.filter(p => p.results).length
     });

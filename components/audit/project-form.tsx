@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AuditSession, AuditSessionStatus } from "@/lib/types/database";
+import { AuditProject, AuditProjectStatus } from "@/lib/types/database";
 import {
   Loader2,
   Save,
@@ -40,23 +40,23 @@ import { RootState } from "@/app/stores/store";
 import CustomInstructions from "@/app/(dashboard)/dashboard/components/CustomInstructions";
 import ServicesDropdown from "@/app/(dashboard)/dashboard/components/ServicesDropdown";
 
-interface SessionFormProps {
-  session?: AuditSession | null;
+interface ProjectFormProps {
+  project?: AuditProject | null;
   mode: "create" | "edit";
-  onSubmit?: (session: AuditSession) => void;
-  sessions?: AuditSession[]; // For create mode to check duplicates
+  onSubmit?: (project: AuditProject) => void;
+  projects?: AuditProject[]; // For create mode to check duplicates
 }
 
-export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionFormProps) {
+export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectFormProps) {
   const [loading, setLoading] = useState(false);
-  const [sessionUrl, setSessionUrl] = useState(session?.base_url || "");
-  const [companyName, setCompanyName] = useState(session?.company_name || "");
-  const [phoneNumber, setPhoneNumber] = useState(session?.phone_number || "");
-  const [email, setEmail] = useState(session?.email || "");
-  const [address, setAddress] = useState(session?.address || "");
-  const [customInfo, setCustomInfo] = useState(session?.custom_info || "");
+  const [projectUrl, setProjectUrl] = useState(project?.base_url || "");
+  const [companyName, setCompanyName] = useState(project?.company_name || "");
+  const [phoneNumber, setPhoneNumber] = useState(project?.phone_number || "");
+  const [email, setEmail] = useState(project?.email || "");
+  const [address, setAddress] = useState(project?.address || "");
+  const [customInfo, setCustomInfo] = useState(project?.custom_info || "");
   const [crawlType, setCrawlTypeState] = useState<"full" | "single">(
-    session?.crawl_type === "single" ? "single" : "full"
+    project?.crawl_type === "single" ? "single" : "full"
   );
 
   const [error, setError] = useState("");
@@ -68,28 +68,28 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
   const { inputUrl, selectedServices, instructions } = useSelector((state: RootState) => state.dashboardForm);
 
   useEffect(() => {
-    if (session) {
-      setSessionUrl(session.base_url || "");
-      setCompanyName(session.company_name || "");
-      setPhoneNumber(session.phone_number || "");
-      setEmail(session.email || "");
-      setAddress(session.address || "");
-      setCustomInfo(session.custom_info || "");
-      setCrawlTypeState(session.crawl_type === "single" ? "single" : "full");
+    if (project) {
+      setProjectUrl(project.base_url || "");
+      setCompanyName(project.company_name || "");
+      setPhoneNumber(project.phone_number || "");
+      setEmail(project.email || "");
+      setAddress(project.address || "");
+      setCustomInfo(project.custom_info || "");
+      setCrawlTypeState(project.crawl_type === "single" ? "single" : "full");
       
-      // Load services from session data into Redux store
-      if (session.services && session.services.length > 0) {
-        dispatch(setSelectedServices(session.services));
+      // Load services from project data into Redux store
+      if (project.services && project.services.length > 0) {
+        dispatch(setSelectedServices(project.services));
       }
       
-      // Load instructions from session data into Redux store
-      if (session.instructions && session.instructions.length > 0) {
-        dispatch(setInstructions(session.instructions));
+      // Load instructions from project data into Redux store
+      if (project.instructions && project.instructions.length > 0) {
+        dispatch(setInstructions(project.instructions));
       }
       
-      console.log("session**********", session);
+      console.log("project**********", project);
     }
-  }, [session, dispatch]);
+  }, [project, dispatch]);
 
   useEffect(() => {
     console.log("crawlType**********", crawlType);
@@ -111,32 +111,32 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
   // Sync URL to Redux for create mode
   useEffect(() => {
     if (mode === "create") {
-      dispatch(setInputUrl(sessionUrl));
+      dispatch(setInputUrl(projectUrl));
     }
-  }, [sessionUrl, mode, dispatch]);
+  }, [projectUrl, mode, dispatch]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (mode === "create") {
-      await handleCreateSession();
+      await handleCreateProject();
     } else {
-      await handleEditSession();
+      await handleEditProject();
     }
   };
 
-  const handleCreateSession = async () => {
-    if (!sessionUrl.trim()) {
+  const handleCreateProject = async () => {
+    if (!projectUrl.trim()) {
       toast.error("Please enter a valid URL.");
       return;
     }
 
     // Check for duplicate URLs
-    const found = sessions.some(
-      (session) => normalizeUrl(session.base_url) === normalizeUrl(sessionUrl)
+    const found = projects.some(
+      (project) => normalizeUrl(project.base_url) === normalizeUrl(projectUrl)
     );
     if (found) {
-      toast.info("A URL is already present in the sessions.");
+      toast.info("A URL is already present in the projects.");
       return;
     }
 
@@ -145,7 +145,7 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
 
     try {
       const payload = {
-        base_url: sessionUrl.trim(),
+        base_url: projectUrl.trim(),
         crawlType: crawlType,
         services: selectedServices,
         companyDetails: {
@@ -158,7 +158,7 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
         instructions: instructions,
       };
 
-      const response = await fetch("/api/audit-sessions", {
+      const response = await fetch("/api/audit-projects", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -168,28 +168,28 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
 
       const data = await response.json();
       if (response.ok) {
-        router.push(`/audit?session=${data.session.id}`);
-        toast.success("Session created successfully!");
+        router.push(`/audit?project=${data.project.id}`);
+        toast.success("Project created successfully!");
         dispatch(clearForm());
       } else {
-        toast.error(data.error || "Failed to create session.");
+        toast.error(data.error || "Failed to create project.");
       }
     } catch (error) {
-      toast.error("Failed to create session.");
+      toast.error("Failed to create project.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleEditSession = async () => {
-    if (!sessionUrl.trim()) return;
+  const handleEditProject = async () => {
+    if (!projectUrl.trim()) return;
 
     setLoading(true);
     setError("");
 
     try {
       const payload = {
-        base_url: sessionUrl.trim(),
+        base_url: projectUrl.trim(),
         company_name: companyName.trim() || null,
         phone_number: phoneNumber.trim() || null,
         email: email.trim() || null,
@@ -200,7 +200,7 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
         instructions: instructions,
       };
 
-      const response = await fetch(`/api/audit-sessions/${session?.id}`, {
+      const response = await fetch(`/api/audit-projects/${project?.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -210,39 +210,39 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
 
       const data = await response.json();
       if (response.ok) {
-        if (onSubmit && data.session) {
-          onSubmit(data.session);
+        if (onSubmit && data.project) {
+          onSubmit(data.project);
         } else {
-          // Update local state to reflect saved session values
-          setSessionUrl(data.session.base_url || "");
-          setCompanyName(data.session.company_name || "");
-          setPhoneNumber(data.session.phone_number || "");
-          setEmail(data.session.email || "");
-          setAddress(data.session.address || "");
-          setCustomInfo(data.session.custom_info || "");
-          setCrawlTypeState(data.session.crawl_type === "single" ? "single" : "full");
-          router.push(`/audit?session=${data.session.id}`);
-          toast.success("Session updated successfully!");
+          // Update local state to reflect saved project values
+          setProjectUrl(data.project.base_url || "");
+          setCompanyName(data.project.company_name || "");
+          setPhoneNumber(data.project.phone_number || "");
+          setEmail(data.project.email || "");
+          setAddress(data.project.address || "");
+          setCustomInfo(data.project.custom_info || "");
+          setCrawlTypeState(data.project.crawl_type === "single" ? "single" : "full");
+          router.push(`/audit?project=${data.project.id}`);
+          toast.success("Project updated successfully!");
         }
       } else {
-        setError(data.error || "Failed to update session");
+        setError(data.error || "Failed to update project");
       }
     } catch (error) {
-      setError("Failed to update session");
+      setError("Failed to update project");
     } finally {
       setLoading(false);
     }
   };
 
-  const title = mode === "create" ? "Create New Audit Session" : "Edit Project";
+  const title = mode === "create" ? "Create New Audit Project" : "Edit Project";
   const description =
     mode === "create"
       ? "Enter website URL and company details to verify consistency across all pages"
       : "Update website URL and company information for verification";
 
-  // Check if session is running and prevent editing
-  const isSessionRunning = Boolean(
-    session && (session.status === "crawling" || session.status === "analyzing")
+  // Check if project is running and prevent editing
+  const isProjectRunning = Boolean(
+    project && (project.status === "crawling" || project.status === "analyzing")
   );
 
   return (
@@ -253,11 +253,11 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
           <CardDescription>{description}</CardDescription>
         </CardHeader>
         <CardContent>
-          {isSessionRunning && (
+          {isProjectRunning && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
               <div className="flex items-center gap-2 text-amber-700">
                 <span>
-                  This session is currently {session?.status}. You cannot edit
+                  This project is currently {project?.status}. You cannot edit
                   it while it's running.
                 </span>
               </div>
@@ -283,9 +283,9 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
                 id="url"
                 type="url"
                 placeholder="https://example.com"
-                value={sessionUrl}
-                onChange={(e) => setSessionUrl(e.target.value)}
-                disabled={loading || isSessionRunning}
+                value={projectUrl}
+                onChange={(e) => setProjectUrl(e.target.value)}
+                disabled={loading || isProjectRunning}
                 required
                 className="mt-1"
               />
@@ -335,9 +335,9 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
               <div className="custom_instructions">
                 {mode === "edit" ? (
                   <CustomInstructions
-                    sessionInstructions={session?.instructions || []}
+                    projectInstructions={project?.instructions || []}
                     loading={loading}
-                    isSessionRunning={isSessionRunning}
+                    isProjectRunning={isProjectRunning}
                   />
                 ) : (
                   <CustomInstructions />
@@ -363,7 +363,7 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
                       placeholder="Acme Corporation"
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
-                      disabled={loading || isSessionRunning}
+                      disabled={loading || isProjectRunning}
                       className="mt-1"
                     />
                   </div>
@@ -382,7 +382,7 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
                       placeholder="+1 (555) 123-4567"
                       value={phoneNumber}
                       onChange={(e) => setPhoneNumber(e.target.value)}
-                      disabled={loading || isSessionRunning}
+                      disabled={loading || isProjectRunning}
                       className="mt-1"
                     />
                   </div>
@@ -398,7 +398,7 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
                       placeholder="contact@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      disabled={loading || isSessionRunning}
+                      disabled={loading || isProjectRunning}
                       className="mt-1"
                     />
                   </div>
@@ -414,7 +414,7 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
                       placeholder="123 Main St, City, State 12345"
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
-                      disabled={loading || isSessionRunning}
+                      disabled={loading || isProjectRunning}
                       className="mt-1"
                     />
                   </div>
@@ -431,7 +431,7 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
                     placeholder="Any other information to verify (hours, services, etc.)"
                     value={customInfo}
                     onChange={(e) => setCustomInfo(e.target.value)}
-                    disabled={loading || isSessionRunning}
+                    disabled={loading || isProjectRunning}
                     className="mt-1"
                   />
                 </div>
@@ -442,7 +442,7 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
             <div className="flex flex-col sm:flex-row items-stretch gap-3 pt-4">
               <Button
                 type="submit"
-                disabled={loading || !sessionUrl.trim() || isSessionRunning}
+                disabled={loading || !projectUrl.trim() || isProjectRunning}
                 className="w-full bg "
               >
                 {loading ? (
@@ -459,7 +459,7 @@ export function SessionForm({ session, mode, onSubmit, sessions = [] }: SessionF
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => router.push("/sessions")}
+                  onClick={() => router.push("/projects")}
                   disabled={loading}
                   className="w-full sm:w-auto"
                 >

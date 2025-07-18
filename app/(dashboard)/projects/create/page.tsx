@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { SessionForm } from "@/components/audit/session-form";
+import { ProjectForm } from "@/components/audit/project-form";
 
-export default async function CreateSessionPage() {
+export default async function CreateProjectPage() {
   const supabase = await createClient();
 
   const { data, error } = await supabase.auth.getUser();
@@ -10,5 +10,5 @@ export default async function CreateSessionPage() {
     redirect("/auth/login");
   }
 
-  return <SessionForm mode="create" />;
+  return <ProjectForm mode="create" />;
 } 

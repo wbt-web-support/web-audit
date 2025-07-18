@@ -11,8 +11,8 @@ export async function GET() {
     }
 
     // Fetch statistics
-    const { data: sessions } = await supabase
-      .from('audit_sessions')
+    const { data: projects } = await supabase
+      .from('audit_projects')
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
@@ -22,30 +22,30 @@ export async function GET() {
       .select(`
         *,
         scraped_pages!inner(
-          audit_session_id,
-          audit_sessions!inner(
+          audit_project_id,
+          audit_projects!inner(
             user_id
           )
         )
       `)
-      .eq('scraped_pages.audit_sessions.user_id', user.id);
+      .eq('scraped_pages.audit_projects.user_id', user.id);
 
     // Calculate statistics
-    const totalSessions = sessions?.length || 0;
-    const activeSessions = sessions?.filter(s => s.status === 'crawling' || s.status === 'analyzing').length || 0;
+    const totalProjects = projects?.length || 0;
+    const activeProjects = projects?.filter(s => s.status === 'crawling' || s.status === 'analyzing').length || 0;
     const totalPagesAnalyzed = auditResults?.length || 0;
     const averageScore = auditResults && auditResults.length > 0
       ? Math.round(auditResults.reduce((sum, r) => sum + (r.overall_score || 0), 0) / auditResults.length)
       : 0;
 
-    const recentSessions = sessions?.slice(0, 5) || [];
+    const recentProjects = projects?.slice(0, 5) || [];
 
     return NextResponse.json({
-      totalSessions,
-      activeSessions,
+      totalProjects,
+      activeProjects,
       totalPagesAnalyzed,
       averageScore,
-      recentSessions,
+      recentProjects,
     });
 
   } catch (error) {

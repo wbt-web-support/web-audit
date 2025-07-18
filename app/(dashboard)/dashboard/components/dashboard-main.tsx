@@ -4,18 +4,18 @@ import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { XCircle, Loader2 } from "lucide-react";
 import { DashboardStatsCards } from './dashboard-stats-cards';
-import { RecentSessions } from './recent-sessions';
-import { SessionForm } from '@/components/audit/session-form';
-import type { AuditSession } from '@/lib/types/database';
+import { RecentProjects } from './recent-projects';
+import { ProjectForm } from '@/components/audit/project-form';
+import type { AuditProject } from '@/lib/types/database';
 import { createClient } from '@/lib/supabase/client';
 import type { UserProfile } from '@/lib/types/database';
 
 export interface DashboardStats {
-  totalSessions: number;
-  activeSessions: number;
+  totalProjects: number;
+  activeProjects: number;
   totalPagesAnalyzed: number;
   averageScore: number;
-  recentSessions: AuditSession[];
+  recentProjects: AuditProject[];
 }
 
 export function DashboardMain() {
@@ -77,22 +77,22 @@ export function DashboardMain() {
           Welcome to your Web Audit Dashboard!
         </h1>
         <p className="text-muted-foreground mt-2">
-          We audit your web pages for SEO, accessibility, performance, and content quality. Get actionable insights and detailed reports to help you improve your website. Start a new audit session or review your recent results below.
+          We audit your web pages for SEO, accessibility, performance, and content quality. Get actionable insights and detailed reports to help you improve your website. Start a new audit project or review your recent results below.
         </p>
       </div>
       
-      {/* Unified SessionForm for creating new sessions */}
-      <SessionForm 
+      {/* Unified ProjectForm for creating new projects */}
+      <ProjectForm 
         mode="create" 
-        sessions={stats.recentSessions}
+        projects={stats.recentProjects}
       />
       
-      <RecentSessions sessions={stats.recentSessions} />
+      <RecentProjects projects={stats.recentProjects} />
       
       {/* Statistics Cards */}
       {/* <DashboardStatsCards
-        totalSessions={stats.totalSessions}
-        activeSessions={stats.activeSessions}
+        totalProjects={stats.totalProjects}
+        activeProjects={stats.activeProjects}
         totalPagesAnalyzed={stats.totalPagesAnalyzed}
         averageScore={stats.averageScore}
       /> */}

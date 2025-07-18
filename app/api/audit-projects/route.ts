@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
-import { AuditSession } from '@/lib/types/database';
+import { AuditProject } from '@/lib/types/database';
 
 export async function GET() {
   try {
@@ -11,8 +11,8 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: sessions, error } = await supabase
-      .from('audit_sessions')
+    const { data: projects, error } = await supabase
+      .from('audit_projects')
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
@@ -21,7 +21,7 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ sessions });
+    return NextResponse.json({ projects });
   } catch (error) {
     return NextResponse.json(
       { error: 'Internal server error' },
@@ -75,9 +75,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Create audit session
-    const { data: session, error } = await supabase
-      .from('audit_sessions')
+    // Create audit project
+    const { data: project, error } = await supabase
+      .from('audit_projects')
       .insert({
         user_id: user.id,
         base_url,
@@ -99,7 +99,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ session }, { status: 201 });
+    return NextResponse.json({ project }, { status: 201 });
   } catch (error) {
     return NextResponse.json(
       { error: 'Internal server error' },

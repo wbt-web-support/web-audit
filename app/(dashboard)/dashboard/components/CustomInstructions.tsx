@@ -8,19 +8,19 @@ import { FileText, Plus, Trash2 } from 'lucide-react';
 
 interface CustomInstructionsProps {
   loading?: boolean;
-  isSessionRunning?: boolean;
-  sessionInstructions?: string[];
+  isProjectRunning?: boolean;
+  projectInstructions?: string[];
 }
 
-export default function CustomInstructions({ loading = false, isSessionRunning = false, sessionInstructions }: CustomInstructionsProps) {
+export default function CustomInstructions({ loading = false, isProjectRunning = false, projectInstructions }: CustomInstructionsProps) {
   const instructions = useSelector((state: RootState) => state.dashboardForm.instructions);
   const dispatch = useDispatch();
 
   React.useEffect(() => {
-    if (sessionInstructions && Array.isArray(sessionInstructions) && sessionInstructions.length > 0) {
-      dispatch(setInstructions(sessionInstructions));
+    if (projectInstructions && Array.isArray(projectInstructions) && projectInstructions.length > 0) {
+      dispatch(setInstructions(projectInstructions));
     }
-  }, [sessionInstructions, dispatch]);
+  }, [projectInstructions, dispatch]);
 
   const handleInstructionChange = (idx: number, value: string) => {
     const updated = instructions.map((inst, i) => (i === idx ? value : inst));
@@ -54,7 +54,7 @@ export default function CustomInstructions({ loading = false, isSessionRunning =
               placeholder={`Instruction ${idx + 1}`}
               className="flex-1 h-16 rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
               rows={2}
-              disabled={loading || isSessionRunning}
+              disabled={loading || isProjectRunning}
             />
             <Button
               type="button"
@@ -62,7 +62,7 @@ export default function CustomInstructions({ loading = false, isSessionRunning =
               variant="outline"
               onClick={handleAddInstruction}
               aria-label="Add instruction"
-              disabled={loading || isSessionRunning}
+              disabled={loading || isProjectRunning}
             >
               <Plus className="h-4 w-4" />
             </Button>
@@ -73,7 +73,7 @@ export default function CustomInstructions({ loading = false, isSessionRunning =
                 variant="destructive"
                 onClick={() => handleRemoveInstruction(idx)}
                 aria-label="Remove instruction"
-                disabled={loading || isSessionRunning}
+                disabled={loading || isProjectRunning}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>

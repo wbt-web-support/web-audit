@@ -19,12 +19,12 @@ export async function GET(
       .from('scraped_pages')
       .select(`
         *,
-        audit_sessions!inner(
+        audit_projects!inner(
           user_id
         )
       `)
       .eq('id', pageId)
-      .eq('audit_sessions.user_id', user.id)
+      .eq('audit_projects.user_id', user.id)
       .single();
 
     if (pageError || !page) {
@@ -45,17 +45,17 @@ export async function GET(
       .eq('scraped_page_id', pageId)
       .maybeSingle();
 
-    // Get session info
-    const { data: session, error: sessionError } = await supabase
-      .from('audit_sessions')
+    // Get project info
+    const { data: project, error: projectError } = await supabase
+      .from('audit_projects')
       .select('*')
-      .eq('id', page.audit_session_id)
+      .eq('id', page.audit_project_id)
       .single();
 
     return NextResponse.json({ 
       page,
       results: results || null,
-      session: session || null
+      project: project || null
     });
   } catch (error) {
     return NextResponse.json(
@@ -90,12 +90,12 @@ export async function PATCH(
       .from('scraped_pages')
       .select(`
         *,
-        audit_sessions!inner(
+        audit_projects!inner(
           user_id
         )
       `)
       .eq('id', pageId)
-      .eq('audit_sessions.user_id', user.id)
+      .eq('audit_projects.user_id', user.id)
       .single();
 
     if (pageError || !page) {
@@ -150,12 +150,12 @@ export async function DELETE(
       .from('scraped_pages')
       .select(`
         *,
-        audit_sessions!inner(
+        audit_projects!inner(
           user_id
         )
       `)
       .eq('id', pageId)
-      .eq('audit_sessions.user_id', user.id)
+      .eq('audit_projects.user_id', user.id)
       .single();
 
     if (pageError || !page) {
@@ -166,7 +166,7 @@ export async function DELETE(
     console.log('DELETE API: Page found and authorized:', {
       pageId: page.id,
       title: page.title,
-      sessionId: page.audit_session_id
+      projectId: page.audit_project_id
     });
 
     // Delete analysis results first (due to foreign key constraints)
@@ -203,28 +203,28 @@ export async function DELETE(
       return NextResponse.json({ error: 'Page could not be deleted - possibly due to permissions' }, { status: 500 });
     }
 
-    // Update session pages count
-    console.log('DELETE API: Updating session page count...');
-    const { data: sessionPages, error: sessionPagesError } = await supabase
+    // Update project pages count
+    console.log('DELETE API: Updating project page count...');
+    const { data: projectPages, error: projectPagesError } = await supabase
       .from('scraped_pages')
       .select('id')
-      .eq('audit_session_id', page.audit_session_id);
+      .eq('audit_project_id', page.audit_project_id);
 
-    if (sessionPagesError) {
-      console.error('DELETE API: Error counting remaining pages:', sessionPagesError);
+    if (projectPagesError) {
+      console.error('DELETE API: Error counting remaining pages:', projectPagesError);
     } else {
       const { error: updateError } = await supabase
-        .from('audit_sessions')
+        .from('audit_projects')
         .update({ 
-          pages_crawled: sessionPages?.length || 0,
+          pages_crawled: projectPages?.length || 0,
           updated_at: new Date().toISOString()
         })
-        .eq('id', page.audit_session_id);
+        .eq('id', page.audit_project_id);
 
       if (updateError) {
-        console.error('DELETE API: Error updating session count:', updateError);
+        console.error('DELETE API: Error updating project count:', updateError);
       } else {
-        console.log('DELETE API: Session updated with new page count:', sessionPages?.length || 0);
+        console.log('DELETE API: Project updated with new page count:', projectPages?.length || 0);
       }
     }
 

@@ -14,37 +14,37 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get audit session
-    const { data: session, error: sessionError } = await supabase
-      .from('audit_sessions')
+    // Get audit project
+    const { data: project, error: projectError } = await supabase
+      .from('audit_projects')
       .select('*')
       .eq('id', id)
       .eq('user_id', user.id)
       .single();
 
-    if (sessionError || !session) {
-      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    if (projectError || !project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    // Check if session can be stopped
-    if (!['crawling', 'analyzing'].includes(session.status)) {
+    // Check if project can be stopped
+    if (!['crawling', 'analyzing'].includes(project.status)) {
       return NextResponse.json(
-        { error: 'Session is not running' },
+        { error: 'Project is not running' },
         { status: 400 }
       );
     }
 
     // Stop the process by updating status to failed
     await supabase
-      .from('audit_sessions')
+      .from('audit_projects')
       .update({
         status: 'failed',
-        error_message: `${session.status} stopped by user`,
+        error_message: `${project.status} stopped by user`,
       })
       .eq('id', id);
 
     return NextResponse.json({ 
-      message: `${session.status} stopped successfully` 
+      message: `${project.status} stopped successfully` 
     });
   } catch (error) {
     return NextResponse.json(

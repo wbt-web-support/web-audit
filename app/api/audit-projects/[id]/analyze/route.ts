@@ -8,13 +8,13 @@ import fs from "fs/promises";
 import axios from "axios";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
-async function updatePagesAnalyzedCount(supabase: any, sessionId: string) {
+async function updatePagesAnalyzedCount(supabase: any, projectId: string) {
   try {
     // Count pages that have been analyzed (have audit_results)
     const { data: analyzedPages, error: countError } = await supabase
       .from('scraped_pages')
       .select('id')
-      .eq('audit_session_id', sessionId)
+      .eq('audit_project_id', projectId)
       .not('analysis_status', 'is', null)
       .neq('analysis_status', 'pending');
 
@@ -25,16 +25,16 @@ async function updatePagesAnalyzedCount(supabase: any, sessionId: string) {
 
     const analyzedCount = analyzedPages?.length || 0;
 
-    // Update the session with the correct count
+    // Update the project with the correct count
     const { error: updateError } = await supabase
-      .from('audit_sessions')
+      .from('audit_projects')
       .update({ pages_analyzed: analyzedCount })
-      .eq('id', sessionId);
+      .eq('id', projectId);
 
     if (updateError) {
       console.error('Error updating pages_analyzed count:', updateError);
     } else {
-      console.log(`Updated pages_analyzed count to ${analyzedCount} for session ${sessionId}`);
+      console.log(`Updated pages_analyzed count to ${analyzedCount} for project ${projectId}`);
     }
   } catch (error) {
     console.error('Error in updatePagesAnalyzedCount:', error);
@@ -49,7 +49,7 @@ export async function POST(
     const supabase = await createClient();
     const { id } = await params;
     console.log("id******************",id)
-    const services = await supabase.from("audit_sessions").select("services").eq("id", id).single();
+    const services = await supabase.from("audit_projects").select("services").eq("id", id).single();
     console.log("services******************",services.data);
   
     const {
@@ -70,23 +70,23 @@ export async function POST(
       force_refresh = false, // Force refresh cached results
     } = body;
   
-    // Verify the session belongs to the user
-    const { data: session, error: sessionError } = await supabase
-      .from("audit_sessions")
+    // Verify the project belongs to the user
+    const { data: project, error: projectError } = await supabase
+      .from("audit_projects")
       .select("*")
       .eq("id", id)
       .eq("user_id", user.id)
       .single();
 
-    if (sessionError || !session) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    if (projectError || !project) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
     // Get pages to analyze
     let query = supabase
       .from("scraped_pages")
       .select("*")
-      .eq("audit_session_id", id);
+      .eq("audit_project_id", id);
 
     if (!analyze_all && page_ids && page_ids.length > 0) {
       query = query.in("id", page_ids);
@@ -110,21 +110,21 @@ export async function POST(
       background !== null ? background : pages.length > 1;
 
     if (shouldRunInBackground) {
-      // Allow analysis when session has completed crawling
+      // Allow analysis when project has completed crawling
       if (
-        session.status !== "analyzing" &&
-        session.status !== "completed" &&
-        session.pages_crawled === 0
+        project.status !== "analyzing" &&
+        project.status !== "completed" &&
+        project.pages_crawled === 0
       ) {
         return NextResponse.json(
-          { error: "Session must have crawled pages before analysis" },
+          { error: "Project must have crawled pages before analysis" },
           { status: 400 }
         );
       }
 
-      // Update session status to analyzing
+      // Update project status to analyzing
       await supabase
-        .from("audit_sessions")
+        .from("audit_projects")
         .update({ status: "analyzing" })
         .eq("id", id);
 
@@ -142,7 +142,7 @@ export async function POST(
       const results = await performSinglePageAnalysis(
         supabase,
         page,
-        session,
+        project,
         analysis_types,
         use_cache,
         force_refresh
@@ -164,7 +164,7 @@ export async function POST(
 async function performSinglePageAnalysis(
   supabase: any,
   page: any,
-  session: any,
+  project: any,
   analysisTypes: string[],
   useCache: boolean,
   forceRefresh: boolean
@@ -183,8 +183,8 @@ async function performSinglePageAnalysis(
     let seoAnalysis = null;
     let cached = false;
     let cachedAt = null;
-    let instructions = session.instructions;
-    console.log("instructions**********", session);
+    let instructions = project.instructions;
+    console.log("instructions**********", project);
 
     // Check for cached results first (unless force refresh)
     if (useCache && !forceRefresh) {
@@ -216,7 +216,7 @@ async function performSinglePageAnalysis(
     // --- Launch grammar/content and SEO analysis in parallel (if not cached) ---
     const grammarPromise =
       analysisTypes.includes("grammar") && !grammarAnalysis
-        ? (console.log(`[TASK] Starting grammar/content analysis for page ${page.id}`), analyzeContentWithGemini(page.content || "", session))
+        ? (console.log(`[TASK] Starting grammar/content analysis for page ${page.id}`), analyzeContentWithGemini(page.content || "", project))
         : Promise.resolve(grammarAnalysis);
     const seoPromise =
       analysisTypes.includes("seo") && !seoAnalysis
@@ -246,7 +246,7 @@ async function performSinglePageAnalysis(
         const screenshotPath = await takeScreenshot(page.url, page.id, device);
         console.log(`[DONE] [${device}] Screenshot complete for page ${page.id}`);
         // Upload screenshot
-        const storagePath = `session_${session.id}/screenshot_${page.id}_${device}.png`;
+        const storagePath = `project_${project.id}/screenshot_${page.id}_${device}.png`;
         const publicUrl = await uploadScreenshotToStorage(localPath, storagePath);
         screenshotUrls[device] = publicUrl;
         console.log(`[DONE] [${device}] Screenshot uploaded for page ${page.id}: ${publicUrl}`);
@@ -298,17 +298,17 @@ async function performSinglePageAnalysis(
     // --- Custom Instructions Analysis ---
     let customInstructionsAnalysis = null;
     // Defensive: handle both array and string for services
-    let servicesArr = Array.isArray(session.services)
-      ? session.services
-      : typeof session.services === "string"
-        ? session.services.split(",").map((s: string) => s.trim())
+    let servicesArr = Array.isArray(project.services)
+      ? project.services
+      : typeof project.services === "string"
+        ? project.services.split(",").map((s: string) => s.trim())
         : [];
     if (
-      session.instructions &&
+      project.instructions &&
       servicesArr.includes("custom_instructions")
     ) {
       customInstructionsAnalysis = await analyzeWithCustomInstructions(
-        session.instructions,
+        project.instructions,
         page.html || "",
         screenshotUrls
       );
@@ -346,8 +346,8 @@ async function performSinglePageAnalysis(
       .eq("id", page.id);
     console.log(`[DONE] Analysis completed for page ${page.id}`);
 
-    // Update the pages_analyzed count for the session
-    await updatePagesAnalyzedCount(supabase, session.id);
+    // Update the pages_analyzed count for the project
+    await updatePagesAnalyzedCount(supabase, project.id);
 
     // Return appropriate response based on what was requested
     if (analysisTypes.includes("grammar") && analysisTypes.includes("seo")) {
@@ -391,8 +391,8 @@ async function performSinglePageAnalysis(
       .update({ analysis_status: "failed" })
       .eq("id", page.id);
 
-    // Update the pages_analyzed count for the session (even for failed pages)
-    await updatePagesAnalyzedCount(supabase, session.id);
+    // Update the pages_analyzed count for the project (even for failed pages)
+    await updatePagesAnalyzedCount(supabase, project.id);
 
     throw error;
   }
@@ -464,7 +464,7 @@ async function upsertAnalysisResult(
 }
 
 async function analyzePages(
-  sessionId: string,
+  projectId: string,
   pages: any[],
   analysisTypes: string[],
   useCache: boolean,
@@ -473,15 +473,15 @@ async function analyzePages(
   const supabase = await createClient();
 
   try {
-    // Get session data for company information verification
-    const { data: session, error: sessionError } = await supabase
-      .from("audit_sessions")
+    // Get project data for company information verification
+    const { data: project, error: projectError } = await supabase
+      .from("audit_projects")
       .select("*")
-      .eq("id", sessionId)
+      .eq("id", projectId)
       .single();
 
-    if (sessionError || !session) {
-      throw new Error("Failed to get session data for analysis");
+    if (projectError || !project) {
+      throw new Error("Failed to get project data for analysis");
     }
 
     console.log(
@@ -499,7 +499,7 @@ async function analyzePages(
         await performSinglePageAnalysis(
           supabase,
           page,
-          session,
+          project,
           analysisTypes,
           useCache,
           forceRefresh
@@ -542,18 +542,18 @@ async function analyzePages(
       errorMessage = `Analysis completed with ${failedCount} failures`;
     }
 
-    // Update the pages_analyzed count for the session
-    await updatePagesAnalyzedCount(supabase, sessionId);
+    // Update the pages_analyzed count for the project
+    await updatePagesAnalyzedCount(supabase, projectId);
 
-    // Update session status to completed
+    // Update project status to completed
     await supabase
-      .from("audit_sessions")
+      .from("audit_projects")
       .update({
         status: finalStatus,
         completed_at: new Date().toISOString(),
         error_message: errorMessage,
       })
-      .eq("id", sessionId);
+      .eq("id", projectId);
 
   
     if (failedCount > 0) {
@@ -565,18 +565,18 @@ async function analyzePages(
   } catch (error: any) {
     console.error("Parallel analysis failed:", error);
 
-    // Update session status to failed
+    // Update project status to failed
     await supabase
-      .from("audit_sessions")
+      .from("audit_projects")
       .update({
         status: "failed",
         error_message: error.message || "Analysis failed",
       })
-      .eq("id", sessionId);
+      .eq("id", projectId);
   }
 }
 
-async function analyzeContentWithGemini(content: string, session?: any) {
+async function analyzeContentWithGemini(content: string, project?: any) {
   try {
     console.log("analyzing content with gemini");
     if (!content.trim()) {
@@ -602,12 +602,12 @@ async function analyzeContentWithGemini(content: string, session?: any) {
     let hasCompanyInfo = false;
 
     if (
-      session &&
-      (session.company_name ||
-        session.phone_number ||
-        session.email ||
-        session.address ||
-        session.custom_info)
+      project &&
+      (project.company_name ||
+        project.phone_number ||
+        project.email ||
+        project.address ||
+        project.custom_info)
     ) {
       hasCompanyInfo = true;
       expectedCompanyInfo = `
@@ -617,32 +617,32 @@ This website should contain accurate and consistent company information. Please 
 
 Expected Company Information:`;
 
-      if (session.company_name) {
-        expectedCompanyInfo += `\n- Company/Business Name: "${session.company_name}"`;
+      if (project.company_name) {
+        expectedCompanyInfo += `\n- Company/Business Name: "${project.company_name}"`;
         expectedCompanyInfo += `\n  → Check if this exact name appears prominently (header, footer, about page, contact page)`;
         expectedCompanyInfo += `\n  → Flag any variations, misspellings, or inconsistencies`;
       }
 
-      if (session.phone_number) {
-        expectedCompanyInfo += `\n- Phone Number: "${session.phone_number}"`;
+      if (project.phone_number) {
+        expectedCompanyInfo += `\n- Phone Number: "${project.phone_number}"`;
         expectedCompanyInfo += `\n  → Check if this number appears correctly formatted`;
         expectedCompanyInfo += `\n  → Flag any different numbers or formatting inconsistencies`;
       }
 
-      if (session.email) {
-        expectedCompanyInfo += `\n- Email Address: "${session.email}"`;
+      if (project.email) {
+        expectedCompanyInfo += `\n- Email Address: "${project.email}"`;
         expectedCompanyInfo += `\n  → Check if this email appears and is properly formatted`;
         expectedCompanyInfo += `\n  → Flag any different email addresses`;
       }
 
-      if (session.address) {
-        expectedCompanyInfo += `\n- Physical Address: "${session.address}"`;
+      if (project.address) {
+        expectedCompanyInfo += `\n- Physical Address: "${project.address}"`;
         expectedCompanyInfo += `\n  → Check if this address appears consistently`;
         expectedCompanyInfo += `\n  → Flag any variations or incomplete address information`;
       }
 
-      if (session.custom_info) {
-        expectedCompanyInfo += `\n- Additional Business Info: "${session.custom_info}"`;
+      if (project.custom_info) {
+        expectedCompanyInfo += `\n- Additional Business Info: "${project.custom_info}"`;
         expectedCompanyInfo += `\n  → Check if this information is accurately represented`;
       }
 
@@ -651,30 +651,30 @@ Expected Company Information:`;
 COMPANY INFORMATION ANALYSIS REQUIREMENTS:
 1. MISSING INFORMATION: If any expected company details are completely missing from the page content, add specific issues like:
    - "Missing company name '${
-     session.company_name || "[Company Name]"
+     project.company_name || "[Company Name]"
    }' - not found on this page"
    - "Missing contact phone number '${
-     session.phone_number || "[Phone]"
+     project.phone_number || "[Phone]"
    }' - should be visible for customer contact"
    - "Missing email address '${
-     session.email || "[Email]"
+     project.email || "[Email]"
    }' - important for customer communication"
    - "Missing physical address '${
-     session.address || "[Address]"
+     project.address || "[Address]"
    }' - essential for business credibility"
 
 2. INCONSISTENT INFORMATION: If company information appears but differs from expected, add issues like:
    - "Company name inconsistency: found '[found name]' but expected '${
-     session.company_name || "[Expected]"
+     project.company_name || "[Expected]"
    }'"
    - "Phone number mismatch: found '[found number]' but expected '${
-     session.phone_number || "[Expected]"
+     project.phone_number || "[Expected]"
    }'"
    - "Email inconsistency: found '[found email]' but expected '${
-     session.email || "[Expected]"
+     project.email || "[Expected]"
    }'"
    - "Address discrepancy: found '[found address]' but expected '${
-     session.address || "[Expected]"
+     project.address || "[Expected]"
    }'"
 
 3. FORMATTING ISSUES: Check for proper formatting and professional presentation:

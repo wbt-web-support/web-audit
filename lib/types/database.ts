@@ -6,13 +6,13 @@ export type UserProfile = {
   updated_at: string;
 };
 
-export type AuditSessionStatus = 'pending' | 'crawling' | 'analyzing' | 'completed' | 'failed';
+export type AuditProjectStatus = 'pending' | 'crawling' | 'analyzing' | 'completed' | 'failed';
 
-export type AuditSession = {
+export type AuditProject = {
   id: string;
   user_id: string;
   base_url: string;
-  status: AuditSessionStatus;
+  status: AuditProjectStatus;
   total_pages: number;
   pages_crawled: number;
   pages_analyzed: number;
@@ -32,7 +32,7 @@ export type AuditSession = {
 
 export interface ScrapedPage {
   id: string;
-  audit_session_id: string;
+  audit_project_id: string;
   url: string;
   title: string | null;
   html: string | null;

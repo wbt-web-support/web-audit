@@ -10,61 +10,61 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get all sessions for the user
-    const { data: sessions, error: sessionsError } = await supabase
-      .from('audit_sessions')
+    // Get all projects for the user
+    const { data: projects, error: projectsError } = await supabase
+      .from('audit_projects')
       .select('id')
       .eq('user_id', user.id);
 
-    if (sessionsError) {
-      return NextResponse.json({ error: sessionsError.message }, { status: 500 });
+    if (projectsError) {
+      return NextResponse.json({ error: projectsError.message }, { status: 500 });
     }
 
-    if (!sessions || sessions.length === 0) {
-      return NextResponse.json({ message: 'No sessions found' });
+    if (!projects || projects.length === 0) {
+      return NextResponse.json({ message: 'No projects found' });
     }
 
     let updatedCount = 0;
     const errors: string[] = [];
 
-    // Recalculate count for each session
-    for (const session of sessions) {
+    // Recalculate count for each project
+    for (const project of projects) {
       try {
         // Count pages that have been analyzed
         const { data: analyzedPages, error: countError } = await supabase
           .from('scraped_pages')
           .select('id')
-          .eq('audit_session_id', session.id)
+          .eq('audit_project_id', project.id)
           .not('analysis_status', 'is', null)
           .neq('analysis_status', 'pending');
 
         if (countError) {
-          errors.push(`Session ${session.id}: ${countError.message}`);
+          errors.push(`Project ${project.id}: ${countError.message}`);
           continue;
         }
 
         const actualAnalyzedCount = analyzedPages?.length || 0;
 
-        // Update the session with the correct count
+        // Update the project with the correct count
         const { error: updateError } = await supabase
-          .from('audit_sessions')
+          .from('audit_projects')
           .update({ pages_analyzed: actualAnalyzedCount })
-          .eq('id', session.id);
+          .eq('id', project.id);
 
         if (updateError) {
-          errors.push(`Session ${session.id}: ${updateError.message}`);
+          errors.push(`Project ${project.id}: ${updateError.message}`);
         } else {
           updatedCount++;
         }
       } catch (error) {
-        errors.push(`Session ${session.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        errors.push(`Project ${project.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
 
     return NextResponse.json({
-      message: `Recalculated counts for ${updatedCount} sessions`,
-      updatedSessions: updatedCount,
-      totalSessions: sessions.length,
+      message: `Recalculated counts for ${updatedCount} projects`,
+      updatedProjects: updatedCount,
+      totalProjects: projects.length,
       errors: errors.length > 0 ? errors : undefined
     });
 

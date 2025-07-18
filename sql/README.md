@@ -16,9 +16,9 @@ To set up the database tables for the Web Audit application, follow these steps:
 ### 1. User Profiles Table (01_user_profiles.sql)
 This creates the user profiles table and sets up automatic profile creation when users sign up.
 
-### 2. Audit Sessions Tables (02_audit_sessions.sql)
+### 2. Audit Projects Tables (02_audit_projects.sql)
 This creates:
-- `audit_sessions` - Main table for audit sessions
+- `audit_projects` - Main table for audit projects
 - `scraped_pages` - Stores scraped page data
 - `audit_results` - Stores analysis results for each page
 

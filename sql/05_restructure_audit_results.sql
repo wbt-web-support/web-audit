@@ -39,36 +39,36 @@ CREATE TABLE audit_results (
 ALTER TABLE audit_results ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for the new structure
-CREATE POLICY "Users can view results from own audit sessions" 
+CREATE POLICY "Users can view results from own audit projects" 
 ON audit_results FOR SELECT 
 USING (
   EXISTS (
     SELECT 1 FROM scraped_pages
-    JOIN audit_sessions ON audit_sessions.id = scraped_pages.audit_session_id
+    JOIN audit_projects ON audit_projects.id = scraped_pages.audit_project_id
     WHERE scraped_pages.id = audit_results.scraped_page_id 
-    AND audit_sessions.user_id = auth.uid()
+    AND audit_projects.user_id = auth.uid()
   )
 );
 
-CREATE POLICY "Users can create results for own audit sessions" 
+CREATE POLICY "Users can create results for own audit projects" 
 ON audit_results FOR INSERT 
 WITH CHECK (
   EXISTS (
     SELECT 1 FROM scraped_pages
-    JOIN audit_sessions ON audit_sessions.id = scraped_pages.audit_session_id
+    JOIN audit_projects ON audit_projects.id = scraped_pages.audit_project_id
     WHERE scraped_pages.id = audit_results.scraped_page_id 
-    AND audit_sessions.user_id = auth.uid()
+    AND audit_projects.user_id = auth.uid()
   )
 );
 
-CREATE POLICY "Users can update results for own audit sessions" 
+CREATE POLICY "Users can update results for own audit projects" 
 ON audit_results FOR UPDATE 
 USING (
   EXISTS (
     SELECT 1 FROM scraped_pages
-    JOIN audit_sessions ON audit_sessions.id = scraped_pages.audit_session_id
+    JOIN audit_projects ON audit_projects.id = scraped_pages.audit_project_id
     WHERE scraped_pages.id = audit_results.scraped_page_id 
-    AND audit_sessions.user_id = auth.uid()
+    AND audit_projects.user_id = auth.uid()
   )
 );
 

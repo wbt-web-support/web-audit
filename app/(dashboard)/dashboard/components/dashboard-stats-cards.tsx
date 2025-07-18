@@ -4,15 +4,15 @@ import { Globe, BarChart3, FileSearch, TrendingUp } from "lucide-react";
 import Link from "next/link";
 
 interface DashboardStatsCardsProps {
-  totalSessions: number;
-  activeSessions: number;
+  totalProjects: number;
+  activeProjects: number;
   totalPagesAnalyzed: number;
   averageScore: number;
 }
 
 export function DashboardStatsCards({
-  totalSessions,
-  activeSessions,
+  totalProjects,
+  activeProjects,
   totalPagesAnalyzed,
   averageScore,
 }: DashboardStatsCardsProps) {
@@ -20,13 +20,13 @@ export function DashboardStatsCards({
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Total Sessions</CardTitle>
+          <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
           <Globe className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{totalSessions}</div>
+          <div className="text-2xl font-bold">{totalProjects}</div>
           <p className="text-xs text-muted-foreground">
-            {activeSessions} active
+            {activeProjects} active
           </p>
         </CardContent>
       </Card>
@@ -39,7 +39,7 @@ export function DashboardStatsCards({
         <CardContent>
           <div className="text-2xl font-bold">{totalPagesAnalyzed}</div>
           <p className="text-xs text-muted-foreground">
-            Across all sessions
+            Across all projects
           </p>
         </CardContent>
       </Card>
@@ -64,8 +64,8 @@ export function DashboardStatsCards({
         </CardHeader>
         <CardContent>
           <div className="flex gap-2">
-            <Link href="/sessions">
-              <Button size="sm">New Session</Button>
+            <Link href="/projects">
+              <Button size="sm">New Project</Button>
             </Link>
             <Link href="/audit">
               <Button size="sm" variant="outline">View Audits</Button>

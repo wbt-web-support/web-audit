@@ -14,8 +14,8 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: session, error } = await supabase
-      .from('audit_sessions')
+    const { data: project, error } = await supabase
+      .from('audit_projects')
       .select('*')
       .eq('id', id)
       .eq('user_id', userData.user.id)
@@ -25,33 +25,33 @@ export async function GET(
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    if (!session) {
-      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
     // Calculate the actual pages_analyzed count dynamically
     const { data: analyzedPages, error: countError } = await supabase
       .from('scraped_pages')
       .select('id')
-      .eq('audit_session_id', id)
+      .eq('audit_project_id', id)
       .not('analysis_status', 'is', null)
       .neq('analysis_status', 'pending');
 
     if (!countError && analyzedPages) {
       const actualAnalyzedCount = analyzedPages.length;
       
-      // Update the session with the correct count if it's different
-      if (session.pages_analyzed !== actualAnalyzedCount) {
+      // Update the project with the correct count if it's different
+      if (project.pages_analyzed !== actualAnalyzedCount) {
         await supabase
-          .from('audit_sessions')
+          .from('audit_projects')
           .update({ pages_analyzed: actualAnalyzedCount })
           .eq('id', id);
         
-        session.pages_analyzed = actualAnalyzedCount;
+        project.pages_analyzed = actualAnalyzedCount;
       }
     }
 
-    return NextResponse.json({ session }, { status: 200 });
+    return NextResponse.json({ project }, { status: 200 });
   } catch (error) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -100,28 +100,28 @@ export async function PUT(
       );
     }
 
-    // First check if session exists and get its status
-    const { data: existingSession, error: fetchError } = await supabase
-      .from('audit_sessions')
+    // First check if project exists and get its status
+    const { data: existingProject, error: fetchError } = await supabase
+      .from('audit_projects')
       .select('status')
       .eq('id', id)
       .eq('user_id', user.id)
       .single();
 
-    if (fetchError || !existingSession) {
+    if (fetchError || !existingProject) {
       console.error('Fetch error:', fetchError);
-      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    // Prevent editing if session is running
-    if (existingSession.status === 'crawling' || existingSession.status === 'analyzing') {
+    // Prevent editing if project is running
+    if (existingProject.status === 'crawling' || existingProject.status === 'analyzing') {
       return NextResponse.json(
-        { error: 'Cannot edit session while it is running' },
+        { error: 'Cannot edit project while it is running' },
         { status: 400 }
       );
     }
 
-    // Update session (only if it belongs to the user)
+    // Update project (only if it belongs to the user)
     const updateData: any = {
       base_url,
       updated_at: new Date().toISOString(),
@@ -135,8 +135,8 @@ export async function PUT(
       services: services || null,
     };
 
-    const { data: session, error } = await supabase
-      .from('audit_sessions')
+    const { data: project, error } = await supabase
+      .from('audit_projects')
       .update(updateData)
       .eq('id', id)
       .eq('user_id', user.id)
@@ -148,33 +148,33 @@ export async function PUT(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    if (!session) {
-      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    if (session.status !== 'pending') {
-      // Set session status to 'pending' after update
-      const { data: updatedSession, error: statusError } = await supabase
-        .from('audit_sessions')
+    if (project.status !== 'pending') {
+      // Set project status to 'pending' after update
+      const { data: updatedProject, error: statusError } = await supabase
+        .from('audit_projects')
         .update({ status: 'pending' })
         .eq('id', id)
         .eq('user_id', user.id)
         .select()
         .single();
-      if (!statusError && updatedSession) {
-        session.status = updatedSession.status;
+      if (!statusError && updatedProject) {
+        project.status = updatedProject.status;
       } else if (statusError) {
-        console.error('Error setting session status to pending:', statusError);
+        console.error('Error setting project status to pending:', statusError);
       }
     }
 
-    console.log('Session updated successfully:', session.id);
+    console.log('Project updated successfully:', project.id);
 
-    // Fetch all scraped_pages for this session
+    // Fetch all scraped_pages for this project
     const { data: pages, error: pagesError } = await supabase
       .from('scraped_pages')
       .select('id')
-      .eq('audit_session_id', id);
+      .eq('audit_project_id', id);
 
     if (pagesError) {
       console.error('Error fetching scraped pages:', pagesError);
@@ -189,7 +189,7 @@ export async function PUT(
         console.error('Error deleting audit results:', deleteError);
         // Not a fatal error, continue
       }
-      // 3. Delete all scraped_pages for this session
+      // 3. Delete all scraped_pages for this project
       const { error: deletePagesError } = await supabase
         .from('scraped_pages')
         .delete()
@@ -200,7 +200,7 @@ export async function PUT(
       }
     }
 
-    return NextResponse.json({ session });
+    return NextResponse.json({ project });
   } catch (error) {
     console.error('PUT route error:', error);
     return NextResponse.json(
@@ -227,7 +227,7 @@ export async function DELETE(
     }
 
     const { error } = await supabase
-      .from('audit_sessions')
+      .from('audit_projects')
       .delete()
       .eq('id', id)
       .eq('user_id', user.id);
@@ -236,7 +236,7 @@ export async function DELETE(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ message: 'Session deleted successfully' });
+    return NextResponse.json({ message: 'Project deleted successfully' });
   } catch (error) {
     return NextResponse.json(
       { error: 'Internal server error' },

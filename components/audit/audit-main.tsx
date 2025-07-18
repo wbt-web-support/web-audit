@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 
-import { AuditSession, ScrapedPage } from '@/lib/types/database';
+import { AuditProject, ScrapedPage } from '@/lib/types/database';
 import { 
   Loader2, 
   Globe, 
@@ -41,7 +41,7 @@ interface AnalyzedPage {
   page: ScrapedPage & {
     analysis_status?: 'pending' | 'analyzing' | 'completed' | 'failed';
   };
-  session: {
+  project: {
     id: string;
     base_url: string;
     status: string;
@@ -52,7 +52,7 @@ interface AnalyzedPage {
 }
 
 export function AuditMain() {
-  const [sessions, setSessions] = useState<AuditSession[]>([]);
+  const [projects, setProjects] = useState<AuditProject[]>([]);
   const [analyzedPages, setAnalyzedPages] = useState<AnalyzedPage[]>([]);
   const [selectedPages, setSelectedPages] = useState<Set<string>>(new Set());
   const [analyzingPages, setAnalyzingPages] = useState<Set<string>>(new Set());
@@ -72,11 +72,11 @@ export function AuditMain() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const router = useRouter();
   const searchParams = useSearchParams();
-  const selectedSessionId = searchParams.get('session');
+  const selectedProjectId = searchParams.get('project');
   const crawlingStartedRef = useRef(false);
   useEffect(() => {
     fetchData();
-  }, [selectedSessionId]);
+  }, [selectedProjectId]);
 
 
 
@@ -139,24 +139,24 @@ export function AuditMain() {
 
   const fetchData = async () => {
     try {
-      // If no session selected, redirect to sessions page
-      if (!selectedSessionId) {
-        router.push('/sessions');
+      // If no project selected, redirect to projects page
+      if (!selectedProjectId) {
+        router.push('/projects');
         return;
       }
 
-      // Fetch the selected session
-      const sessionResponse = await fetch(`/api/audit-sessions/${selectedSessionId}`);
-      const sessionData = await sessionResponse.json();
-      if (sessionResponse.ok) {
-        setSessions([sessionData.session]);
-        // Fetch analyzed pages from the selected session
+      // Fetch the selected project
+      const projectResponse = await fetch(`/api/audit-projects/${selectedProjectId}`);
+      const projectData = await projectResponse.json();
+      if (projectResponse.ok) {
+        setProjects([projectData.project]);
+        // Fetch analyzed pages from the selected project
         try {
-          const resultsResponse = await fetch(`/api/audit-sessions/${selectedSessionId}/results`);
+          const resultsResponse = await fetch(`/api/audit-projects/${selectedProjectId}/results`);
             const resultsData = await resultsResponse.json();
-            if(resultsData.session.status=="pending" && !crawlingStartedRef.current){
+            if(resultsData.project.status=="pending" && !crawlingStartedRef.current){
               crawlingStartedRef.current = true;
-              startCrawling(sessionData.session.id)
+              startCrawling(projectData.project.id)
             }
             if (resultsResponse.ok && resultsData.pageResults) {
               
@@ -169,10 +169,10 @@ export function AuditMain() {
               
               return {
                 page: pageResult.page,
-                session: {
-                  id: sessionData.session.id,
-                  base_url: sessionData.session.base_url,
-                  status: sessionData.session.status
+                project: {
+                  id: projectData.project.id,
+                  base_url: projectData.project.base_url,
+                  status: projectData.project.status
                 },
                 resultCount: completedAnalyses,
                 overallScore: results?.overall_score || 0,
@@ -212,11 +212,11 @@ export function AuditMain() {
             });
           }
         } catch {
-          // Session exists but no pages yet
+          // Project exists but no pages yet
           setAnalyzedPages([]);
         }
       } else {
-        setError(sessionData.error || 'Failed to fetch session');
+        setError(projectData.error || 'Failed to fetch project');
       }
     } catch (error) {
       setError('Failed to fetch data');
@@ -225,9 +225,9 @@ export function AuditMain() {
     }
   };
 
-  const startCrawling = async (sessionId: string) => {
+  const startCrawling = async (projectId: string) => {
     setCrawling(true);
-    setCurrentAction(`Starting crawl for session ${sessionId}`);
+    setCurrentAction(`Starting crawl for project ${projectId}`);
     setError('');
 toast("crawling is started");
     try {
@@ -236,7 +236,7 @@ toast("crawling is started");
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ session_id: sessionId }),
+        body: JSON.stringify({ project_id: projectId }),
       });
 
       const data = await response.json();
@@ -253,7 +253,7 @@ toast("crawling is started");
     }
   };
 
-  const startAnalysis = async (sessionId: string, pageIds: string[]) => {
+  const startAnalysis = async (projectId: string, pageIds: string[]) => {
     setAnalyzing(true);
     const isBatchAnalysis = pageIds.length > 1;
     setCurrentAction(
@@ -265,10 +265,10 @@ toast("crawling is started");
     
     // Mark pages as analyzing
     setAnalyzingPages(new Set(pageIds));
-    console.log("session id ",sessionId)
+    console.log("project id ",projectId)
     console.log("pageIds ",pageIds)
     try {
-      const response = await fetch(`/api/audit-sessions/${sessionId}/analyze`, {
+      const response = await fetch(`/api/audit-projects/${projectId}/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -297,9 +297,9 @@ toast("crawling is started");
     }
   };
 
-  const stopProcess = async (sessionId: string) => {
+  const stopProcess = async (projectId: string) => {
     try {
-      const response = await fetch(`/api/audit-sessions/${sessionId}/stop`, {
+      const response = await fetch(`/api/audit-projects/${projectId}/stop`, {
         method: 'POST',
       });
 
@@ -507,13 +507,13 @@ toast("crawling is started");
   };
 
   const analyzeSinglePage = async (pageId: string) => {
-    if (!sessions[0]) return;
+    if (!projects[0]) return;
 
     setAnalyzingPages(prev => new Set(prev).add(pageId));
     setError('');
 
     try {
-      const response = await fetch(`/api/audit-sessions/${sessions[0].id}/analyze`, {
+      const response = await fetch(`/api/audit-projects/${projects[0].id}/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -599,7 +599,7 @@ toast("crawling is started");
   }, [analyzingPages.size]);
 
   const filteredAndSortedPages = analyzedPages.filter(page => {
-    const matchesSession = !selectedSessionId || page.session.id === selectedSessionId;
+    const matchesProject = !selectedProjectId || page.project.id === selectedProjectId;
     const matchesSearch = searchTerm === '' || 
       page.page.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       page.page.url.toLowerCase().includes(searchTerm.toLowerCase());
@@ -616,7 +616,7 @@ toast("crawling is started");
     const matchesScore = page.resultCount === 0 || 
       (page.overallScore >= scoreRange.min && page.overallScore <= scoreRange.max);
     
-    return matchesSession && matchesSearch && matchesStatus && matchesAnalysis && matchesScore;
+    return matchesProject && matchesSearch && matchesStatus && matchesAnalysis && matchesScore;
   }).sort((a, b) => {
     let comparison = 0;
     
@@ -638,7 +638,7 @@ toast("crawling is started");
     return sortDirection === 'asc' ? comparison : -comparison;
   });
 
-  const activeSessions = sessions.filter(s => s.status === 'crawling' || s.status === 'analyzing');
+  const activeProjects = projects.filter(s => s.status === 'crawling' || s.status === 'analyzing');
 
   if (loading) {
     return (
@@ -669,7 +669,7 @@ toast("crawling is started");
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
-          <Link href={`/sessions/edit/${sessions[0].id}`}>
+          <Link href={`/projects/edit/${projects[0].id}`}>
             <Button variant="outline">
               <Settings className="h-4 w-4 mr-2" />
               Edit Projects
@@ -701,8 +701,8 @@ toast("crawling is started");
         </Card>
       )}
 
-      {/* Active Sessions */}
-      {activeSessions.length > 0 && (
+      {/* Active Projects */}
+      {activeProjects.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Active Projects</CardTitle>
@@ -710,21 +710,21 @@ toast("crawling is started");
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {activeSessions.map((session) => (
-                <div key={session.id} className="flex items-center justify-between p-3 border rounded-lg">
+              {activeProjects.map((project) => (
+                <div key={project.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div className="flex items-center gap-3">
                     <Globe className="h-5 w-5 text-muted-foreground" />
                     <div>
-                      <p className="font-medium">{session.base_url}</p>
+                      <p className="font-medium">{project.base_url}</p>
                       <p className="text-sm text-muted-foreground">
-                        Status: {session.status} • Pages: {session.pages_crawled || 0} crawled, {session.pages_analyzed || 0} analyzed
+                        Status: {project.status} • Pages: {project.pages_crawled || 0} crawled, {project.pages_analyzed || 0} analyzed
                       </p>
                     </div>
                   </div>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => stopProcess(session.id)}
+                    onClick={() => stopProcess(project.id)}
                   >
                     <Square className="h-3 w-3 mr-1" />
                     Stop
@@ -736,41 +736,41 @@ toast("crawling is started");
         </Card>
       )}
 
-      {/* Current Session Info */}
-      {sessions.length > 0 && sessions[0] && (
+      {/* Current Project Info */}
+      {projects.length > 0 && projects[0] && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
                     <div>
                 <CardTitle>Current Project</CardTitle>
-                <CardDescription>{sessions[0].base_url}</CardDescription>
+                <CardDescription>{projects[0].base_url}</CardDescription>
                     </div>
               <div className="flex items-center gap-2">
-                {sessions[0].status === 'pending' && (
+                {projects[0].status === 'pending' && (
                   <Button
                     size="sm"
-                    onClick={() => startCrawling(sessions[0].id)}
+                    onClick={() => startCrawling(projects[0].id)}
                     disabled={crawling}
                   >
                     <Play className="h-4 w-4 mr-2" />
                     Start Crawl
                   </Button>
                 )}
-                {sessions[0].status === 'completed' && (
+                {projects[0].status === 'completed' && (
                       <Button
                         size="sm"
-                    onClick={() => startCrawling(sessions[0].id)}
+                    onClick={() => startCrawling(projects[0].id)}
                         disabled={crawling}
                       >
                     <RefreshCw className={`h-4 w-4 transition-all ${crawling ? "animate-spin" : ""}`} />
                      {crawling?"Recrawling":"Recrawl"} 
                       </Button>
                     )}
-                {sessions[0].status === 'crawling' && (
+                {projects[0].status === 'crawling' && (
                       <Button
                         size="sm"
                     variant="outline"
-                    onClick={() => stopProcess(sessions[0].id)}
+                    onClick={() => stopProcess(projects[0].id)}
                   >
                     <Square className="h-4 w-4 mr-2" />
                     Stop Crawl
@@ -783,11 +783,11 @@ toast("crawling is started");
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <p className="text-sm text-muted-foreground">Status</p>
-                <p className="font-medium">{sessions[0].status}</p>
+                <p className="font-medium">{projects[0].status}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Pages Crawled</p>
-                <p className="font-medium">{sessions[0].pages_crawled || 0}</p>
+                <p className="font-medium">{projects[0].pages_crawled || 0}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Pages Analyzed</p>
@@ -808,7 +808,7 @@ toast("crawling is started");
             </div>
             <div className="flex items-center gap-2">
               {/* Kill Switch for stopping all analysis */}
-              {analyzingPages.size > 0 && sessions[0] && (
+              {analyzingPages.size > 0 && projects[0] && (
                 <Button
                   size="sm"
                   variant="destructive"
@@ -852,8 +852,8 @@ toast("crawling is started");
                   <Button
                     size="sm"
                     onClick={() => {
-                      if (sessions[0]) {
-                        startAnalysis(sessions[0].id, Array.from(selectedPages));
+                      if (projects[0]) {
+                        startAnalysis(projects[0].id, Array.from(selectedPages));
                       }
                     }}
                     disabled={analyzing || deleting}
@@ -896,7 +896,7 @@ toast("crawling is started");
                 >
                   Select All ({filteredAndSortedPages.filter(p => !isPageAnalyzing(p)).length})
                   </Button>
-                  {filteredAndSortedPages.filter(p => p.resultCount === 0).length > 0 && sessions[0] && (
+                  {filteredAndSortedPages.filter(p => p.resultCount === 0).length > 0 && projects[0] && (
                     <Button
                       size="sm"
                       onClick={() => {
@@ -905,7 +905,7 @@ toast("crawling is started");
                           .filter(p => p.resultCount === 0 && !isPageAnalyzing(p))
                           .map(p => p.page.id);
                         if (unanalyzedPageIds.length > 0) {
-                          startAnalysis(sessions[0].id, unanalyzedPageIds);
+                          startAnalysis(projects[0].id, unanalyzedPageIds);
                         }
                       }}
                       disabled={analyzing || deleting}
@@ -1065,7 +1065,7 @@ toast("crawling is started");
               <Globe className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">No pages found</p>
               <p className="text-sm text-muted-foreground mt-2">
-                {sessions[0]?.pages_crawled === 0 ? 
+                {projects[0]?.pages_crawled === 0 ? 
                   'Start crawling to discover pages' : 
                   'Pages will appear here after crawling'}
               </p>
@@ -1120,7 +1120,7 @@ toast("crawling is started");
                 <tbody>
                   {filteredAndSortedPages.map((analyzedPage, index) => (
                     <tr
-                  key={`${analyzedPage.session.id}-${analyzedPage.page.id}`}
+                  key={`${analyzedPage.project.id}-${analyzedPage.page.id}`}
                       className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
                       onClick={(e) => {
                         // Don't trigger row selection if clicking on buttons or checkbox

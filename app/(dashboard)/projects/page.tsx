@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { SessionManager } from "@/components/audit/session-manager";
+import { ProjectManager } from "@/components/audit/project-manager";
 
-export default async function SessionsPage() {
+export default async function ProjectsPage() {
   const supabase = await createClient();
 
   const { data, error } = await supabase.auth.getUser();
@@ -10,5 +10,5 @@ export default async function SessionsPage() {
     redirect("/auth/login");
   }
 
-  return <SessionManager />;
+  return <ProjectManager />;
 } 

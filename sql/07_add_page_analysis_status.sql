@@ -7,8 +7,8 @@ ADD COLUMN analysis_status TEXT DEFAULT 'pending' CHECK (analysis_status IN ('pe
 -- Add index for faster queries on analysis status
 CREATE INDEX idx_scraped_pages_analysis_status ON scraped_pages(analysis_status);
 
--- Add index for session + status combinations (useful for dashboard queries)
-CREATE INDEX idx_scraped_pages_session_status ON scraped_pages(audit_session_id, analysis_status);
+-- Add index for project + status combinations (useful for dashboard queries)
+CREATE INDEX idx_scraped_pages_project_status ON scraped_pages(audit_project_id, analysis_status);
 
 -- Update existing pages to have 'completed' status if they have analysis results
 UPDATE scraped_pages 

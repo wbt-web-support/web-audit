@@ -59,7 +59,7 @@ export default function DashboardLoading() {
         </main>
       </div>
 
-      {/* Recent sessions skeleton */}
+      {/* Recent projects skeleton */}
       <div className="lg:pl-64 p-8">
         <div className="bg-card border border-border rounded-lg p-6">
           <div className="w-48 h-6 bg-muted animate-pulse rounded mb-2"></div>

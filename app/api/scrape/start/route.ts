@@ -38,9 +38,9 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { session_id } = body;
-    const { data: sessionData } = await supabase.from("audit_sessions").select("crawl_type").eq("id", session_id).single();
-    const crawl_type = sessionData?.crawl_type;
+    const { project_id } = body;
+    const { data: projectData } = await supabase.from("audit_projects").select("crawl_type").eq("id", project_id).single();
+    const crawl_type = projectData?.crawl_type;
     console.log("**************crawl_type**************",crawl_type);
     console.log("Received body:", body);
     
@@ -52,59 +52,59 @@ export async function POST(request: Request) {
       );
     }
     
-    if (!session_id) {
+    if (!project_id) {
       return NextResponse.json(
-        { error: "session_id is required" },
+        { error: "project_id is required" },
         { status: 400 }
       );
     }
 
-    // Get audit session
-    const { data: session, error: sessionError } = await supabase
-      .from("audit_sessions")
+    // Get audit project
+    const { data: project, error: projectError } = await supabase
+      .from("audit_projects")
       .select("*")
-      .eq("id", session_id)
+      .eq("id", project_id)
       .eq("user_id", user.id)
       .single();
 
-    if (sessionError || !session) {
+    if (projectError || !project) {
       return NextResponse.json(
-        { error: "Audit session not found" },
+        { error: "Audit project not found" },
         { status: 404 }
       );
     }
 
-    if (session.status === "crawling" || session.status === "analyzing") {
+    if (project.status === "crawling" || project.status === "analyzing") {
       return NextResponse.json(
-        { error: "Cannot start crawling - session is already running" },
+        { error: "Cannot start crawling - project is already running" },
         { status: 400 }
       );
     }
 
-    // Get existing pages for this session to avoid duplicates
+    // Get existing pages for this project to avoid duplicates
     const { data: existingPages } = await supabase
       .from("scraped_pages")
       .select("url")
-      .eq("audit_session_id", session_id);
+      .eq("audit_project_id", project_id);
 
     // Normalize existing URLs to handle hash fragments
     const existingUrls = new Set(
       existingPages?.map((p) => normalizeUrl(p.url)) || []
     );
 
-    // Update session status to crawling
+    // Update project status to crawling
     await supabase
-      .from("audit_sessions")
+      .from("audit_projects")
       .update({ status: "crawling" })
-      .eq("id", session_id);
+      .eq("id", project_id);
 
     // Start crawling in the background based on crawl_type
-    await crawlWebsite(session_id, session.base_url, user.id, existingUrls, crawl_type);
+    await crawlWebsite(project_id, project.base_url, user.id, existingUrls, crawl_type);
 
     return NextResponse.json({
       message: "Crawling started",
-      session_id,
-      isRecrawl: session.status === "completed",
+      project_id,
+      isRecrawl: project.status === "completed",
     });
   } catch (error) {
     return NextResponse.json(
@@ -115,7 +115,7 @@ export async function POST(request: Request) {
 }
 
 async function crawlWebsite(
-  sessionId: string,
+  projectId: string,
   baseUrl: string,
   userId: string,
   existingUrls: Set<string>,
@@ -144,14 +144,14 @@ async function crawlWebsite(
     let newPages = 0;
     
     await scraper.crawl(async (pageData) => {
-      // Check if session should stop crawling
-      const { data: currentSession } = await supabase
-        .from("audit_sessions")
+      // Check if project should stop crawling
+      const { data: currentProject } = await supabase
+        .from("audit_projects")
         .select("status")
-        .eq("id", sessionId)
+        .eq("id", projectId)
         .single();
 
-      if (currentSession?.status === "failed") {
+      if (currentProject?.status === "failed") {
         throw new Error("Crawling stopped by user");
       }
       console.log(`Crawling page: ${pageData.url}`);
@@ -180,7 +180,7 @@ async function crawlWebsite(
             status_code: pageData.statusCode,
             scraped_at: new Date().toISOString(),
           })
-          .eq("audit_session_id", sessionId)
+          .eq("audit_project_id", projectId)
           .eq("url", normalizedUrl);
 
         if (!error) {
@@ -191,7 +191,7 @@ async function crawlWebsite(
         console.log(`Creating new page: ${normalizedUrl}`);
         // Insert new page (with normalized URL)
         const { error } = await supabase.from("scraped_pages").insert({
-          audit_session_id: sessionId,
+          audit_project_id: projectId,
           url: normalizedUrl,
           title: pageData.title,
           content: pageData.content,
@@ -202,45 +202,45 @@ async function crawlWebsite(
         if (!error) {
           newPages++;
           pagesCrawled++;
-          existingUrls.add(normalizedUrl); // Add normalized URL to prevent duplicates in this session
+          existingUrls.add(normalizedUrl); // Add normalized URL to prevent duplicates in this project
         }
       }
       console.log(`Pages crawled: ${pagesCrawled}`);
       // Update progress
       await supabase
-        .from("audit_sessions")
+        .from("audit_projects")
         .update({ pages_crawled: pagesCrawled })
-        .eq("id", sessionId);
+        .eq("id", projectId);
     });
 
-    // Update session status to completed crawling (ready for analysis)
+    // Update project status to completed crawling (ready for analysis)
     await supabase
-      .from("audit_sessions")
+      .from("audit_projects")
       .update({
         status: "completed",
         total_pages: pagesCrawled,
       })
-      .eq("id", sessionId);
+      .eq("id", projectId);
 
     console.log(`Crawling completed (${crawlType || 'full'}): ${pagesCrawled} pages crawled`);
     
   } catch (error: any) {
     // Check if it was stopped by user
-    const { data: currentSession } = await supabase
-      .from("audit_sessions")
+    const { data: currentProject } = await supabase
+      .from("audit_projects")
       .select("status")
-      .eq("id", sessionId)
+      .eq("id", projectId)
       .single();
 
-    if (currentSession?.status !== "failed") {
-      // Update session status to failed only if not already set to failed (stopped)
+    if (currentProject?.status !== "failed") {
+      // Update project status to failed only if not already set to failed (stopped)
       await supabase
-        .from("audit_sessions")
+        .from("audit_projects")
         .update({
           status: "failed",
           error_message: error.message || "Crawling failed",
         })
-        .eq("id", sessionId);
+        .eq("id", projectId);
     }
   }
 }

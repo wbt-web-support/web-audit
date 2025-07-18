@@ -4,7 +4,7 @@ import { Globe, Clock, CheckCircle, AlertTriangle, XCircle } from "lucide-react"
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-interface AuditSession {
+interface AuditProject {
   id: string;
   base_url: string;
   status: string;
@@ -13,11 +13,11 @@ interface AuditSession {
   created_at: string;
 }
 
-interface RecentSessionsProps {
-  sessions: AuditSession[];
+interface RecentProjectsProps {
+  projects: AuditProject[];
 }
 
-export function RecentSessions({ sessions }: RecentSessionsProps) {
+export function RecentProjects({ projects }: RecentProjectsProps) {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
@@ -42,39 +42,39 @@ export function RecentSessions({ sessions }: RecentSessionsProps) {
         <CardDescription>Your latest audit projects</CardDescription>
       </CardHeader>
       <CardContent>
-        {sessions.length === 0 ? (
+        {projects.length === 0 ? (
           <div className="text-center py-8">
             <Globe className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground">No projects yet</p>
-            <Link href="/sessions">
+            <Link href="/projects">
               <Button className="mt-4 w-full sm:w-auto">Add Your First Projects</Button>
             </Link>
           </div>
         ) : (
           <div className="space-y-4">
-            {sessions.map((session) => (
-              <div key={session.id} className={cn(
+            {projects.map((project) => (
+              <div key={project.id} className={cn(
                 "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 border rounded-lg transition-colors",
                 "hover:bg-muted/50"
               )}>
                 <div className="flex items-center gap-4 w-full sm:w-auto">
-                  {getStatusIcon(session.status)}
+                  {getStatusIcon(project.status)}
                   <div>
-                    <p className="font-medium break-all max-w-xs sm:max-w-none">{session.base_url}</p>
+                    <p className="font-medium break-all max-w-xs sm:max-w-none">{project.base_url}</p>
                     <p className="text-sm text-muted-foreground">
-                      {session.pages_crawled || 0} pages crawled • {session.pages_analyzed || 0} analyzed
+                      {project.pages_crawled || 0} pages crawled • {project.pages_analyzed || 0} analyzed
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                  <Link href={`/audit?session=${session.id}`} className="w-full sm:w-auto">
+                  <Link href={`/audit?project=${project.id}`} className="w-full sm:w-auto">
                     <Button size="sm" variant="outline" className="w-full sm:w-auto">View</Button>
                   </Link>
                 </div>
               </div>
             ))}
             <div className="text-center pt-4">
-              <Link href="/sessions">
+              <Link href="/projects">
                 <Button variant="outline" className="w-full sm:w-auto">View All Projects</Button>
               </Link>
             </div>

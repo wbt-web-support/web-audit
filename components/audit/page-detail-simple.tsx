@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AuditSession, ScrapedPage } from '@/lib/types/database';
+import { AuditProject, ScrapedPage } from '@/lib/types/database';
 import { 
   Loader2, 
   ArrowLeft, 
@@ -130,7 +130,7 @@ function hasImgTags(obj: unknown): obj is { imgTags: { total: number; missingAlt
 }
 
 export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
-  const [session, setSession] = useState<AuditSession | null>(null);
+  const [project, setProject] = useState<AuditProject | null>(null);
   const [page, setPage] = useState<ScrapedPage | null>(null);
   const [analysis, setAnalysis] = useState<PageAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
@@ -219,7 +219,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
           seo_result: !!data.results?.seo_analysis
         });
         console.log("seoAnalysis**********", data.results.seo_analysis);
-        setSession(data.session);
+        setProject(data.project);
         setPage(data.page);
         
         // Check if this specific page is currently being analyzed
@@ -411,14 +411,14 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
   // Manual analysis trigger for both
   const startFullAnalysis = async () => {
-    if (!session?.id) return;
+    if (!project?.id) return;
     
     setIsAnalysisRunning(true);
     setGrammarAnalyzing(true);
     setSeoAnalyzing(true);
     setUiAnalyzing(true);
     try {
-      const response = await fetch(`/api/audit-sessions/${session.id}/analyze`, {
+      const response = await fetch(`/api/audit-projects/${project.id}/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -450,12 +450,12 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     setGrammarAnalyzing(true);
     setIsAnalysisRunning(true);
     try {
-      if (!session?.id) {
-        console.error('No session ID available for analysis');
+      if (!project?.id) {
+        console.error('No project ID available for analysis');
         return;
       }
       console.log('🚀 Starting grammar-only analysis...');
-      const response = await fetch(`/api/audit-sessions/${session.id}/analyze`, {
+      const response = await fetch(`/api/audit-projects/${project.id}/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -494,12 +494,12 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     setUiAnalyzing(true);
     setIsAnalysisRunning(true);
     try {
-      if (!session?.id) {
-        console.error('No session ID available for analysis');
+      if (!project?.id) {
+        console.error('No project ID available for analysis');
         return;
       }
       console.log(`🚀 Starting UI quality analysis for ${device}...`);
-      const response = await fetch(`/api/audit-sessions/${session.id}/analyze`, {
+      const response = await fetch(`/api/audit-projects/${project.id}/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -539,13 +539,13 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     setIsAnalysisRunning(true);
     setUiAnalyzing(true);
     try {
-      if (!session?.id) {
-        console.error('No session ID available for analysis');
+      if (!project?.id) {
+        console.error('No project ID available for analysis');
         return;
       }
 
       console.log('🚀 Starting grammar analysis...');
-      const response = await fetch(`/api/audit-sessions/${session.id}/analyze`, {
+      const response = await fetch(`/api/audit-projects/${project.id}/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -592,13 +592,13 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     setSeoAnalyzing(true);
     setIsAnalysisRunning(true);
     try {
-      if (!session?.id) {
-        console.error('No session ID available for analysis');
+      if (!project?.id) {
+        console.error('No project ID available for analysis');
         return;
       }
 
       console.log('🚀 Starting SEO analysis...');
-      const response = await fetch(`/api/audit-sessions/${session.id}/analyze`, {
+      const response = await fetch(`/api/audit-projects/${project.id}/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -794,11 +794,11 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     );
   }
 
-  if (!session || !page || !analysis) {
+  if (!project || !page || !analysis) {
     return (
       <div className="text-center py-8">
         <p className="text-muted-foreground">Page not found</p>
-        <Link href={session ? `/audit?session=${session.id}` : "/audit"}>
+        <Link href={project ? `/audit?project=${project.id}` : "/audit"}>
           <Button variant="outline" className="mt-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Audit
@@ -812,7 +812,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     <div className="container mx-auto p-6 space-y-6">
       {/* Header with back button and refresh */}
       <div className="flex items-center justify-between">
-        <Link href={session ? `/audit?session=${session.id}` : "/audit"}>
+        <Link href={project ? `/audit?project=${project.id}` : "/audit"}>
           <Button variant="outline">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Audit

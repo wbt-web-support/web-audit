@@ -2,13 +2,13 @@
 
 ## Overview
 
-This feature enhances the website audit system by allowing users to specify expected company information when creating an audit session. The AI analysis will then verify whether this information is correctly displayed on the website and flag any discrepancies.
+This feature enhances the website audit system by allowing users to specify expected company information when creating an audit project. The AI analysis will then verify whether this information is correctly displayed on the website and flag any discrepancies.
 
 ## Feature Components
 
-### 1. Enhanced Session Creation Form
+### 1. Enhanced Project Creation Form
 
-When creating a new audit session, users can now provide:
+When creating a new audit project, users can now provide:
 
 - **Company Name**: Expected company name to verify on the website
 - **Phone Number**: Expected phone number to verify on the website  
@@ -18,7 +18,7 @@ When creating a new audit session, users can now provide:
 
 ### 2. Database Schema
 
-New columns added to the `audit_sessions` table:
+New columns added to the `audit_projects` table:
 - `company_name` (TEXT): Expected company name
 - `phone_number` (TEXT): Expected phone number
 - `email` (TEXT): Expected email address
@@ -35,15 +35,15 @@ The content analysis now includes company information verification:
 
 ### 4. UI Enhancements
 
-- **Session Creation Form**: Intuitive form with icons for each field type
-- **Session Display**: Shows expected company information for easy reference
+- **Project Creation Form**: Intuitive form with icons for each field type
+- **Project Display**: Shows expected company information for easy reference
 - **Analysis Results**: Includes company information verification in content analysis reports
 
 ## Usage Instructions
 
-### Creating an Audit Session with Company Information
+### Creating an Audit Project with Company Information
 
-1. Navigate to the Sessions page
+1. Navigate to the Projects page
 2. Fill in the required Website URL
 3. Optionally provide expected company information:
    - Company Name: "Acme Corporation"
@@ -51,7 +51,7 @@ The content analysis now includes company information verification:
    - Email: "contact@example.com"
    - Address: "123 Main St, City, State 12345"
    - Additional Info: "Open Mon-Fri 9-5, Weekend support available"
-4. Click "Create Session"
+4. Click "Create Project"
 
 ### Understanding Analysis Results
 
@@ -97,8 +97,8 @@ The AI will now check each page for:
 Run the SQL migration to add the new columns:
 
 ```sql
--- Run sql/06_add_website_info_to_sessions.sql
-ALTER TABLE audit_sessions 
+-- Run sql/06_add_website_info_to_projects.sql
+ALTER TABLE audit_projects 
 ADD COLUMN company_name TEXT,
 ADD COLUMN phone_number TEXT,
 ADD COLUMN email TEXT,
@@ -108,13 +108,13 @@ ADD COLUMN custom_info TEXT;
 
 ### API Endpoints
 
-- **POST /api/audit-sessions**: Now accepts additional company information fields
-- **GET /api/audit-sessions**: Returns company information with session data
+- **POST /api/audit-projects**: Now accepts additional company information fields
+- **GET /api/audit-projects**: Returns company information with project data
 - **Analysis endpoints**: Enhanced to include company information verification
 
 ### Component Updates
 
-- `SessionManager`: Enhanced creation form with company information fields
+- `ProjectManager`: Enhanced creation form with company information fields
 - `analyzeContentWithGemini`: Enhanced AI prompt to include company verification
 - Analysis results display: Shows company information verification results
 

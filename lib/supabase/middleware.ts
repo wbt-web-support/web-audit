@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { hasEnvVars } from "../utils";
 
-export async function updateSession(request: NextRequest) {
+export async function updateProject(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   });
@@ -68,7 +68,7 @@ export async function updateSession(request: NextRequest) {
   // 4. Finally:
   //    return myNewResponse
   // If this is not done, you may be causing the browser and server to go out
-  // of sync and terminate the user's session prematurely!
+  // of sync and terminate the user's project prematurely!
 
   return supabaseResponse;
 }
