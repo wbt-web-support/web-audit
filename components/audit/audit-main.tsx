@@ -1221,6 +1221,9 @@ toast("crawling is started");
                               Analyzing
                             </Button>
                           ) : analyzedPage.resultCount > 0 ? (
+                            <>
+                           
+                           
                             <Button
                               size="sm"
                               className="h-7 px-3 w-full"
@@ -1229,6 +1232,16 @@ toast("crawling is started");
                               <Eye className="h-3 w-3 mr-1" />
                               View
                             </Button>
+                            <Button
+                              size="sm"
+                              className="h-7 px-3 w-full"
+                              onClick={() => analyzeSinglePage(analyzedPage.page.id)}
+                              disabled={analyzing || deleting}
+                            >
+                              <RefreshCw className="h-3 w-3 mr-1" />
+                              Re-Analyze
+                            </Button>
+                            </>
                           ) : (
                             <Button
                               size="sm"

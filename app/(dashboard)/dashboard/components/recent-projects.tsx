@@ -1,8 +1,10 @@
+'use client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Globe, Clock, CheckCircle, AlertTriangle, XCircle } from "lucide-react";
+import { Globe, Clock, CheckCircle, AlertTriangle, XCircle, Edit, BarChart3 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 
 interface AuditProject {
   id: string;
@@ -18,6 +20,7 @@ interface RecentProjectsProps {
 }
 
 export function RecentProjects({ projects }: RecentProjectsProps) {
+  const Router = useRouter();
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
@@ -68,8 +71,24 @@ export function RecentProjects({ projects }: RecentProjectsProps) {
                 </div>
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                   <Link href={`/audit?project=${project.id}`} className="w-full sm:w-auto">
-                    <Button size="sm" variant="outline" className="w-full sm:w-auto">View</Button>
+                   
+                    <Button size="sm" variant="outline" className="w-full sm:w-auto">
+                    <BarChart3 className="h-4 w-4 mr-1" />
+                      View</Button>
+
                   </Link>
+                  <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => Router.push(`/projects/edit/${project.id}`)}
+                        disabled={project.status === 'crawling' || project.status === 'analyzing'}
+                        title={project.status === 'crawling' || project.status === 'analyzing' 
+                          ? 'Cannot edit project while it is running' 
+                          : 'Edit project details'}
+                      >
+                        <Edit className="h-3 w-3 mr-1" />
+                        Edit
+                      </Button>
                 </div>
               </div>
             ))}

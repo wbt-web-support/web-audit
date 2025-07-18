@@ -6,7 +6,9 @@ import puppeteer, { Page } from "puppeteer";
 import path from "path";
 import fs from "fs/promises";
 import axios from "axios";
+import { analyzePerformanceAndAccessibility } from "./analyzePerformanceWithPageSpeed";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+const PAGESPEED_API_KEY = process.env.PAGESPEED_API_KEY;
 
 async function updatePagesAnalyzedCount(supabase: any, projectId: string) {
   try {
@@ -64,7 +66,7 @@ export async function POST(
     const {
       page_ids,
       analyze_all = false,
-      analysis_types = ["grammar", "seo", "ui"], // Default to both
+      analysis_types = ["grammar", "seo", "ui","performance"], // Default to both
       use_cache = true, // Default to use cache
       background = null, // Auto-determine based on page count
       force_refresh = false, // Force refresh cached results
@@ -184,7 +186,7 @@ async function performSinglePageAnalysis(
     let cached = false;
     let cachedAt = null;
     let instructions = project.instructions;
-    console.log("instructions**********", project);
+    console.log("instructions**********", instructions);
 
     // Check for cached results first (unless force refresh)
     if (useCache && !forceRefresh) {
@@ -222,6 +224,16 @@ async function performSinglePageAnalysis(
       analysisTypes.includes("seo") && !seoAnalysis
         ? (console.log(`[TASK] Starting SEO analysis for page ${page.id}`), analyzeSEO(page.html || "", page.url, page.title, page.status_code))
         : Promise.resolve(seoAnalysis);
+    // --- Performance analysis (PageSpeed Insights) ---
+    let performanceAnalysis = null;
+    let performancePromise: Promise<any | { error: string } | null> = 
+      analysisTypes.includes("performance")
+        ? analyzePerformanceAndAccessibility(page.url)
+        : Promise.resolve(null);
+    if (analysisTypes.includes("performance")) {
+      performancePromise = analyzePerformanceAndAccessibility(page.url);
+     
+    }
 
     // --- Screenshot + UI analysis for each device in parallel ---
     let phoneUiAnalysis = null;
@@ -270,9 +282,10 @@ async function performSinglePageAnalysis(
     const desktopUiPromise = screenshotAndAnalyzeUI("desktop");
 
     // --- Wait for all analyses to finish ---
-    const [grammarResult, seoResult, phoneUiResult, tabletUiResult, desktopUiResult] = await Promise.all([
+    const [grammarResult, seoResult, perfResult, phoneUiResult, tabletUiResult, desktopUiResult] = await Promise.all([
       grammarPromise,
       seoPromise,
+      performancePromise,
       phoneUiPromise,
       tabletUiPromise,
       desktopUiPromise,
@@ -280,9 +293,13 @@ async function performSinglePageAnalysis(
 
     grammarAnalysis = grammarResult;
     seoAnalysis = seoResult;
+    performanceAnalysis = perfResult;
     phoneUiAnalysis = phoneUiResult;
     tabletUiAnalysis = tabletUiResult;
     desktopUiAnalysis = desktopUiResult;
+
+    // Log the performanceAnalysis result
+    console.log('[PERFORMANCE ANALYSIS]', performanceAnalysis);
 
     // Save screenshot URLs in DB
     await supabase
@@ -293,7 +310,7 @@ async function performSinglePageAnalysis(
         page_screenshot_url_desktop: screenshotUrls.desktop,
       })
       .eq("id", page.id);
-    console.log(`[DB] Screenshot URLs saved for page ${page.id}`);
+
 
     // --- Custom Instructions Analysis ---
     let customInstructionsAnalysis = null;
@@ -307,7 +324,7 @@ async function performSinglePageAnalysis(
       project.instructions &&
       servicesArr.includes("custom_instructions")
     ) {
-      customInstructionsAnalysis = await analyzeWithCustomInstructions(
+      customInstructionsAnalysis = await analyzeCustomInstructions(
         project.instructions,
         page.html || "",
         screenshotUrls
@@ -335,6 +352,7 @@ async function performSinglePageAnalysis(
       phoneUiAnalysis,
       tabletUiAnalysis,
       desktopUiAnalysis,
+      performanceAnalysis,
       overallScore
     );
     console.log(`[DB] Analysis results saved for page ${page.id}`);
@@ -350,6 +368,19 @@ async function performSinglePageAnalysis(
     await updatePagesAnalyzedCount(supabase, project.id);
 
     // Return appropriate response based on what was requested
+    if (analysisTypes.includes("performance")) {
+      return {
+        grammar_analysis: grammarAnalysis,
+        seo_analysis: seoAnalysis,
+        performance_analysis: performanceAnalysis,
+        overall_score: overallScore,
+        company_information: grammarAnalysis?.companyInformation || null,
+        cached,
+        cached_at: cachedAt,
+        freshly_scraped: true,
+        custom_instructions_analysis: customInstructionsAnalysis,
+      };
+    }
     if (analysisTypes.includes("grammar") && analysisTypes.includes("seo")) {
       return {
         grammar_analysis: grammarAnalysis,
@@ -406,7 +437,7 @@ async function upsertAnalysisResult(
   phoneUiAnalysis: any,
   tabletUiAnalysis: any,
   desktopUiAnalysis: any,
-  // performanceAnalysis: any,
+  performanceAnalysis: any,
   overallScore: number
 ) {
   const status =
@@ -435,6 +466,9 @@ async function upsertAnalysisResult(
 
   if (seoAnalysis) {
     updateData.seo_analysis = seoAnalysis;
+  }
+  if (performanceAnalysis) {
+    updateData.performance_analysis = performanceAnalysis;
   }
   if (phoneUiAnalysis) {
     updateData.phone_ui_quality_analysis = phoneUiAnalysis;
@@ -957,7 +991,7 @@ async function analyzeSEO(
   // Links analysis
   const linksCheck = analyzeLinks(html, url);
   const imgTags = analyzeImgTags(html);
-  console.log("imgTags**********", imgTags);
+ 
   // Redirect check
   const redirectCheck = {
     hasRedirect: statusCode !== 200,
@@ -1330,7 +1364,7 @@ Provide the analysis strictly in the following JSON format, without any extra te
   }
 }
 
-async function analyzeWithCustomInstructions(
+async function analyzeCustomInstructions(
   instructions: string,
   pageHtml: string,
   screenshotUrls: Record<string, string | null>
@@ -1338,7 +1372,14 @@ async function analyzeWithCustomInstructions(
   try {
     console.log("instructions start**********", instructions);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
-    let prompt = `You are an expert web auditor.\n\nFollow these custom instructions:\n${instructions}\n\nYou are provided with the following page HTML and screenshots.\n\nIMPORTANT LIMITATION: Only use the provided page HTML and screenshots. Do NOT use any external or general knowledge. Limit your response strictly to what is present in the data. If you cannot answer something based on the provided data, say so.\n\nPage HTML:\n${pageHtml}\n`;
+    let prompt = `You are an expert web auditor.
+    \n\nFollow these custom instructions:
+    \n${instructions}\n\n
+    You are provided with the following page HTML and screenshots.
+    \n\nIMPORTANT LIMITATION: Only use the provided page HTML and screenshots.
+     Do NOT use any external or general knowledge. Limit your response strictly to what 
+     is present in the data. If you cannot answer something based on the provided data,
+      say so.\n\nPage HTML:\n${pageHtml}\n`;
     // Add screenshot references
     for (const device of ["phone", "tablet", "desktop"]) {
       if (screenshotUrls[device]) {

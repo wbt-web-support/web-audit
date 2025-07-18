@@ -43,7 +43,7 @@ export default function CustomInstructions({ loading = false, isProjectRunning =
         Instructions
       </Label>
       <p className="text-sm text-muted-foreground mb-2">
-        These instructions are applied to each page analysis, not to the entire website.
+        These instructions are applied to each page analysis.
       </p>
       <div className="space-y-3">
         {instructions.map((inst, idx) => (

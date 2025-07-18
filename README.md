@@ -112,6 +112,32 @@ const value = useSelector((state: RootState) => state.example.value);
 const dispatch = useDispatch<AppDispatch>();
 ```
 
+## Performance Analysis with Google PageSpeed Insights
+
+This project now supports automated performance analysis using the [Google PageSpeed Insights API](https://developers.google.com/speed/docs/insights/rest/v5/pagespeedapi/runpagespeed).
+
+### Setup
+
+1. **Get a Google PageSpeed Insights API Key:**
+   - Go to the [Google API Console](https://console.cloud.google.com/apis/library/pagespeedonline.googleapis.com).
+   - Enable the PageSpeed Insights API for your project.
+   - Create an API key and copy it.
+2. **Set the API Key in your environment:**
+   - Add the following to your `.env.local` or deployment environment:
+     ```
+     PAGESPEED_API_KEY=your_api_key_here
+     ```
+
+### Usage
+- When running an audit, include `"performance"` in the `analysis_types` array in the POST body to `/api/audit-projects/[id]/analyze`.
+- The backend will fetch performance data from Google PageSpeed Insights in parallel with other analyses.
+- Results are stored in the `performance_analysis` field of the `audit_results` table and returned in the API response.
+
+### Notes
+- The API supports both mobile and desktop strategies (currently defaults to mobile).
+- You must have a valid API key set for performance analysis to work.
+- See [Google's API documentation](https://developers.google.com/speed/docs/insights/rest/v5/pagespeedapi/runpagespeed) for more details on the response format.
+
 ## Feedback and issues
 
 Please file feedback and issues over on the [Supabase GitHub org](https://github.com/supabase/supabase/issues/new/choose).

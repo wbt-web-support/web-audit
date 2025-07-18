@@ -1,14 +1,20 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { AuditProject, ScrapedPage } from '@/lib/types/database';
-import { 
-  Loader2, 
-  ArrowLeft, 
-  CheckCircle, 
+import { useState, useEffect, useCallback } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { AuditProject, ScrapedPage } from "@/lib/types/database";
+import {
+  Loader2,
+  ArrowLeft,
+  CheckCircle,
   XCircle,
   ExternalLink,
   RefreshCw,
@@ -23,9 +29,9 @@ import {
   Calendar,
   Link2,
   Clock,
-} from 'lucide-react';
-import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
+} from "lucide-react";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 
 interface PageAnalysis {
   metaTags: {
@@ -125,8 +131,22 @@ interface PageDetailSimpleProps {
   pageId: string;
 }
 
-function hasImgTags(obj: unknown): obj is { imgTags: { total: number; missingAltCount: number; imgTags: Array<{ src: string; hasAlt: boolean }> } } {
-  return !!obj && typeof obj === 'object' && 'imgTags' in obj && typeof (obj as any).imgTags === 'object' && Array.isArray((obj as any).imgTags.imgTags);
+function hasImgTags(
+  obj: unknown
+): obj is {
+  imgTags: {
+    total: number;
+    missingAltCount: number;
+    imgTags: Array<{ src: string; hasAlt: boolean }>;
+  };
+} {
+  return (
+    !!obj &&
+    typeof obj === "object" &&
+    "imgTags" in obj &&
+    typeof (obj as any).imgTags === "object" &&
+    Array.isArray((obj as any).imgTags.imgTags)
+  );
 }
 
 export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
@@ -134,9 +154,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   const [page, setPage] = useState<ScrapedPage | null>(null);
   const [analysis, setAnalysis] = useState<PageAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>('');
-  const [activeAnalysisTab, setActiveAnalysisTab] = useState('grammar');
-  const [activeGrammarTab, setActiveGrammarTab] = useState('grammar');
+  const [error, setError] = useState<string>("");
+  const [activeAnalysisTab, setActiveAnalysisTab] = useState("grammar");
+  const [activeGrammarTab, setActiveGrammarTab] = useState("grammar");
   const [grammarAnalyzing, setGrammarAnalyzing] = useState(false);
   const [seoAnalyzing, setSeoAnalyzing] = useState(false);
   const [uiAnalyzing, setUiAnalyzing] = useState(false);
@@ -146,60 +166,86 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   const [uiQualityCached, setUiQualityCached] = useState(false);
   const [grammarCachedAt, setGrammarCachedAt] = useState<string | null>(null);
   const [seoCachedAt, setSeoCachedAt] = useState<string | null>(null);
-  const [uiQualityCachedAt, setUiQualityCachedAt] = useState<string | null>(null);
+  const [uiQualityCachedAt, setUiQualityCachedAt] = useState<string | null>(
+    null
+  );
   const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
-  const [activeUiTab, setActiveUiTab] = useState<'phone' | 'tablet' | 'desktop'>('phone');
+  const [activeUiTab, setActiveUiTab] = useState<
+    "phone" | "tablet" | "desktop"
+  >("phone");
+  const [activePerformanceTab, setActivePerformanceTab] = useState<'mobile' | 'desktop'>('mobile');
+  const [performanceAnalyzing, setPerformanceAnalyzing] = useState(false);
+  const [performanceCached, setPerformanceCached] = useState(false);
+  const [performanceCachedAt, setPerformanceCachedAt] = useState<string | null>(null);
 
   // Fetch results from audit_results table
   const fetchAnalysisResults = useCallback(async () => {
     try {
       const response = await fetch(`/api/pages/${pageId}`);
       const data = await response.json();
-      
+
       if (response.ok && data.results) {
-        console.log('📊 Fetched analysis results:', data.results);
-        
+        console.log("📊 Fetched analysis results:", data.results);
+
         // Update analysis state with fresh results
-        setAnalysis(prev => {
+        setAnalysis((prev) => {
           const newAnalysis = prev || analyzePage(data.page);
-          
+
           if (data.results.grammar_analysis) {
             newAnalysis.grammarCheck = data.results.grammar_analysis;
             setGrammarCached(true);
-            setGrammarCachedAt(data.results.created_at || data.results.updated_at);
+            setGrammarCachedAt(
+              data.results.created_at || data.results.updated_at
+            );
             setGrammarAnalyzing(false);
           }
-          
+
           if (data.results.seo_analysis) {
             newAnalysis.seoAnalysis = data.results.seo_analysis;
-           
+
             setSeoCached(true);
             setSeoCachedAt(data.results.created_at || data.results.updated_at);
             setSeoAnalyzing(false);
           }
           if (data.results.phone_ui_quality_analysis) {
-            newAnalysis.phone_ui_quality_analysis = data.results.phone_ui_quality_analysis;
+            newAnalysis.phone_ui_quality_analysis =
+              data.results.phone_ui_quality_analysis;
           }
           if (data.results.tablet_ui_quality_analysis) {
-            newAnalysis.tablet_ui_quality_analysis = data.results.tablet_ui_quality_analysis;
+            newAnalysis.tablet_ui_quality_analysis =
+              data.results.tablet_ui_quality_analysis;
           }
           if (data.results.desktop_ui_quality_analysis) {
-            newAnalysis.desktop_ui_quality_analysis = data.results.desktop_ui_quality_analysis;
+            newAnalysis.desktop_ui_quality_analysis =
+              data.results.desktop_ui_quality_analysis;
           }
           setUiQualityCached(
-            !!(data.results.phone_ui_quality_analysis || data.results.tablet_ui_quality_analysis || data.results.desktop_ui_quality_analysis)
+            !!(
+              data.results.phone_ui_quality_analysis ||
+              data.results.tablet_ui_quality_analysis ||
+              data.results.desktop_ui_quality_analysis
+            )
           );
-          setUiQualityCachedAt(data.results.created_at || data.results.updated_at);
+          setUiQualityCachedAt(
+            data.results.created_at || data.results.updated_at
+          );
           setUiAnalyzing(false);
-          
+
+          // Performance analysis
+          if (data.results.performance_analysis) {
+            setPerformanceCached(true);
+            setPerformanceCachedAt(data.results.created_at || data.results.updated_at);
+            setPerformanceAnalyzing(false);
+          }
+
           return newAnalysis;
         });
-        
+
         // Clear analyzing states
         setIsAnalysisRunning(false);
       }
     } catch (error) {
-      console.error('Error fetching analysis results:', error);
+      console.error("Error fetching analysis results:", error);
     }
   }, [pageId]);
 
@@ -207,70 +253,99 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     try {
       const response = await fetch(`/api/pages/${pageId}`);
       const data = await response.json();
-      console.log("Fetching page data for ID:",typeof(data.results.phone_ui_quality_analysis));  
-      console.log("Fetching page data for ID:",typeof(data.results.tablet_ui_quality_analysis));  
-      console.log("Fetching page data for ID:",typeof(data.results.desktop_ui_quality_analysis));  
+      console.log(
+        "Fetching page data for ID:",
+        typeof data.results.phone_ui_quality_analysis
+      );
+      console.log(
+        "Fetching page data for ID:",
+        typeof data.results.tablet_ui_quality_analysis
+      );
+      console.log(
+        "Fetching page data for ID:",
+        typeof data.results.desktop_ui_quality_analysis
+      );
       if (response.ok) {
-        console.log('🔍 Page data received:', {
+        console.log("🔍 Page data received:", {
           pageId: data.page?.id,
           analysis_status: data.page?.analysis_status,
           has_results: !!data.results,
           grammar_result: !!data.results?.grammar_analysis,
-          seo_result: !!data.results?.seo_analysis
+          seo_result: !!data.results?.seo_analysis,
         });
         console.log("seoAnalysis**********", data.results.seo_analysis);
         setProject(data.project);
         setPage(data.page);
-        
+
         // Check if this specific page is currently being analyzed
-        const isPageAnalyzing = data.page?.analysis_status === 'analyzing';
+        const isPageAnalyzing = data.page?.analysis_status === "analyzing";
         setIsAnalysisRunning(isPageAnalyzing);
-        
+
         // Analyze the page data
         if (data.page) {
           const basicAnalysis = analyzePage(data.page);
           let hasGrammarCache = false;
           let hasSeoCache = false;
           let hasUiQualityCache = false;
+          let hasPerformanceCache = false;
 
           // Check for cached results and merge them
           if (data.results) {
             if (data.results.grammar_analysis) {
               basicAnalysis.grammarCheck = data.results.grammar_analysis;
               setGrammarCached(true);
-              setGrammarCachedAt(data.results.created_at || data.results.updated_at);
+              setGrammarCachedAt(
+                data.results.created_at || data.results.updated_at
+              );
               hasGrammarCache = true;
             }
-            
+
             if (data.results.seo_analysis) {
               basicAnalysis.seoAnalysis = data.results.seo_analysis;
               setSeoCached(true);
-              setSeoCachedAt(data.results.created_at || data.results.updated_at);
+              setSeoCachedAt(
+                data.results.created_at || data.results.updated_at
+              );
               hasSeoCache = true;
             }
             if (data.results.phone_ui_quality_analysis) {
-              basicAnalysis.phone_ui_quality_analysis = data.results.phone_ui_quality_analysis;
+              basicAnalysis.phone_ui_quality_analysis =
+                data.results.phone_ui_quality_analysis;
               hasUiQualityCache = true;
             }
             if (data.results.tablet_ui_quality_analysis) {
-              basicAnalysis.tablet_ui_quality_analysis = data.results.tablet_ui_quality_analysis;
+              basicAnalysis.tablet_ui_quality_analysis =
+                data.results.tablet_ui_quality_analysis;
               hasUiQualityCache = true;
             }
             if (data.results.desktop_ui_quality_analysis) {
-              basicAnalysis.desktop_ui_quality_analysis = data.results.desktop_ui_quality_analysis;
+              basicAnalysis.desktop_ui_quality_analysis =
+                data.results.desktop_ui_quality_analysis;
               hasUiQualityCache = true;
             }
             setUiQualityCached(
-              !!(data.results.phone_ui_quality_analysis || data.results.tablet_ui_quality_analysis || data.results.desktop_ui_quality_analysis)
+              !!(
+                data.results.phone_ui_quality_analysis ||
+                data.results.tablet_ui_quality_analysis ||
+                data.results.desktop_ui_quality_analysis
+              )
             );
-            setUiQualityCachedAt(data.results.created_at || data.results.updated_at);
+            setUiQualityCachedAt(
+              data.results.created_at || data.results.updated_at
+            );
+            // Performance analysis
+            if (data.results.performance_analysis) {
+              setPerformanceCached(true);
+              setPerformanceCachedAt(data.results.created_at || data.results.updated_at);
+              hasPerformanceCache = true;
+            }
           }
-          
+
           setAnalysis(basicAnalysis);
-          
+
           // Determine if we need to start analysis or show analyzing state
           if (isPageAnalyzing) {
-            console.log('🔥 Page is analyzing - showing analyzing states');
+            console.log("🔥 Page is analyzing - showing analyzing states");
             // Page is being analyzed - show analyzing state for missing analyses
             if (!hasGrammarCache) {
               setGrammarAnalyzing(true);
@@ -281,8 +356,14 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             if (!hasUiQualityCache) {
               setUiAnalyzing(true);
             }
-          } else if (data.page.analysis_status === 'pending' || !data.page.analysis_status) {
-            console.log('📝 Page needs analysis - starting fresh');
+            if (!hasPerformanceCache) {
+              setPerformanceAnalyzing(true);
+            }
+          } else if (
+            data.page.analysis_status === "pending" ||
+            !data.page.analysis_status
+          ) {
+            console.log("📝 Page needs analysis - starting fresh");
             // Page hasn't been analyzed yet - start fresh analysis for missing cached data
             if (!hasGrammarCache) {
               analyzeContentWithGemini();
@@ -290,22 +371,25 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             if (!hasSeoCache) {
               analyzeSeoWithAPI();
             }
+            if (!hasPerformanceCache) {
+              analyzePerformanceWithAPI();
+            }
           }
         }
       } else {
-        setError(data.error || 'Failed to fetch page data');
+        setError(data.error || "Failed to fetch page data");
       }
     } catch (error) {
-      setError('Failed to fetch page data');
+      setError("Failed to fetch page data");
     } finally {
       setLoading(false);
     }
-  }, [pageId, grammarCached, seoCached]);
+  }, [pageId, grammarCached, seoCached, performanceCached]);
 
   useEffect(() => {
     fetchPageData();
-    
-    // Set up Supabase Realtime subscriptions  
+
+    // Set up Supabase Realtime subscriptions
     const supabase = createClient();
     const channels: any[] = [];
 
@@ -316,38 +400,40 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
       const pageChannel = supabase
         .channel(`page-status-${pageId}`)
         .on(
-          'postgres_changes',
+          "postgres_changes",
           {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'scraped_pages',
-            filter: `id=eq.${pageId}`
+            event: "UPDATE",
+            schema: "public",
+            table: "scraped_pages",
+            filter: `id=eq.${pageId}`,
           },
           async (payload) => {
-            console.log('🔄 Page status updated:', payload.new);
+            console.log("🔄 Page status updated:", payload.new);
             const updatedPage = payload.new as any;
-            
+
             // Update page state
-            setPage(prev => ({ ...prev, ...updatedPage } as ScrapedPage));
-            
+            setPage((prev) => ({ ...prev, ...updatedPage } as ScrapedPage));
+
             // Handle status changes
-            if (updatedPage.analysis_status === 'analyzing') {
-              console.log('▶️ Analysis started');
+            if (updatedPage.analysis_status === "analyzing") {
+              console.log("▶️ Analysis started");
               setIsAnalysisRunning(true);
               if (!grammarCached) setGrammarAnalyzing(true);
               if (!seoCached) setSeoAnalyzing(true);
               if (!uiQualityCached) setUiAnalyzing(true);
-            } else if (updatedPage.analysis_status === 'completed') {
-              console.log('✅ Analysis completed - fetching results');
+              if (!performanceCached) setPerformanceAnalyzing(true);
+            } else if (updatedPage.analysis_status === "completed") {
+              console.log("✅ Analysis completed - fetching results");
               // Fetch the completed results
-              
+
               await fetchAnalysisResults();
-            } else if (updatedPage.analysis_status === 'failed') {
-              console.log('❌ Analysis failed');
+            } else if (updatedPage.analysis_status === "failed") {
+              console.log("❌ Analysis failed");
               setIsAnalysisRunning(false);
               setGrammarAnalyzing(false);
               setSeoAnalyzing(false);
               setUiAnalyzing(false);
+              setPerformanceAnalyzing(false);
             }
           }
         )
@@ -359,17 +445,20 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
       const resultsChannel = supabase
         .channel(`results-update-${pageId}`)
         .on(
-          'postgres_changes',
+          "postgres_changes",
           {
-            event: '*',
-            schema: 'public',
-            table: 'audit_results',
-            filter: `scraped_page_id=eq.${pageId}`
+            event: "*",
+            schema: "public",
+            table: "audit_results",
+            filter: `scraped_page_id=eq.${pageId}`,
           },
           async (payload) => {
-            console.log('📊 Results updated:', payload.eventType, payload.new);
-            
-            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            console.log("📊 Results updated:", payload.eventType, payload.new);
+
+            if (
+              payload.eventType === "INSERT" ||
+              payload.eventType === "UPDATE"
+            ) {
               // Fetch the latest results
               await fetchAnalysisResults();
             }
@@ -379,14 +468,14 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
       channels.push(resultsChannel);
 
-      console.log('🔌 Realtime subscriptions set up for page:', pageId);
+      console.log("🔌 Realtime subscriptions set up for page:", pageId);
     };
 
     setupRealtimeSubscriptions();
 
     // Cleanup subscriptions on unmount
     return () => {
-      channels.forEach(channel => {
+      channels.forEach((channel) => {
         supabase.removeChannel(channel);
       });
     };
@@ -395,15 +484,15 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   // Add polling fallback when analysis is running
   useEffect(() => {
     if (isAnalysisRunning) {
-      console.log('🔄 Starting fallback polling for analysis status');
-      
+      console.log("🔄 Starting fallback polling for analysis status");
+
       const pollInterval = setInterval(async () => {
-        console.log('⏰ Polling for updates...');
+        console.log("⏰ Polling for updates...");
         await fetchPageData();
       }, 5000); // Poll every 5 seconds
-      
+
       return () => {
-        console.log('🛑 Stopping fallback polling');
+        console.log("🛑 Stopping fallback polling");
         clearInterval(pollInterval);
       };
     }
@@ -412,36 +501,41 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   // Manual analysis trigger for both
   const startFullAnalysis = async () => {
     if (!project?.id) return;
-    
+
     setIsAnalysisRunning(true);
     setGrammarAnalyzing(true);
     setSeoAnalyzing(true);
     setUiAnalyzing(true);
+    setPerformanceAnalyzing(true);
     try {
-      const response = await fetch(`/api/audit-projects/${project.id}/analyze`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          page_ids: [pageId],
-          analysis_types: ['grammar', 'seo','ui'],
-          use_cache: false,
-          background: false,
-          force_refresh: true
-        }),
-      });
-      
+      const response = await fetch(
+        `/api/audit-projects/${project.id}/analyze`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            page_ids: [pageId],
+            analysis_types: ["grammar", "seo", "ui", "performance"],
+            use_cache: false,
+            background: false,
+            force_refresh: true,
+          }),
+        }
+      );
+
       if (response.ok) {
-        console.log('✅ Full analysis started');
+        console.log("✅ Full analysis started");
         // Results will come via realtime or polling
       }
     } catch (error) {
-      console.error('Failed to start analysis:', error);
+      console.error("Failed to start analysis:", error);
       setIsAnalysisRunning(false);
       setGrammarAnalyzing(false);
       setSeoAnalyzing(false);
       setUiAnalyzing(false);
+      setPerformanceAnalyzing(false);
     }
   };
 
@@ -451,75 +545,88 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     setIsAnalysisRunning(true);
     try {
       if (!project?.id) {
-        console.error('No project ID available for analysis');
+        console.error("No project ID available for analysis");
         return;
       }
-      console.log('🚀 Starting grammar-only analysis...');
-      const response = await fetch(`/api/audit-projects/${project.id}/analyze`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          page_ids: [pageId],
-          analysis_types: ['grammar'],
-          use_cache: !forceRefresh,
-          background: false,
-          force_refresh: forceRefresh
-        }),
-      });
+      console.log("🚀 Starting grammar-only analysis...");
+      const response = await fetch(
+        `/api/audit-projects/${project.id}/analyze`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            page_ids: [pageId],
+            analysis_types: ["grammar"],
+            use_cache: !forceRefresh,
+            background: false,
+            force_refresh: forceRefresh,
+          }),
+        }
+      );
       if (response.ok) {
         const grammarData = await response.json();
         setGrammarCached(grammarData.cached || false);
         setGrammarCachedAt(grammarData.cached_at || null);
         const { cached, cached_at, background, ...analysisData } = grammarData;
         if (analysisData.wordCount !== undefined) {
-          setAnalysis(prev => prev ? {
-            ...prev,
-            grammarCheck: analysisData
-          } : null);
+          setAnalysis((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  grammarCheck: analysisData,
+                }
+              : null
+          );
           setGrammarAnalyzing(false);
           setIsAnalysisRunning(false);
         }
       }
     } catch (error) {
-      console.error('Grammar analysis error:', error);
+      console.error("Grammar analysis error:", error);
       setGrammarAnalyzing(false);
       setIsAnalysisRunning(false);
     }
   };
 
   // --- NEW: UI-only analysis ---
-  const analyzeUiQuality = async (device: 'phone' | 'tablet' | 'desktop', forceRefresh = false) => {
+  const analyzeUiQuality = async (
+    device: "phone" | "tablet" | "desktop",
+    forceRefresh = false
+  ) => {
     setUiAnalyzing(true);
     setIsAnalysisRunning(true);
     try {
       if (!project?.id) {
-        console.error('No project ID available for analysis');
+        console.error("No project ID available for analysis");
         return;
       }
       console.log(`🚀 Starting UI quality analysis for ${device}...`);
-      const response = await fetch(`/api/audit-projects/${project.id}/analyze`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          page_ids: [pageId],
-          analysis_types: ['ui'],
-          ui_devices: [device],
-          use_cache: !forceRefresh,
-          background: false,
-          force_refresh: forceRefresh
-        }),
-      });
+      const response = await fetch(
+        `/api/audit-projects/${project.id}/analyze`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            page_ids: [pageId],
+            analysis_types: ["ui"],
+            ui_devices: [device],
+            use_cache: !forceRefresh,
+            background: false,
+            force_refresh: forceRefresh,
+          }),
+        }
+      );
       if (response.ok) {
         // UI analysis is async, results will come via realtime or polling
         setUiAnalyzing(false); // Optionally keep true until realtime update
         setIsAnalysisRunning(false);
       }
     } catch (error) {
-      console.error('UI quality analysis error:', error);
+      console.error("UI quality analysis error:", error);
       setUiAnalyzing(false);
       setIsAnalysisRunning(false);
     }
@@ -540,49 +647,56 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     setUiAnalyzing(true);
     try {
       if (!project?.id) {
-        console.error('No project ID available for analysis');
+        console.error("No project ID available for analysis");
         return;
       }
 
-      console.log('🚀 Starting grammar analysis...');
-      const response = await fetch(`/api/audit-projects/${project.id}/analyze`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          page_ids: [pageId],
-          analysis_types: ['grammar','seo','ui'],
-          use_cache: !forceRefresh,
-          background: false,
-          force_refresh: forceRefresh
-        }),
-      });
+      console.log("🚀 Starting grammar analysis...");
+      const response = await fetch(
+        `/api/audit-projects/${project.id}/analyze`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            page_ids: [pageId],
+            analysis_types: ["grammar", "seo", "ui"],
+            use_cache: !forceRefresh,
+            background: false,
+            force_refresh: forceRefresh,
+          }),
+        }
+      );
 
       if (response.ok) {
         const grammarData = await response.json();
-        console.log('✅ Grammar analysis response:', grammarData);
-        
+        console.log("✅ Grammar analysis response:", grammarData);
+
         // Check if this is cached data
         setGrammarCached(grammarData.cached || false);
         setGrammarCachedAt(grammarData.cached_at || null);
-        
+
         // Remove caching metadata before setting analysis
         const { cached, cached_at, background, ...analysisData } = grammarData;
-        
+
         if (analysisData.wordCount !== undefined) {
           // We got the results immediately
-          setAnalysis(prev => prev ? {
-            ...prev,
-            grammarCheck: analysisData
-          } : null);
+          setAnalysis((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  grammarCheck: analysisData,
+                }
+              : null
+          );
           setGrammarAnalyzing(false);
           setIsAnalysisRunning(false);
         }
         // Otherwise, results will come via realtime subscription
       }
     } catch (error) {
-      console.error('Grammar analysis error:', error);
+      console.error("Grammar analysis error:", error);
       setGrammarAnalyzing(false);
       setIsAnalysisRunning(false);
     }
@@ -593,49 +707,56 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     setIsAnalysisRunning(true);
     try {
       if (!project?.id) {
-        console.error('No project ID available for analysis');
+        console.error("No project ID available for analysis");
         return;
       }
 
-      console.log('🚀 Starting SEO analysis...');
-      const response = await fetch(`/api/audit-projects/${project.id}/analyze`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          page_ids: [pageId],
-          analysis_types: ['seo'],
-          use_cache: !forceRefresh,
-          background: false,
-          force_refresh: forceRefresh
-        }),
-      });
+      console.log("🚀 Starting SEO analysis...");
+      const response = await fetch(
+        `/api/audit-projects/${project.id}/analyze`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            page_ids: [pageId],
+            analysis_types: ["seo"],
+            use_cache: !forceRefresh,
+            background: false,
+            force_refresh: forceRefresh,
+          }),
+        }
+      );
 
       if (response.ok) {
         const seoData = await response.json();
-        console.log('✅ SEO analysis response:', seoData);
-        
+        console.log("✅ SEO analysis response:", seoData);
+
         // Check if this is cached data
         setSeoCached(seoData.cached || false);
         setSeoCachedAt(seoData.cached_at || null);
-        
+
         // Remove caching metadata before setting analysis
         const { cached, cached_at, background, ...analysisData } = seoData;
-        
+
         if (analysisData.overallScore !== undefined) {
           // We got the results immediately
-          setAnalysis(prev => prev ? {
-            ...prev,
-            seoAnalysis: analysisData
-          } : null);
+          setAnalysis((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  seoAnalysis: analysisData,
+                }
+              : null
+          );
           setSeoAnalyzing(false);
           setIsAnalysisRunning(false);
         }
         // Otherwise, results will come via realtime subscription
       }
     } catch (error) {
-      console.error('SEO analysis error:', error);
+      console.error("SEO analysis error:", error);
       setSeoAnalyzing(false);
       setIsAnalysisRunning(false);
     }
@@ -646,19 +767,19 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   };
 
   const analyzePage = (pageData: ScrapedPage): PageAnalysis => {
-    const html = pageData.html || '';
+    const html = pageData.html || "";
     const url = pageData.url;
 
     // Meta tags analysis
     const metaTags = {
       title: extractTitle(html) || pageData.title,
-      description: extractMetaContent(html, 'description'),
-      keywords: extractMetaContent(html, 'keywords'),
-      robots: extractMetaContent(html, 'robots'),
-      canonical: extractLinkHref(html, 'canonical'),
-      ogTitle: extractMetaProperty(html, 'og:title'),
-      ogDescription: extractMetaProperty(html, 'og:description'),
-      viewport: extractMetaContent(html, 'viewport'),
+      description: extractMetaContent(html, "description"),
+      keywords: extractMetaContent(html, "keywords"),
+      robots: extractMetaContent(html, "robots"),
+      canonical: extractLinkHref(html, "canonical"),
+      ogTitle: extractMetaProperty(html, "og:title"),
+      ogDescription: extractMetaProperty(html, "og:description"),
+      viewport: extractMetaContent(html, "viewport"),
     };
 
     // Heading structure analysis
@@ -668,7 +789,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     const robotsCheck = {
       robotsTxt: false, // Would need separate request
       robotsMeta: metaTags.robots,
-      indexable: !metaTags.robots?.includes('noindex'),
+      indexable: !metaTags.robots?.includes("noindex"),
     };
 
     // Links analysis
@@ -683,7 +804,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
     // HTTPS check
     const httpsCheck = {
-      isHttps: url.startsWith('https://'),
+      isHttps: url.startsWith("https://"),
       hasSecurityHeaders: false, // Would need response headers
     };
 
@@ -700,7 +821,10 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   };
 
   const extractMetaContent = (html: string, name: string): string | null => {
-    const regex = new RegExp(`<meta[^>]*name=["']${name}["'][^>]*content=["']([^"']*?)["']`, 'i');
+    const regex = new RegExp(
+      `<meta[^>]*name=["']${name}["'][^>]*content=["']([^"']*?)["']`,
+      "i"
+    );
     const match = html.match(regex);
     return match ? match[1] : null;
   };
@@ -710,44 +834,59 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
     if (titleMatch && titleMatch[1]) {
       let title = titleMatch[1].trim();
-      
+
       // Clean up common unwanted text patterns
       title = title
-        .replace(/\s*\|\s*.*?(Menu|Navigation|Nav).*$/i, '') // Remove menu-related suffixes
-        .replace(/\s*\|\s*.*?(Toggle|Expand|Dropdown).*$/i, '') // Remove toggle-related suffixes
-        .replace(/\s*\|\s*.*?(Facebook|Twitter|Instagram|LinkedIn|Social).*$/i, '') // Remove social media suffixes
-        .replace(/\s*-\s*.*?(Menu|Navigation|Nav).*$/i, '') // Remove menu with dash separator
-        .replace(/ExpandToggle.*$/i, '') // Remove specific "ExpandToggle" text
-        .replace(/MenuExpand.*$/i, '') // Remove specific "MenuExpand" text
-        .replace(/Facebook$/i, '') // Remove trailing "Facebook"
+        .replace(/\s*\|\s*.*?(Menu|Navigation|Nav).*$/i, "") // Remove menu-related suffixes
+        .replace(/\s*\|\s*.*?(Toggle|Expand|Dropdown).*$/i, "") // Remove toggle-related suffixes
+        .replace(
+          /\s*\|\s*.*?(Facebook|Twitter|Instagram|LinkedIn|Social).*$/i,
+          ""
+        ) // Remove social media suffixes
+        .replace(/\s*-\s*.*?(Menu|Navigation|Nav).*$/i, "") // Remove menu with dash separator
+        .replace(/ExpandToggle.*$/i, "") // Remove specific "ExpandToggle" text
+        .replace(/MenuExpand.*$/i, "") // Remove specific "MenuExpand" text
+        .replace(/Facebook$/i, "") // Remove trailing "Facebook"
         .trim();
-      
+
       return title || null;
     }
     return null;
   };
 
-  const extractMetaProperty = (html: string, property: string): string | null => {
-    const regex = new RegExp(`<meta[^>]*property=["']${property}["'][^>]*content=["']([^"']*?)["']`, 'i');
+  const extractMetaProperty = (
+    html: string,
+    property: string
+  ): string | null => {
+    const regex = new RegExp(
+      `<meta[^>]*property=["']${property}["'][^>]*content=["']([^"']*?)["']`,
+      "i"
+    );
     const match = html.match(regex);
     return match ? match[1] : null;
   };
 
   const extractLinkHref = (html: string, rel: string): string | null => {
-    const regex = new RegExp(`<link[^>]*rel=["']${rel}["'][^>]*href=["']([^"']*?)["']`, 'i');
+    const regex = new RegExp(
+      `<link[^>]*rel=["']${rel}["'][^>]*href=["']([^"']*?)["']`,
+      "i"
+    );
     const match = html.match(regex);
     return match ? match[1] : null;
   };
 
   const analyzeHeadings = (html: string) => {
     const h1Matches = html.match(/<h1[^>]*>(.*?)<\/h1>/gi) || [];
-    const allHeadingMatches = html.match(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi) || [];
-    
-    const h1Text = h1Matches.map(match => match.replace(/<[^>]*>/g, '').trim());
-    
-    const allHeadings = allHeadingMatches.map(match => {
-      const level = parseInt(match.match(/<h(\d)/)?.[1] || '1');
-      const text = match.replace(/<[^>]*>/g, '').trim();
+    const allHeadingMatches =
+      html.match(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi) || [];
+
+    const h1Text = h1Matches.map((match) =>
+      match.replace(/<[^>]*>/g, "").trim()
+    );
+
+    const allHeadings = allHeadingMatches.map((match) => {
+      const level = parseInt(match.match(/<h(\d)/)?.[1] || "1");
+      const text = match.replace(/<[^>]*>/g, "").trim();
       return { level, text };
     });
 
@@ -760,15 +899,19 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   };
 
   const analyzeLinks = (html: string, baseUrl: string) => {
-    const linkMatches = html.match(/<a[^>]*href=["']([^"']*?)["'][^>]*>/gi) || [];
-    const links = linkMatches.map(match => {
-      const href = match.match(/href=["']([^"']*?)["']/)?.[1] || '';
-      return href;
-    }).filter(href => href && !href.startsWith('#'));
+    const linkMatches =
+      html.match(/<a[^>]*href=["']([^"']*?)["'][^>]*>/gi) || [];
+    const links = linkMatches
+      .map((match) => {
+        const href = match.match(/href=["']([^"']*?)["']/)?.[1] || "";
+        return href;
+      })
+      .filter((href) => href && !href.startsWith("#"));
 
     const totalLinks = links.length;
-    const externalLinks = links.filter(link => 
-      link.startsWith('http') && !link.includes(new URL(baseUrl).hostname)
+    const externalLinks = links.filter(
+      (link) =>
+        link.startsWith("http") && !link.includes(new URL(baseUrl).hostname)
     ).length;
     const internalLinks = totalLinks - externalLinks;
 
@@ -781,16 +924,108 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   };
 
   const getStatusIcon = (isGood: boolean) => {
-    return isGood ? 
-      <CheckCircle className="h-5 w-5 text-emerald-500 dark:text-emerald-400" /> : 
-      <XCircle className="h-5 w-5 text-red-500 dark:text-red-400" />;
+    return isGood ? (
+      <CheckCircle className="h-5 w-5 text-emerald-500 dark:text-emerald-400" />
+    ) : (
+      <XCircle className="h-5 w-5 text-red-500 dark:text-red-400" />
+    );
+  };
+
+  // Helper: Render a radial score chart
+  const RadialScore = ({ score, label, color }: { score: number; label: string; color: string }) => {
+    const radius = 32;
+    const stroke = 8;
+    const normalizedScore = Math.max(0, Math.min(score, 100));
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference - (normalizedScore / 100) * circumference;
+    return (
+      <div className="flex flex-col items-center">
+        <svg width="80" height="80">
+          <circle
+            cx="40"
+            cy="40"
+            r={radius}
+            stroke="#e5e7eb"
+            strokeWidth={stroke}
+            fill="none"
+          />
+          <circle
+            cx="40"
+            cy="40"
+            r={radius}
+            stroke={color}
+            strokeWidth={stroke}
+            fill="none"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+            style={{ transition: 'stroke-dashoffset 0.5s' }}
+          />
+          <text
+            x="50%"
+            y="50%"
+            textAnchor="middle"
+            dy=".3em"
+            fontSize="1.5rem"
+            fill={color}
+            fontWeight="bold"
+          >
+            {normalizedScore}
+          </text>
+        </svg>
+        <span className="text-xs mt-1 text-muted-foreground">{label}</span>
+      </div>
+    );
+  };
+
+  // --- Performance Analysis Handler ---
+  const analyzePerformanceWithAPI = async (forceRefresh = false) => {
+    setPerformanceAnalyzing(true);
+    setIsAnalysisRunning(true);
+    try {
+      if (!project?.id) {
+        console.error("No project ID available for analysis");
+        return;
+      }
+      const response = await fetch(
+        `/api/audit-projects/${project.id}/analyze`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            page_ids: [pageId],
+            analysis_types: ["performance"],
+            use_cache: !forceRefresh,
+            background: false,
+            force_refresh: forceRefresh,
+          }),
+        }
+      );
+      if (response.ok) {
+        const perfData = await response.json();
+        setPerformanceCached(perfData.cached || false);
+        setPerformanceCachedAt(perfData.cached_at || null);
+        setPerformanceAnalyzing(false);
+        setIsAnalysisRunning(false);
+      }
+    } catch (error) {
+      console.error("Performance analysis error:", error);
+      setPerformanceAnalyzing(false);
+      setIsAnalysisRunning(false);
+    }
+  };
+
+  const refreshPerformanceAnalysis = () => {
+    analyzePerformanceWithAPI(true);
   };
 
   if (loading) {
-        return (
+    return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin" />
-              </div>
+      </div>
     );
   }
 
@@ -804,7 +1039,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             Back to Audit
           </Button>
         </Link>
-              </div>
+      </div>
     );
   }
 
@@ -818,7 +1053,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             Back to Audit
           </Button>
         </Link>
-        
+
         <div className="flex items-center gap-2">
           {/* Analysis Status Indicator */}
           {isAnalysisRunning && (
@@ -827,7 +1062,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               Analysis Running
             </Badge>
           )}
-          
+
           {/* Manual Refresh Button */}
           <Button
             onClick={fetchPageData}
@@ -835,71 +1070,95 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             variant="outline"
             size="sm"
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${(grammarAnalyzing || seoAnalyzing) ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`h-4 w-4 mr-2 ${
+                grammarAnalyzing || seoAnalyzing ? "animate-spin" : ""
+              }`}
+            />
             Refresh
           </Button>
-          
+          <Button
+            size="sm"
+            className="h-7 px-3 w-full"
+            onClick={startFullAnalysis}
+            disabled={grammarAnalyzing || seoAnalyzing || uiAnalyzing}
+          >
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Re-Analyze
+          </Button>
+
           {/* Start Analysis Button - show when no analysis is running and no results */}
           {!isAnalysisRunning && (!grammarCached || !seoCached) && (
-            <Button
-              onClick={startFullAnalysis}
-              variant="default"
-              size="sm"
-            >
+            <Button onClick={startFullAnalysis} variant="default" size="sm">
               <BarChart3 className="h-4 w-4 mr-2" />
               Start Analysis
             </Button>
           )}
-              </div>
-              </div>
+        </div>
+      </div>
 
       {error && (
         <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-lg p-4">
           {error}
-            </div>
+        </div>
       )}
 
       {/* Page Title and URL */}
       {page && (
-                <div className="space-y-2">
-          <h1 className="text-3xl font-bold">{page.title || 'Untitled Page'}</h1>
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold">
+            {page.title || "Untitled Page"}
+          </h1>
           <div className="flex items-center gap-2 text-muted-foreground">
             <Globe className="h-4 w-4" />
-            <a href={page.url} target="_blank" rel="noopener noreferrer" className="hover:underline flex items-center gap-1">
+            <a
+              href={page.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline flex items-center gap-1"
+            >
               {page.url}
               <ExternalLink className="h-3 w-3" />
             </a>
-                  </div>
-          
+          </div>
+
           <div className="flex items-center gap-2 flex-wrap">
             {page.analysis_status && (
-              <Badge variant={
-                page.analysis_status === 'completed' ? 'default' :
-                page.analysis_status === 'analyzing' ? 'secondary' :
-                page.analysis_status === 'failed' ? 'destructive' : 'outline'
-              }>
+              <Badge
+                variant={
+                  page.analysis_status === "completed"
+                    ? "default"
+                    : page.analysis_status === "analyzing"
+                    ? "secondary"
+                    : page.analysis_status === "failed"
+                    ? "destructive"
+                    : "outline"
+                }
+              >
                 Page Status: {page.analysis_status}
               </Badge>
             )}
-            
+
             {/* Content freshness indicator */}
             <Badge variant="outline" className="text-xs">
               <Calendar className="h-3 w-3 mr-1" />
-              Content: {new Date(page.scraped_at).toLocaleDateString()} at {new Date(page.scraped_at).toLocaleTimeString()}
+              Content: {new Date(page.scraped_at).toLocaleDateString()} at{" "}
+              {new Date(page.scraped_at).toLocaleTimeString()}
             </Badge>
-            
+
             {/* Real-time analysis status */}
             {isAnalysisRunning && (
-              <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950 text-xs">
+              <Badge
+                variant="outline"
+                className="bg-blue-50 dark:bg-blue-950 text-xs"
+              >
                 <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                 Re-scraping & Analyzing...
               </Badge>
             )}
-                  </div>
-                  </div>
-            )}
-
-     
+          </div>
+        </div>
+      )}
 
       {/* Main Content - Side by Side Layout */}
       <div className="grid grid-cols-1  gap-6">
@@ -1016,19 +1275,57 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
           <Card>
             <CardHeader>
               <CardTitle>Analysis Results</CardTitle>
-              <CardDescription>Detailed analysis across different aspects of your page</CardDescription>
+              <CardDescription>
+                Detailed analysis across different aspects of your page
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {/* Main Tab Navigation */}
               <div className="border-b mb-6">
                 <div className="flex flex-wrap gap-1">
                   {[
-                    { id: 'grammar', label: 'Grammar & Content', icon: FileText, analyzing: grammarAnalyzing, cached: grammarCached },
-                    { id: 'seo', label: 'SEO & Structure', icon: Tag, analyzing: seoAnalyzing, cached: seoCached },
-                    { id: 'performance', label: 'Performance', icon: BarChart3, analyzing: false, cached: false },
-                    { id: 'accessibility', label: 'Accessibility', icon: Shield, analyzing: false, cached: false },
-                    { id: 'ui_quality', label: 'UI Quality', icon: Eye, analyzing: uiAnalyzing, cached: uiQualityCached },
-                    { id: 'images', label: 'Images', icon: Image, analyzing: false, cached: false },
+                    {
+                      id: "grammar",
+                      label: "Grammar & Content",
+                      icon: FileText,
+                      analyzing: grammarAnalyzing,
+                      cached: grammarCached,
+                    },
+                    {
+                      id: "seo",
+                      label: "SEO & Structure",
+                      icon: Tag,
+                      analyzing: seoAnalyzing,
+                      cached: seoCached,
+                    },
+                    {
+                      id: "performance & accessibility",
+                      label: "Performance & Accessibility",
+                      icon: BarChart3,
+                      analyzing: false,
+                      cached: false,
+                    },
+                    // {
+                    //   id: "accessibility",
+                    //   label: "Accessibility",
+                    //   icon: Shield,
+                    //   analyzing: false,
+                    //   cached: false,
+                    // },
+                    {
+                      id: "ui_quality",
+                      label: "UI Quality",
+                      icon: Eye,
+                      analyzing: uiAnalyzing,
+                      cached: uiQualityCached,
+                    },
+                    {
+                      id: "images",
+                      label: "Images",
+                      icon: Image,
+                      analyzing: false,
+                      cached: false,
+                    },
                   ].map((tab) => {
                     const IconComponent = tab.icon;
                     return (
@@ -1037,13 +1334,15 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                         onClick={() => setActiveAnalysisTab(tab.id)}
                         className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
                           activeAnalysisTab === tab.id
-                            ? 'border-primary text-primary bg-primary/10'
-                            : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                            ? "border-primary text-primary bg-primary/10"
+                            : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
                         }`}
                       >
                         <IconComponent className="h-4 w-4" />
                         {tab.label}
-                        {tab.analyzing && <Loader2 className="h-3 w-3 animate-spin" />}
+                        {tab.analyzing && (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        )}
                         {tab.cached && !tab.analyzing && (
                           <Badge variant="outline" className="text-xs">
                             Cached
@@ -1052,25 +1351,29 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       </button>
                     );
                   })}
+                </div>
               </div>
-            </div>
 
               {/* Tab Content */}
               <div className="min-h-[400px]">
                 {/* Grammar & Content Tab */}
-                {activeAnalysisTab === 'grammar' && (
+                {activeAnalysisTab === "grammar" && (
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
                         <FileText className="h-5 w-5" />
-                        <h3 className="text-lg font-semibold">Grammar & Content Quality</h3>
-                        {grammarAnalyzing && <Loader2 className="h-4 w-4 animate-spin" />}
+                        <h3 className="text-lg font-semibold">
+                          Grammar & Content Quality
+                        </h3>
+                        {grammarAnalyzing && (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        )}
                         {grammarCached && !grammarAnalyzing && (
                           <Badge variant="outline" className="text-xs">
                             Cached
-                </Badge>
+                          </Badge>
                         )}
-              </div>
+                      </div>
                       {analysis.grammarCheck && !grammarAnalyzing && (
                         <Button
                           size="sm"
@@ -1081,14 +1384,17 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           <RefreshCw className="h-3 w-3 mr-1" />
                           Refresh Analysis
                         </Button>
-              )}
-            </div>
+                      )}
+                    </div>
 
                     <p className="text-sm text-muted-foreground">
-                      {grammarAnalyzing ? 'Re-scraping page and analyzing with AI...' : 
-                       grammarCached && grammarCachedAt ? 
-                         `Content analysis (from ${new Date(grammarCachedAt).toLocaleDateString()})` : 
-                         'Content readability and writing quality analysis'}
+                      {grammarAnalyzing
+                        ? "Re-scraping page and analyzing with AI..."
+                        : grammarCached && grammarCachedAt
+                        ? `Content analysis (from ${new Date(
+                            grammarCachedAt
+                          ).toLocaleDateString()})`
+                        : "Content readability and writing quality analysis"}
                     </p>
 
                     {!analysis.grammarCheck || grammarAnalyzing ? (
@@ -1096,7 +1402,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                         <div className="text-center">
                           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
                           <p className="text-sm text-muted-foreground">
-                            {grammarAnalyzing ? 'Analyzing Fresh Content with AI...' : 'Loading...'}
+                            {grammarAnalyzing
+                              ? "Analyzing Fresh Content with AI..."
+                              : "Loading..."}
                           </p>
                           {grammarAnalyzing && (
                             <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
@@ -1111,50 +1419,109 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                         {(() => {
                           const grammarCheck = analysis.grammarCheck;
                           if (!grammarCheck) return null;
-                          
+
                           // Categorize all errors by type with safety checks
-                          const allGrammarErrors = grammarCheck.grammarErrors || [];
-                          const grammarErrors = allGrammarErrors.filter(e => e.type === 'grammar');
-                          const punctuationErrors = allGrammarErrors.filter(e => e.type === 'punctuation');
-                          const structureErrors = allGrammarErrors.filter(e => e.type === 'structure');
-                          const ukEnglishErrors = allGrammarErrors.filter(e => e.type === 'US English');
-                          const spellingErrors = grammarCheck.spellingErrors || [];
+                          const allGrammarErrors =
+                            grammarCheck.grammarErrors || [];
+                          const grammarErrors = allGrammarErrors.filter(
+                            (e) => e.type === "grammar"
+                          );
+                          const punctuationErrors = allGrammarErrors.filter(
+                            (e) => e.type === "punctuation"
+                          );
+                          const structureErrors = allGrammarErrors.filter(
+                            (e) => e.type === "structure"
+                          );
+                          const ukEnglishErrors = allGrammarErrors.filter(
+                            (e) => e.type === "US English"
+                          );
+                          const spellingErrors =
+                            grammarCheck.spellingErrors || [];
                           const issues = grammarCheck.issues || [];
 
                           // Company information tab data
                           const companyInfo = grammarCheck.companyInformation;
-                          const hasCompanyInfo = companyInfo?.hasExpectedInfo || false;
+                          const hasCompanyInfo =
+                            companyInfo?.hasExpectedInfo || false;
                           const companyInfoIssues = companyInfo?.issues || [];
-                          const companyInfoCount = hasCompanyInfo ? companyInfoIssues.length : 0;
+                          const companyInfoCount = hasCompanyInfo
+                            ? companyInfoIssues.length
+                            : 0;
 
                           const tabs = [
-                            { id: 'grammar', label: 'Grammar', count: grammarErrors.length, errors: grammarErrors, type: 'error' as const },
-                            { id: 'punctuation', label: 'Punctuation', count: punctuationErrors.length, errors: punctuationErrors, type: 'error' as const },
-                            { id: 'structure', label: 'Structure', count: structureErrors.length, errors: structureErrors, type: 'error' as const },
-                            { id: 'ukEnglish', label: 'UK English', count: ukEnglishErrors.length, errors: ukEnglishErrors, type: 'error' as const },
-                            { id: 'spelling', label: 'Spelling', count: spellingErrors.length, errors: spellingErrors, type: 'error' as const },
-                            { id: 'issues', label: 'Content Issues', count: issues.length, errors: issues, type: 'issue' as const },
-                            ...(hasCompanyInfo ? [{ 
-                              id: 'company', 
-                              label: 'Company Information', 
-                              count: companyInfoCount, 
-                              errors: companyInfoIssues, 
-                              type: 'company' as const,
-                              data: companyInfo
-                            }] : [])
-                          ].filter(tab => tab.count > 0 || tab.type === 'company');
+                            {
+                              id: "grammar",
+                              label: "Grammar",
+                              count: grammarErrors.length,
+                              errors: grammarErrors,
+                              type: "error" as const,
+                            },
+                            {
+                              id: "punctuation",
+                              label: "Punctuation",
+                              count: punctuationErrors.length,
+                              errors: punctuationErrors,
+                              type: "error" as const,
+                            },
+                            {
+                              id: "structure",
+                              label: "Structure",
+                              count: structureErrors.length,
+                              errors: structureErrors,
+                              type: "error" as const,
+                            },
+                            {
+                              id: "ukEnglish",
+                              label: "UK English",
+                              count: ukEnglishErrors.length,
+                              errors: ukEnglishErrors,
+                              type: "error" as const,
+                            },
+                            {
+                              id: "spelling",
+                              label: "Spelling",
+                              count: spellingErrors.length,
+                              errors: spellingErrors,
+                              type: "error" as const,
+                            },
+                            {
+                              id: "issues",
+                              label: "Content Issues",
+                              count: issues.length,
+                              errors: issues,
+                              type: "issue" as const,
+                            },
+                            ...(hasCompanyInfo
+                              ? [
+                                  {
+                                    id: "company",
+                                    label: "Company Information",
+                                    count: companyInfoCount,
+                                    errors: companyInfoIssues,
+                                    type: "company" as const,
+                                    data: companyInfo,
+                                  },
+                                ]
+                              : []),
+                          ].filter(
+                            (tab) => tab.count > 0 || tab.type === "company"
+                          );
 
                           if (tabs.length === 0) {
                             return (
                               <div className="text-center py-12">
                                 <CheckCircle className="h-16 w-16 text-emerald-500 dark:text-emerald-400 mx-auto mb-3" />
-                                <p className="text-xl font-medium">Perfect Content!</p>
-                                <p className="text-sm text-muted-foreground">No grammar, spelling, or content issues found.</p>
-          </div>
-        );
+                                <p className="text-xl font-medium">
+                                  Perfect Content!
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  No grammar, spelling, or content issues found.
+                                </p>
+                              </div>
+                            );
                           }
 
-        return (
+                          return (
                             <>
                               {/* Grammar Sub-tab Navigation */}
                               <div className="border-b">
@@ -1162,154 +1529,260 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                                   {tabs.map((tab) => (
                                     <button
                                       key={tab.id}
-                                      onClick={() => setActiveGrammarTab(tab.id)}
+                                      onClick={() =>
+                                        setActiveGrammarTab(tab.id)
+                                      }
                                       className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                                         activeGrammarTab === tab.id
-                                          ? 'border-primary text-primary bg-primary/10'
-                                          : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                                          ? "border-primary text-primary bg-primary/10"
+                                          : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
                                       }`}
                                     >
                                       {tab.label} ({tab.count})
                                     </button>
                                   ))}
-              </div>
-            </div>
+                                </div>
+                              </div>
 
                               {/* Grammar Sub-tab Content */}
                               <div className="min-h-[200px]">
                                 {tabs.map((tab) => (
                                   <div
                                     key={tab.id}
-                                    className={activeGrammarTab === tab.id ? 'block' : 'hidden'}
+                                    className={
+                                      activeGrammarTab === tab.id
+                                        ? "block"
+                                        : "hidden"
+                                    }
                                   >
                                     <div className="space-y-3">
-                                      {tab.type === 'company' ? (
+                                      {tab.type === "company" ? (
                                         // Company Information Tab
                                         <div className="space-y-6">
                                           {/* Company Information Score */}
                                           <div className="p-4 border rounded-lg bg-blue-50 dark:bg-blue-950/20">
                                             <div className="flex items-center justify-between mb-3">
-                                              <h5 className="font-medium text-blue-800 dark:text-blue-200">Company Information Score</h5>
+                                              <h5 className="font-medium text-blue-800 dark:text-blue-200">
+                                                Company Information Score
+                                              </h5>
                                               <div className="flex items-center gap-2">
-                                                                                                 <span className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-                                                   {companyInfo?.companyInfoScore || 0}
-                                                 </span>
-                                                <span className="text-sm text-blue-600 dark:text-blue-400">/100</span>
+                                                <span className="text-2xl font-bold text-blue-700 dark:text-blue-300">
+                                                  {companyInfo?.companyInfoScore ||
+                                                    0}
+                                                </span>
+                                                <span className="text-sm text-blue-600 dark:text-blue-400">
+                                                  /100
+                                                </span>
                                               </div>
                                             </div>
                                           </div>
 
-                                                                                     {/* Expected vs Found Information */}
-                                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                             {/* Found Information */}
-                                             <div className="p-4 border rounded-lg">
-                                               <h6 className="font-medium mb-3 text-foreground">Information Found on Page</h6>
-                                               <div className="space-y-2">
-                                                 {companyInfo?.foundInformation && Object.entries(companyInfo.foundInformation).map(([key, value]) => (
-                                                   <div key={key} className="flex items-center justify-between py-1">
-                                                     <span className="text-sm text-muted-foreground capitalize">
-                                                       {key.replace(/([A-Z])/g, ' $1').toLowerCase()}:
-                                                     </span>
-                                                     <span className="text-sm font-medium">
-                                                       {value ? (typeof value === 'string' ? `"${value}"` : 'Found') : 'Not found'}
-                                                     </span>
-                                                   </div>
-                                                 ))}
-                                               </div>
-                                             </div>
+                                          {/* Expected vs Found Information */}
+                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            {/* Found Information */}
+                                            <div className="p-4 border rounded-lg">
+                                              <h6 className="font-medium mb-3 text-foreground">
+                                                Information Found on Page
+                                              </h6>
+                                              <div className="space-y-2">
+                                                {companyInfo?.foundInformation &&
+                                                  Object.entries(
+                                                    companyInfo.foundInformation
+                                                  ).map(([key, value]) => (
+                                                    <div
+                                                      key={key}
+                                                      className="flex items-center justify-between py-1"
+                                                    >
+                                                      <span className="text-sm text-muted-foreground capitalize">
+                                                        {key
+                                                          .replace(
+                                                            /([A-Z])/g,
+                                                            " $1"
+                                                          )
+                                                          .toLowerCase()}
+                                                        :
+                                                      </span>
+                                                      <span className="text-sm font-medium">
+                                                        {value
+                                                          ? typeof value ===
+                                                            "string"
+                                                            ? `"${value}"`
+                                                            : "Found"
+                                                          : "Not found"}
+                                                      </span>
+                                                    </div>
+                                                  ))}
+                                              </div>
+                                            </div>
 
-                                             {/* Compliance Status */}
-                                             <div className="p-4 border rounded-lg">
-                                               <h6 className="font-medium mb-3 text-foreground">Compliance Status</h6>
-                                               <div className="space-y-2">
-                                                 {companyInfo?.complianceStatus && Object.entries(companyInfo.complianceStatus).map(([key, status]) => (
-                                                   <div key={key} className="flex items-center justify-between py-1">
-                                                     <span className="text-sm text-muted-foreground capitalize">
-                                                       {key.replace(/([A-Z])/g, ' $1').toLowerCase()}:
-                                                     </span>
-                                                     <Badge 
-                                                       variant={
-                                                         status === 'correct' ? 'default' :
-                                                         status === 'missing' ? 'destructive' :
-                                                         status === 'incorrect' ? 'destructive' :
-                                                         'secondary'
-                                                       }
-                                                       className="text-xs"
-                                                     >
-                                                       {status}
-                                                     </Badge>
-                                                   </div>
-                                                 ))}
-                                               </div>
-                                             </div>
-                                           </div>
+                                            {/* Compliance Status */}
+                                            <div className="p-4 border rounded-lg">
+                                              <h6 className="font-medium mb-3 text-foreground">
+                                                Compliance Status
+                                              </h6>
+                                              <div className="space-y-2">
+                                                {companyInfo?.complianceStatus &&
+                                                  Object.entries(
+                                                    companyInfo.complianceStatus
+                                                  ).map(([key, status]) => (
+                                                    <div
+                                                      key={key}
+                                                      className="flex items-center justify-between py-1"
+                                                    >
+                                                      <span className="text-sm text-muted-foreground capitalize">
+                                                        {key
+                                                          .replace(
+                                                            /([A-Z])/g,
+                                                            " $1"
+                                                          )
+                                                          .toLowerCase()}
+                                                        :
+                                                      </span>
+                                                      <Badge
+                                                        variant={
+                                                          status === "correct"
+                                                            ? "default"
+                                                            : status ===
+                                                              "missing"
+                                                            ? "destructive"
+                                                            : status ===
+                                                              "incorrect"
+                                                            ? "destructive"
+                                                            : "secondary"
+                                                        }
+                                                        className="text-xs"
+                                                      >
+                                                        {status}
+                                                      </Badge>
+                                                    </div>
+                                                  ))}
+                                              </div>
+                                            </div>
+                                          </div>
 
                                           {/* Company Information Issues */}
                                           {companyInfoIssues.length > 0 && (
                                             <div>
-                                              <h6 className="font-medium mb-3 text-foreground">Company Information Issues</h6>
+                                              <h6 className="font-medium mb-3 text-foreground">
+                                                Company Information Issues
+                                              </h6>
                                               <div className="space-y-3">
-                                                {companyInfoIssues.map((issue, i) => (
-                                                  <div key={i} className="p-4 border rounded-lg bg-orange-50 dark:bg-orange-950/20">
-                                                    <div className="flex items-start gap-3">
-                                                      <AlertTriangle className="h-5 w-5 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
-                                                      <div>
-                                                        <h5 className="font-medium text-orange-800 dark:text-orange-200">Company Information Issue</h5>
-                                                        <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">{issue}</p>
+                                                {companyInfoIssues.map(
+                                                  (issue, i) => (
+                                                    <div
+                                                      key={i}
+                                                      className="p-4 border rounded-lg bg-orange-50 dark:bg-orange-950/20"
+                                                    >
+                                                      <div className="flex items-start gap-3">
+                                                        <AlertTriangle className="h-5 w-5 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
+                                                        <div>
+                                                          <h5 className="font-medium text-orange-800 dark:text-orange-200">
+                                                            Company Information
+                                                            Issue
+                                                          </h5>
+                                                          <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
+                                                            {issue}
+                                                          </p>
+                                                        </div>
                                                       </div>
                                                     </div>
-                                                  </div>
-                                                ))}
+                                                  )
+                                                )}
                                               </div>
                                             </div>
                                           )}
 
-                                                                                     {/* Company Information Suggestions */}
-                                           {(companyInfo?.suggestions || []).length > 0 && (
-                                             <div>
-                                               <h6 className="font-medium mb-3 text-foreground">Suggestions for Improvement</h6>
-                                               <div className="space-y-3">
-                                                 {(companyInfo?.suggestions || []).map((suggestion: string, i: number) => (
-                                                   <div key={i} className="p-4 border rounded-lg bg-green-50 dark:bg-green-950/20">
-                                                     <div className="flex items-start gap-3">
-                                                       <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                                                       <div>
-                                                         <h5 className="font-medium text-green-800 dark:text-green-200">Suggestion</h5>
-                                                         <p className="text-sm text-green-700 dark:text-green-300 mt-1">{suggestion}</p>
-                                                       </div>
-                                                     </div>
-                                                   </div>
-                                                 ))}
-                                               </div>
-                                             </div>
-                                           )}
+                                          {/* Company Information Suggestions */}
+                                          {(companyInfo?.suggestions || [])
+                                            .length > 0 && (
+                                            <div>
+                                              <h6 className="font-medium mb-3 text-foreground">
+                                                Suggestions for Improvement
+                                              </h6>
+                                              <div className="space-y-3">
+                                                {(
+                                                  companyInfo?.suggestions || []
+                                                ).map(
+                                                  (
+                                                    suggestion: string,
+                                                    i: number
+                                                  ) => (
+                                                    <div
+                                                      key={i}
+                                                      className="p-4 border rounded-lg bg-green-50 dark:bg-green-950/20"
+                                                    >
+                                                      <div className="flex items-start gap-3">
+                                                        <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                                                        <div>
+                                                          <h5 className="font-medium text-green-800 dark:text-green-200">
+                                                            Suggestion
+                                                          </h5>
+                                                          <p className="text-sm text-green-700 dark:text-green-300 mt-1">
+                                                            {suggestion}
+                                                          </p>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                  )
+                                                )}
+                                              </div>
+                                            </div>
+                                          )}
 
-                                           {/* Perfect Company Information Message */}
-                                           {companyInfoIssues.length === 0 && (companyInfo?.companyInfoScore || 0) >= 95 && (
-                                             <div className="text-center py-8">
-                                               <CheckCircle className="h-16 w-16 text-emerald-500 dark:text-emerald-400 mx-auto mb-3" />
-                                               <p className="text-xl font-medium">Perfect Company Information!</p>
-                                               <p className="text-sm text-muted-foreground">All expected company information is present and correctly displayed.</p>
-                                             </div>
-                                           )}
+                                          {/* Perfect Company Information Message */}
+                                          {companyInfoIssues.length === 0 &&
+                                            (companyInfo?.companyInfoScore ||
+                                              0) >= 95 && (
+                                              <div className="text-center py-8">
+                                                <CheckCircle className="h-16 w-16 text-emerald-500 dark:text-emerald-400 mx-auto mb-3" />
+                                                <p className="text-xl font-medium">
+                                                  Perfect Company Information!
+                                                </p>
+                                                <p className="text-sm text-muted-foreground">
+                                                  All expected company
+                                                  information is present and
+                                                  correctly displayed.
+                                                </p>
+                                              </div>
+                                            )}
                                         </div>
-                                      ) : tab.type === 'issue' ? (
+                                      ) : tab.type === "issue" ? (
                                         // Content Issues (strings)
-                                        (tab.errors as string[]).map((issue, i) => (
-                                          <div key={i} className="p-4 border rounded-lg bg-amber-50 dark:bg-amber-950/20">
-                                            <div className="flex items-start gap-3">
-                                              <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-                                              <div>
-                                                <h5 className="font-medium text-amber-800 dark:text-amber-200">Content Issue</h5>
-                                                <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">{issue}</p>
-              </div>
-              </div>
-              </div>
-                                        ))
+                                        (tab.errors as string[]).map(
+                                          (issue, i) => (
+                                            <div
+                                              key={i}
+                                              className="p-4 border rounded-lg bg-amber-50 dark:bg-amber-950/20"
+                                            >
+                                              <div className="flex items-start gap-3">
+                                                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                                                <div>
+                                                  <h5 className="font-medium text-amber-800 dark:text-amber-200">
+                                                    Content Issue
+                                                  </h5>
+                                                  <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                                                    {issue}
+                                                  </p>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )
+                                        )
                                       ) : (
                                         // Grammar, Spelling, etc. errors (objects)
-                                        (tab.errors as Array<{text: string; suggestion: string; type?: string; explanation?: string; position?: string}>).map((error, i) => (
-                                          <div key={i} className="p-4 border rounded-lg bg-red-50 dark:bg-red-950/20">
+                                        (
+                                          tab.errors as Array<{
+                                            text: string;
+                                            suggestion: string;
+                                            type?: string;
+                                            explanation?: string;
+                                            position?: string;
+                                          }>
+                                        ).map((error, i) => (
+                                          <div
+                                            key={i}
+                                            className="p-4 border rounded-lg bg-red-50 dark:bg-red-950/20"
+                                          >
                                             <div className="flex items-start gap-3">
                                               <XCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
                                               <div className="flex-1">
@@ -1317,90 +1790,126 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                                                   <h5 className="font-medium text-red-800 dark:text-red-200">
                                                     {tab.label} Error
                                                   </h5>
-                                                  <Badge variant="outline" className="text-xs">
-                                                    {error.type || 'error'}
-                </Badge>
-              </div>
+                                                  <Badge
+                                                    variant="outline"
+                                                    className="text-xs"
+                                                  >
+                                                    {error.type || "error"}
+                                                  </Badge>
+                                                </div>
                                                 <div className="space-y-2">
                                                   <div>
                                                     <span className="text-sm text-red-700 dark:text-red-300">
-                                                      <strong>Found:</strong> "{error.text}"
+                                                      <strong>Found:</strong> "
+                                                      {error.text}"
                                                     </span>
-            </div>
-              <div>
+                                                  </div>
+                                                  <div>
                                                     <span className="text-sm text-emerald-700 dark:text-emerald-300">
-                                                      <strong>Should be:</strong> "{error.suggestion}"
+                                                      <strong>
+                                                        Should be:
+                                                      </strong>{" "}
+                                                      "{error.suggestion}"
                                                     </span>
                                                   </div>
                                                   {error.explanation && (
                                                     <div>
                                                       <span className="text-sm text-muted-foreground">
-                                                        <strong>Why:</strong> {error.explanation}
+                                                        <strong>Why:</strong>{" "}
+                                                        {error.explanation}
                                                       </span>
-              </div>
-            )}
-                                                  {tab.id === 'spelling' && error.position && (
-              <div>
-                                                      <span className="text-xs text-muted-foreground">
-                                                        <strong>Location:</strong> {error.position}
-                                                      </span>
-              </div>
-            )}
-          </div>
-              </div>
-              </div>
-              </div>
+                                                    </div>
+                                                  )}
+                                                  {tab.id === "spelling" &&
+                                                    error.position && (
+                                                      <div>
+                                                        <span className="text-xs text-muted-foreground">
+                                                          <strong>
+                                                            Location:
+                                                          </strong>{" "}
+                                                          {error.position}
+                                                        </span>
+                                                      </div>
+                                                    )}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
                                         ))
                                       )}
-              </div>
-            </div>
+                                    </div>
+                                  </div>
                                 ))}
                               </div>
                             </>
                           );
                         })()}
-                        
+
                         {/* Content Statistics */}
                         <div className="mt-8 pt-6 border-t">
-                          <h4 className="font-medium mb-4">Content Statistics</h4>
+                          <h4 className="font-medium mb-4">
+                            Content Statistics
+                          </h4>
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                             <div className="p-4 border rounded-lg">
-                              <p className="text-2xl font-semibold">{analysis.grammarCheck.wordCount || 0}</p>
-                              <p className="text-xs text-muted-foreground">Words</p>
-              </div>
+                              <p className="text-2xl font-semibold">
+                                {analysis.grammarCheck.wordCount || 0}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Words
+                              </p>
+                            </div>
                             <div className="p-4 border rounded-lg">
-                              <p className="text-2xl font-semibold">{analysis.grammarCheck.estimatedReadingTime || 0}m</p>
-                              <p className="text-xs text-muted-foreground">Reading Time</p>
-              </div>
+                              <p className="text-2xl font-semibold">
+                                {analysis.grammarCheck.estimatedReadingTime ||
+                                  0}
+                                m
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Reading Time
+                              </p>
+                            </div>
                             <div className="p-4 border rounded-lg">
-                              <p className="text-2xl font-semibold capitalize">{analysis.grammarCheck.tone || 'neutral'}</p>
-                              <p className="text-xs text-muted-foreground">Tone</p>
-            </div>
+                              <p className="text-2xl font-semibold capitalize">
+                                {analysis.grammarCheck.tone || "neutral"}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Tone
+                              </p>
+                            </div>
                             <div className="p-4 border rounded-lg">
-                              <p className="text-2xl font-semibold">{analysis.grammarCheck.readabilityScore || 0}</p>
-                              <p className="text-xs text-muted-foreground">Readability</p>
+                              <p className="text-2xl font-semibold">
+                                {analysis.grammarCheck.readabilityScore || 0}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Readability
+                              </p>
                             </div>
                           </div>
                         </div>
                       </>
                     )}
-              </div>
-            )}
+                  </div>
+                )}
 
                 {/* SEO & Structure Tab */}
-                {activeAnalysisTab === 'seo' && (
+                {activeAnalysisTab === "seo" && (
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Tag className="h-5 w-5" />
-                        <h3 className="text-lg font-semibold">SEO & Structure</h3>
-                        {seoAnalyzing && <Loader2 className="h-4 w-4 animate-spin" />}
+                        <h3 className="text-lg font-semibold">
+                          SEO & Structure
+                        </h3>
+                        {seoAnalyzing && (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        )}
                         {seoCached && !seoAnalyzing && (
                           <Badge variant="outline" className="text-xs">
                             Cached
                           </Badge>
                         )}
-              </div>
+                      </div>
                       {analysis.seoAnalysis && !seoAnalyzing && (
                         <Button
                           size="sm"
@@ -1411,14 +1920,17 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           <RefreshCw className="h-3 w-3 mr-1" />
                           Refresh Analysis
                         </Button>
-            )}
-          </div>
+                      )}
+                    </div>
 
                     <p className="text-sm text-muted-foreground">
-                      {seoAnalyzing ? 'Re-scraping page and analyzing SEO...' : 
-                       seoCached && seoCachedAt ? 
-                         `SEO analysis (from ${new Date(seoCachedAt).toLocaleDateString()})` : 
-                         'Technical SEO and structure analysis'}
+                      {seoAnalyzing
+                        ? "Re-scraping page and analyzing SEO..."
+                        : seoCached && seoCachedAt
+                        ? `SEO analysis (from ${new Date(
+                            seoCachedAt
+                          ).toLocaleDateString()})`
+                        : "Technical SEO and structure analysis"}
                     </p>
 
                     {seoAnalyzing ? (
@@ -1432,7 +1944,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           <p className="text-xs text-green-600 dark:text-green-400 mt-1">
                             Re-scraping page for latest structure and meta data
                           </p>
-      </div>
+                        </div>
                       </div>
                     ) : (
                       <>
@@ -1441,114 +1953,182 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           {/* Meta Tags */}
                           <Card>
                             <CardHeader>
-                              <CardTitle className="text-base">Meta Tags</CardTitle>
+                              <CardTitle className="text-base">
+                                Meta Tags
+                              </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-4">
                               <div className="p-3 border rounded">
                                 <div className="flex items-center justify-between mb-2">
                                   <span className="font-medium">Title Tag</span>
                                   {getStatusIcon(!!analysis.metaTags.title)}
-      </div>
-                                  <p className="text-sm text-muted-foreground">
-                                    {analysis.metaTags.title ? 
-                                      `"${analysis.metaTags.title}" (${(analysis.metaTags.title || '').length} chars)` : 
-                                      'Missing'
-                                    }
-                                  </p>
                                 </div>
+                                <p className="text-sm text-muted-foreground">
+                                  {analysis.metaTags.title
+                                    ? `"${analysis.metaTags.title}" (${
+                                        (analysis.metaTags.title || "").length
+                                      } chars)`
+                                    : "Missing"}
+                                </p>
+                              </div>
 
-                                <div className="p-3 border rounded">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="font-medium">Meta Description</span>
-                                    {getStatusIcon(!!analysis.metaTags.description)}
-      </div>
-                                  <p className="text-sm text-muted-foreground">
-                                    {analysis.metaTags.description ? 
-                                      `"${analysis.metaTags.description}" (${(analysis.metaTags.description || '').length} chars)` : 
-                                      'Missing'
-                                    }
-                                  </p>
+                              <div className="p-3 border rounded">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="font-medium">
+                                    Meta Description
+                                  </span>
+                                  {getStatusIcon(
+                                    !!analysis.metaTags.description
+                                  )}
                                 </div>
+                                <p className="text-sm text-muted-foreground">
+                                  {analysis.metaTags.description
+                                    ? `"${analysis.metaTags.description}" (${
+                                        (analysis.metaTags.description || "")
+                                          .length
+                                      } chars)`
+                                    : "Missing"}
+                                </p>
+                              </div>
 
-                                <div className="grid grid-cols-2 gap-3">
-                                  <div className="p-3 border rounded text-center">
-                                    <div className="font-medium mb-1">Viewport</div>
-                                    <div className="text-2xl">{analysis.metaTags.viewport ? '✓' : '✗'}</div>
-          </div>
-                                  <div className="p-3 border rounded text-center">
-                                    <div className="font-medium mb-1">Canonical</div>
-                                    <div className="text-2xl">{analysis.metaTags.canonical ? '✓' : '✗'}</div>
-        </div>
-        </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="p-3 border rounded text-center">
+                                  <div className="font-medium mb-1">
+                                    Viewport
+                                  </div>
+                                  <div className="text-2xl">
+                                    {analysis.metaTags.viewport ? "✓" : "✗"}
+                                  </div>
+                                </div>
+                                <div className="p-3 border rounded text-center">
+                                  <div className="font-medium mb-1">
+                                    Canonical
+                                  </div>
+                                  <div className="text-2xl">
+                                    {analysis.metaTags.canonical ? "✓" : "✗"}
+                                  </div>
+                                </div>
+                              </div>
                             </CardContent>
                           </Card>
 
                           {/* Heading Structure */}
                           <Card>
                             <CardHeader>
-                              <CardTitle className="text-base">Heading Structure</CardTitle>
+                              <CardTitle className="text-base">
+                                Heading Structure
+                              </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-4">
                               <div className="p-3 border rounded">
                                 <div className="flex items-center justify-between mb-2">
                                   <span className="font-medium">H1 Tags</span>
-                                  {getStatusIcon(analysis.headingStructure.h1Count === 1)}
+                                  {getStatusIcon(
+                                    analysis.headingStructure.h1Count === 1
+                                  )}
                                 </div>
                                 <p className="text-sm text-muted-foreground">
                                   {analysis.headingStructure.h1Count} found
                                 </p>
-                                {(analysis.headingStructure.h1Text || []).length > 0 && (
+                                {(analysis.headingStructure.h1Text || [])
+                                  .length > 0 && (
                                   <p className="text-sm text-muted-foreground mt-2 italic">
                                     "{analysis.headingStructure.h1Text[0]}"
                                   </p>
                                 )}
-      </div>
+                              </div>
 
-                                <div className="p-3 border rounded">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="font-medium">Heading Hierarchy</span>
-                                    {getStatusIcon((analysis.headingStructure.allHeadings || []).length > 0)}
-          </div>
-                                    <p className="text-sm text-muted-foreground">
-                                      {(analysis.headingStructure.allHeadings || []).length} total headings
-                                    </p>
-                                    {(analysis.headingStructure.allHeadings || []).length > 0 && (
-                                      <div className="mt-2 flex flex-wrap gap-1">
-                                        {(analysis.headingStructure.allHeadings || []).slice(0, 8).map((h, i) => (
-                                          <span key={i} className="px-2 py-1 bg-muted rounded text-xs">
-                                            H{h.level}
-                                          </span>
-                                        ))}
-        </div>
-      )}
+                              <div className="p-3 border rounded">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="font-medium">
+                                    Heading Hierarchy
+                                  </span>
+                                  {getStatusIcon(
+                                    (
+                                      analysis.headingStructure.allHeadings ||
+                                      []
+                                    ).length > 0
+                                  )}
                                 </div>
-                              </CardContent>
-                            </Card>
+                                <p className="text-sm text-muted-foreground">
+                                  {
+                                    (
+                                      analysis.headingStructure.allHeadings ||
+                                      []
+                                    ).length
+                                  }{" "}
+                                  total headings
+                                </p>
+                                {(analysis.headingStructure.allHeadings || [])
+                                  .length > 0 && (
+                                  <div className="mt-2 flex flex-wrap gap-1">
+                                    {(
+                                      analysis.headingStructure.allHeadings ||
+                                      []
+                                    )
+                                      .slice(0, 8)
+                                      .map((h, i) => (
+                                        <span
+                                          key={i}
+                                          className="px-2 py-1 bg-muted rounded text-xs"
+                                        >
+                                          H{h.level}
+                                        </span>
+                                      ))}
+                                  </div>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
 
-                            {/* Technical SEO */}
-      <Card>
-        <CardHeader>
-                              <CardTitle className="text-base">Technical</CardTitle>
+                          {/* Technical SEO */}
+                          <Card>
+                            <CardHeader>
+                              <CardTitle className="text-base">
+                                Technical
+                              </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-3">
                               <div className="flex items-center justify-between p-3 border rounded">
                                 <span className="font-medium">HTTPS</span>
-                                <span className={`text-2xl ${analysis.httpsCheck.isHttps ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                                  {analysis.httpsCheck.isHttps ? '✓' : '✗'}
+                                <span
+                                  className={`text-2xl ${
+                                    analysis.httpsCheck.isHttps
+                                      ? "text-emerald-600 dark:text-emerald-400"
+                                      : "text-red-600 dark:text-red-400"
+                                  }`}
+                                >
+                                  {analysis.httpsCheck.isHttps ? "✓" : "✗"}
                                 </span>
-            </div>
+                              </div>
                               <div className="flex items-center justify-between p-3 border rounded">
                                 <span className="font-medium">Indexable</span>
-                                <span className={`text-2xl ${analysis.robotsCheck.indexable ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                                  {analysis.robotsCheck.indexable ? '✓' : '✗'}
+                                <span
+                                  className={`text-2xl ${
+                                    analysis.robotsCheck.indexable
+                                      ? "text-emerald-600 dark:text-emerald-400"
+                                      : "text-red-600 dark:text-red-400"
+                                  }`}
+                                >
+                                  {analysis.robotsCheck.indexable ? "✓" : "✗"}
                                 </span>
-              </div>
+                              </div>
                               <div className="flex items-center justify-between p-3 border rounded">
-                                <span className="font-medium">Direct Access</span>
-                                <span className={`text-2xl ${!analysis.redirectCheck.hasRedirect ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                                  {!analysis.redirectCheck.hasRedirect ? '✓' : '✗'}
+                                <span className="font-medium">
+                                  Direct Access
                                 </span>
-            </div>
+                                <span
+                                  className={`text-2xl ${
+                                    !analysis.redirectCheck.hasRedirect
+                                      ? "text-emerald-600 dark:text-emerald-400"
+                                      : "text-red-600 dark:text-red-400"
+                                  }`}
+                                >
+                                  {!analysis.redirectCheck.hasRedirect
+                                    ? "✓"
+                                    : "✗"}
+                                </span>
+                              </div>
                             </CardContent>
                           </Card>
 
@@ -1556,118 +2136,177 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           <Card>
                             <CardHeader>
                               <CardTitle className="text-base">Links</CardTitle>
-        </CardHeader>
-        <CardContent>
+                            </CardHeader>
+                            <CardContent>
                               <div className="grid grid-cols-3 gap-3 text-center">
                                 <div className="p-3 border rounded">
-                                  <div className="text-2xl font-bold">{analysis.linksCheck.totalLinks}</div>
-                                  <div className="text-xs text-muted-foreground">Total</div>
-            </div>
+                                  <div className="text-2xl font-bold">
+                                    {analysis.linksCheck.totalLinks}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Total
+                                  </div>
+                                </div>
                                 <div className="p-3 border rounded">
-                                  <div className="text-2xl font-bold">{analysis.linksCheck.internalLinks}</div>
-                                  <div className="text-xs text-muted-foreground">Internal</div>
-            </div>
+                                  <div className="text-2xl font-bold">
+                                    {analysis.linksCheck.internalLinks}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Internal
+                                  </div>
+                                </div>
                                 <div className="p-3 border rounded">
-                                  <div className="text-2xl font-bold">{analysis.linksCheck.externalLinks}</div>
-                                  <div className="text-xs text-muted-foreground">External</div>
-            </div>
-          </div>
+                                  <div className="text-2xl font-bold">
+                                    {analysis.linksCheck.externalLinks}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    External
+                                  </div>
+                                </div>
+                              </div>
                               {/* Image Tag Analysis */}
-                              
+
                               {hasImgTags(analysis.seoAnalysis) && (
                                 <>
                                   <div className="grid grid-cols-2 gap-3 text-center mt-4">
                                     <div className="p-3 border rounded">
-                                      <div className="text-2xl font-bold">{analysis.seoAnalysis.imgTags.total || 0}</div>
-                                      <div className="text-xs text-muted-foreground">Images (&lt;img&gt; tags)</div>
+                                      <div className="text-2xl font-bold">
+                                        {analysis.seoAnalysis.imgTags.total ||
+                                          0}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        Images (&lt;img&gt; tags)
+                                      </div>
                                     </div>
                                     <div className="p-3 border rounded">
-                                      <div className="text-2xl font-bold">{analysis.seoAnalysis.imgTags.missingAltCount || 0}</div>
-                                      <div className="text-xs text-muted-foreground">Missing alt attribute</div>
+                                      <div className="text-2xl font-bold">
+                                        {analysis.seoAnalysis.imgTags
+                                          .missingAltCount || 0}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        Missing alt attribute
+                                      </div>
                                     </div>
                                   </div>
                                   {/* List images missing alt */}
-                                  {Array.isArray(analysis.seoAnalysis.imgTags.imgTags) && analysis.seoAnalysis.imgTags.imgTags.filter((img: any) => !img.hasAlt).length > 0 && (
-                                    <div className="mt-4 text-left">
-                                      <div className="font-medium text-destructive mb-2 text-sm">Images missing alt attribute:</div>
-                                      <ul className="list-disc list-inside text-xs text-muted-foreground space-y-1">
-                                        {analysis.seoAnalysis.imgTags.imgTags.filter((img: any) => !img.hasAlt).map((img: any, idx: number) => (
-                                          <li key={idx} className="break-all">{img.src}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
+                                  {Array.isArray(
+                                    analysis.seoAnalysis.imgTags.imgTags
+                                  ) &&
+                                    analysis.seoAnalysis.imgTags.imgTags.filter(
+                                      (img: any) => !img.hasAlt
+                                    ).length > 0 && (
+                                      <div className="mt-4 text-left">
+                                        <div className="font-medium text-destructive mb-2 text-sm">
+                                          Images missing alt attribute:
+                                        </div>
+                                        <ul className="list-disc list-inside text-xs text-muted-foreground space-y-1">
+                                          {analysis.seoAnalysis.imgTags.imgTags
+                                            .filter((img: any) => !img.hasAlt)
+                                            .map((img: any, idx: number) => (
+                                              <li
+                                                key={idx}
+                                                className="break-all"
+                                              >
+                                                {img.src}
+                                              </li>
+                                            ))}
+                                        </ul>
+                                      </div>
+                                    )}
                                 </>
                               )}
-        </CardContent>
-      </Card>
+                            </CardContent>
+                          </Card>
                         </div>
 
                         {/* SEO Issues and Recommendations */}
                         {analysis.seoAnalysis && (
                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
                             {(analysis.seoAnalysis.issues || []).length > 0 && (
-        <Card>
+                              <Card>
                                 <CardHeader>
-                                  <CardTitle className="text-base text-destructive">Issues Found</CardTitle>
+                                  <CardTitle className="text-base text-destructive">
+                                    Issues Found
+                                  </CardTitle>
                                 </CardHeader>
                                 <CardContent>
                                   <div className="space-y-2">
-                                    {(analysis.seoAnalysis.issues || []).map((issue, i) => (
-                                      <div key={i} className="p-3 bg-destructive/10 border border-destructive/20 rounded text-destructive text-sm">
-                                        {issue}
-              </div>
-                                    ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                                    {(analysis.seoAnalysis.issues || []).map(
+                                      (issue, i) => (
+                                        <div
+                                          key={i}
+                                          className="p-3 bg-destructive/10 border border-destructive/20 rounded text-destructive text-sm"
+                                        >
+                                          {issue}
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            )}
 
-                            {(analysis.seoAnalysis.recommendations || []).length > 0 && (
-        <Card>
+                            {(analysis.seoAnalysis.recommendations || [])
+                              .length > 0 && (
+                              <Card>
                                 <CardHeader>
-                                  <CardTitle className="text-base text-primary">Recommendations</CardTitle>
+                                  <CardTitle className="text-base text-primary">
+                                    Recommendations
+                                  </CardTitle>
                                 </CardHeader>
                                 <CardContent>
                                   <div className="space-y-2">
-                                    {(analysis.seoAnalysis.recommendations || []).map((rec, i) => (
-                                      <div key={i} className="p-3 bg-primary/10 border border-primary/20 rounded text-primary text-sm">
+                                    {(
+                                      analysis.seoAnalysis.recommendations || []
+                                    ).map((rec, i) => (
+                                      <div
+                                        key={i}
+                                        className="p-3 bg-primary/10 border border-primary/20 rounded text-primary text-sm"
+                                      >
                                         {rec}
                                       </div>
                                     ))}
-            </div>
-          </CardContent>
-        </Card>
+                                  </div>
+                                </CardContent>
+                              </Card>
                             )}
 
-                            {(analysis.seoAnalysis.issues || []).length === 0 && (analysis.seoAnalysis.recommendations || []).length === 0 && (
-                              <div className="col-span-2 text-center py-8">
-                                <CheckCircle className="h-12 w-12 text-emerald-500 dark:text-emerald-400 mx-auto mb-3" />
-                                                                <p className="text-lg font-medium">Excellent SEO!</p>
-                                <p className="text-sm text-muted-foreground">No issues found</p>
-                    </div>
-                            )}
-                  </div>
+                            {(analysis.seoAnalysis.issues || []).length === 0 &&
+                              (analysis.seoAnalysis.recommendations || [])
+                                .length === 0 && (
+                                <div className="col-span-2 text-center py-8">
+                                  <CheckCircle className="h-12 w-12 text-emerald-500 dark:text-emerald-400 mx-auto mb-3" />
+                                  <p className="text-lg font-medium">
+                                    Excellent SEO!
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    No issues found
+                                  </p>
+                                </div>
+                              )}
+                          </div>
                         )}
                       </>
                     )}
-                    </div>
+                  </div>
                 )}
 
-{/* *********************************************************************************** */}
-  {activeAnalysisTab === 'ui_quality' && (
+                {/* *********************************************************************************** */}
+                {activeAnalysisTab === "ui_quality" && (
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
                         <Eye className="h-5 w-5" />
                         <h3 className="text-lg font-semibold">UI Quality</h3>
-                        {uiAnalyzing && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {uiAnalyzing && (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        )}
                         {uiQualityCached && !uiAnalyzing && (
                           <Badge variant="outline" className="text-xs">
                             Cached
                           </Badge>
                         )}
-              </div>
+                      </div>
                       {/* Refresh Button for UI Quality */}
                       <Button
                         size="sm"
@@ -1678,111 +2317,234 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                         <RefreshCw className="h-3 w-3 mr-1" />
                         Refresh Analysis
                       </Button>
-            </div>
+                    </div>
 
-          {/* UI Device Tabs */}
-          <div className="border-b mb-4">
-            <div className="flex gap-1">
-              {['phone', 'tablet', 'desktop'].map((device) => (
-                <button
-                  key={device}
-                  onClick={() => setActiveUiTab(device as 'phone' | 'tablet' | 'desktop')}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                    activeUiTab === device
-                      ? 'border-primary text-primary bg-primary/10'
-                      : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
-                  }`}
-                >
-                  {device.charAt(0).toUpperCase() + device.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
-          {/* Tab Content */}
-          {uiAnalyzing ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
-                <p className="text-sm text-muted-foreground">Analyzing UI screenshot with AI...</p>
-              </div>
-            </div>
-          ) : (
-            (() => {
-              const deviceKey = `${activeUiTab}_ui_quality_analysis` as keyof PageAnalysis;
-              const deviceAnalysis = analysis?.[deviceKey];
-              if (!deviceAnalysis) {
-                return (
-                  <div className="text-center py-12">
-                    <p className="text-muted-foreground">No UI Quality data available for this device.</p>
-                  </div>
-                );
-              }
-              return (
-                <>
-                  {deviceAnalysis.overall_summary && (
-                    <Card className="mb-6">
-                      <CardHeader>
-                        <CardTitle className="text-base">Overall Summary</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-muted-foreground">{deviceAnalysis.overall_summary}</p>
-                      </CardContent>
-                    </Card>
-                  )}
-                  <div className="space-y-4">
-                    {(deviceAnalysis.issues && deviceAnalysis.issues.length > 0) ? (
-                      deviceAnalysis.issues.map((issue: { type: string; description: string; suggestion: string }, idx: number) => (
-                        <Card key={idx} className="border-l-4 border-yellow-400">
-                          <CardContent className="py-4">
-                            <div className="flex items-start gap-3">
-                              <AlertTriangle className="h-6 w-6 text-yellow-200 mt-1" />
-                              <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="font-semibold text-yellow-700">{issue.type}</span>
-                                  <Badge variant="outline" className="text-xs">{`Issue ${idx + 1}`}</Badge>
-                                </div>
-                                <p className="text-sm mb-2">{issue.description}</p>
-                                <div className="text-xs text-muted-foreground">
-                                  <span className="font-semibold">Suggestion:</span> {issue.suggestion}
-                                </div>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))
-                    ) : (
-                      <div className="text-center py-8">
-                        <CheckCircle className="h-12 w-12 text-emerald-500 dark:text-emerald-400 mx-auto mb-3" />
-                        <p className="text-lg font-medium">No UI issues found!</p>
-                        <p className="text-sm text-muted-foreground">Your UI looks great.</p>
+                    {/* UI Device Tabs */}
+                    <div className="border-b mb-4">
+                      <div className="flex gap-1">
+                        {["phone", "tablet", "desktop"].map((device) => (
+                          <button
+                            key={device}
+                            onClick={() =>
+                              setActiveUiTab(
+                                device as "phone" | "tablet" | "desktop"
+                              )
+                            }
+                            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                              activeUiTab === device
+                                ? "border-primary text-primary bg-primary/10"
+                                : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                            }`}
+                          >
+                            {device.charAt(0).toUpperCase() + device.slice(1)}
+                          </button>
+                        ))}
                       </div>
+                    </div>
+                    {/* Tab Content */}
+                    {uiAnalyzing ? (
+                      <div className="flex items-center justify-center py-12">
+                        <div className="text-center">
+                          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
+                          <p className="text-sm text-muted-foreground">
+                            Analyzing UI screenshot with AI...
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      (() => {
+                        const deviceKey =
+                          `${activeUiTab}_ui_quality_analysis` as keyof PageAnalysis;
+                        const deviceAnalysis = analysis?.[deviceKey];
+                        if (!deviceAnalysis) {
+                          return (
+                            <div className="text-center py-12">
+                              <p className="text-muted-foreground">
+                                No UI Quality data available for this device.
+                              </p>
+                            </div>
+                          );
+                        }
+                        return (
+                          <>
+                            {deviceAnalysis.overall_summary && (
+                              <Card className="mb-6">
+                                <CardHeader>
+                                  <CardTitle className="text-base">
+                                    Overall Summary
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <p className="text-muted-foreground">
+                                    {deviceAnalysis.overall_summary}
+                                  </p>
+                                </CardContent>
+                              </Card>
+                            )}
+                            <div className="space-y-4">
+                              {deviceAnalysis.issues &&
+                              deviceAnalysis.issues.length > 0 ? (
+                                deviceAnalysis.issues.map(
+                                  (
+                                    issue: {
+                                      type: string;
+                                      description: string;
+                                      suggestion: string;
+                                    },
+                                    idx: number
+                                  ) => (
+                                    <Card
+                                      key={idx}
+                                      className="border-l-4 border-yellow-400"
+                                    >
+                                      <CardContent className="py-4">
+                                        <div className="flex items-start gap-3">
+                                          <AlertTriangle className="h-6 w-6 text-yellow-200 mt-1" />
+                                          <div>
+                                            <div className="flex items-center gap-2 mb-1">
+                                              <span className="font-semibold text-yellow-700">
+                                                {issue.type}
+                                              </span>
+                                              <Badge
+                                                variant="outline"
+                                                className="text-xs"
+                                              >{`Issue ${idx + 1}`}</Badge>
+                                            </div>
+                                            <p className="text-sm mb-2">
+                                              {issue.description}
+                                            </p>
+                                            <div className="text-xs text-muted-foreground">
+                                              <span className="font-semibold">
+                                                Suggestion:
+                                              </span>{" "}
+                                              {issue.suggestion}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  )
+                                )
+                              ) : (
+                                <div className="text-center py-8">
+                                  <CheckCircle className="h-12 w-12 text-emerald-500 dark:text-emerald-400 mx-auto mb-3" />
+                                  <p className="text-lg font-medium">
+                                    No UI issues found!
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    Your UI looks great.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()
                     )}
                   </div>
-                </>
-              );
-            })()
-          )}
-        </div>
-      )}
-{/* *********************************************************************************** */}
+                )}
+                {/* *********************************************************************************** */}
 
-
-
-
+                {activeAnalysisTab === "performance & accessibility" && (
+                  <div className="space-y-6">
+                    {/* Only show a single performance result, no device tabs */}
+                    {(() => {
+                      const perf = (analysis as any)?.performance_analysis;
+                      console.log('Performance analysis raw data:', perf);
+                      if (!perf) {
+                        console.log('No performance_analysis found in analysis:', analysis);
+                        return (
+                          <div className="text-center py-12">
+                            <p className="text-muted-foreground">No performance data available.</p>
+                          </div>
+                        );
+                      }
+                      // Extract scores and metrics
+                      const perfScore = perf.performance?.score || 0;
+                      const accScore = perf.accessibility?.score || 0;
+                      // Core Web Vitals
+                      const metrics = {
+                        FCP: perf.performance?.metrics?.firstContentfulPaint,
+                        LCP: perf.performance?.metrics?.largestContentfulPaint,
+                        TBT: perf.performance?.metrics?.totalBlockingTime,
+                        CLS: perf.performance?.metrics?.cumulativeLayoutShift,
+                        SI: perf.performance?.metrics?.speedIndex,
+                        INP: perf.performance?.metrics?.timeToInteractive,
+                      };
+                      // Opportunities
+                      const opportunities = perf.performance?.opportunities || [];
+                      // Accessibility issues
+                      const problems = perf.accessibility?.issues || [];
+                      return (
+                        <div className="space-y-8">
+                          {/* Scores */}
+                          <div className="flex flex-wrap gap-8 items-center justify-center">
+                            <RadialScore score={perfScore} label="Performance" color="#10b981" />
+                            <RadialScore score={accScore} label="Accessibility" color="#6366f1" />
+                          </div>
+                          {/* Metrics */}
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                            {Object.entries(metrics).map(([key, value]) => (
+                              <div key={key} className="p-4 border rounded-lg text-center">
+                                <div className="text-xs text-muted-foreground mb-1">{key}</div>
+                                <div className="text-lg font-bold">{value || 'N/A'}</div>
+                              </div>
+                            ))}
+                          </div>
+                          {/* Opportunities */}
+                          {opportunities.length > 0 && (
+                            <div>
+                              <h4 className="font-medium mb-2 text-yellow-700">Opportunities</h4>
+                              <div className="space-y-2">
+                                {opportunities.map((opp: any, i: number) => (
+                                  <div key={i} className="p-3 border-l-4 border-yellow-400 bg-yellow-50 dark:bg-yellow-950/20 rounded">
+                                    <div className="font-semibold">{opp.title}</div>
+                                    <div className="text-xs text-muted-foreground">{opp.description}</div>
+                                    {opp.savings && <div className="text-xs mt-1">Estimated savings: {opp.savings}ms</div>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {/* Problems */}
+                          {problems.length > 0 && (
+                            <div>
+                              <h4 className="font-medium mb-2 text-destructive">Accessibility Issues</h4>
+                              <div className="space-y-2">
+                                {problems.map((prob: any, i: number) => (
+                                  <div key={i} className="p-3 border-l-4 border-red-400 bg-red-50 dark:bg-red-950/20 rounded">
+                                    <div className="font-semibold">{prob.title}</div>
+                                    <div className="text-xs text-muted-foreground">{prob.description}</div>
+                                    {prob.severity && <div className="text-xs mt-1">Severity: {prob.severity}</div>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+                {/* *********************************************************************************** */}
 
                 {/* Other tabs - Coming Soon */}
-                {['performance', 'accessibility', 'images'].includes(activeAnalysisTab) && (
+                {["performance", "accessibility", "images"].includes(
+                  activeAnalysisTab
+                ) && (
                   <div className="text-center py-16">
                     <div className="text-6xl mb-4">🚧</div>
                     <h3 className="text-xl font-semibold mb-2">Coming Soon</h3>
                     <p className="text-muted-foreground">
-                      {activeAnalysisTab.charAt(0).toUpperCase() + activeAnalysisTab.slice(1).replace('_', ' ')} analysis is being developed
+                      {activeAnalysisTab.charAt(0).toUpperCase() +
+                        activeAnalysisTab.slice(1).replace("_", " ")}{" "}
+                      analysis is being developed
                     </p>
                   </div>
                 )}
-                </div>
-              </CardContent>
-            </Card>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
