@@ -50,10 +50,8 @@ export async function POST(
   try {
     const supabase = await createClient();
     const { id } = await params;
-    console.log("id******************",id)
     const services = await supabase.from("audit_projects").select("services").eq("id", id).single();
-    console.log("services******************",services.data);
-  
+
     const {
       data: { user },
       error: authError,
@@ -66,7 +64,7 @@ export async function POST(
     const {
       page_ids,
       analyze_all = false,
-      analysis_types = ["grammar", "seo", "ui","performance"], // Default to both
+      analysis_types = ["grammar", "seo", "ui","performance",'tagsAnalysis'], // Default to both
       use_cache = true, // Default to use cache
       background = null, // Auto-determine based on page count
       force_refresh = false, // Force refresh cached results
@@ -234,7 +232,12 @@ async function performSinglePageAnalysis(
       performancePromise = analyzePerformanceAndAccessibility(page.url);
      
     }
-
+    // --- Tags analysis (parallel) ---
+    let tagsAnalysis = null;
+    let tagsPromise: Promise<any | null> =
+      analysisTypes.includes("tagsAnalysis")
+        ? analyzeTags(page.html || "")
+        : Promise.resolve(null);
     // --- Screenshot + UI analysis for each device in parallel ---
     let phoneUiAnalysis = null;
     let tabletUiAnalysis = null;
@@ -282,10 +285,11 @@ async function performSinglePageAnalysis(
     const desktopUiPromise = screenshotAndAnalyzeUI("desktop");
 
     // --- Wait for all analyses to finish ---
-    const [grammarResult, seoResult, perfResult, phoneUiResult, tabletUiResult, desktopUiResult] = await Promise.all([
+    const [grammarResult, seoResult, perfResult, tagsResult, phoneUiResult, tabletUiResult, desktopUiResult] = await Promise.all([
       grammarPromise,
       seoPromise,
       performancePromise,
+      tagsPromise,
       phoneUiPromise,
       tabletUiPromise,
       desktopUiPromise,
@@ -294,6 +298,7 @@ async function performSinglePageAnalysis(
     grammarAnalysis = grammarResult;
     seoAnalysis = seoResult;
     performanceAnalysis = perfResult;
+    tagsAnalysis = tagsResult;
     phoneUiAnalysis = phoneUiResult;
     tabletUiAnalysis = tabletUiResult;
     desktopUiAnalysis = desktopUiResult;
@@ -353,7 +358,8 @@ async function performSinglePageAnalysis(
       tabletUiAnalysis,
       desktopUiAnalysis,
       performanceAnalysis,
-      overallScore
+      overallScore,
+      tagsAnalysis
     );
     console.log(`[DB] Analysis results saved for page ${page.id}`);
 
@@ -411,6 +417,20 @@ async function performSinglePageAnalysis(
         custom_instructions_analysis: customInstructionsAnalysis,
       };
     }
+    if (analysisTypes.includes("tagsAnalysis")) {
+      return {
+        grammar_analysis: grammarAnalysis,
+        seo_analysis: seoAnalysis,
+        performance_analysis: performanceAnalysis,
+        tags_analysis: tagsAnalysis,
+        overall_score: overallScore,
+        company_information: grammarAnalysis?.companyInformation || null,
+        cached,
+        cached_at: cachedAt,
+        freshly_scraped: true,
+        custom_instructions_analysis: customInstructionsAnalysis,
+      };
+    }
 
     return { error: "No valid analysis types specified" };
   } catch (error) {
@@ -438,7 +458,8 @@ async function upsertAnalysisResult(
   tabletUiAnalysis: any,
   desktopUiAnalysis: any,
   performanceAnalysis: any,
-  overallScore: number
+  overallScore: number,
+  tagsAnalysis: any = null
 ) {
   const status =
     overallScore >= 80 ? "pass" : overallScore >= 60 ? "warning" : "fail";
@@ -481,6 +502,9 @@ async function upsertAnalysisResult(
   if (desktopUiAnalysis) {
     updateData.desktop_ui_quality_analysis = desktopUiAnalysis;
   
+  }
+  if (tagsAnalysis) {
+    updateData.tags_analysis = tagsAnalysis;
   }
 
   const { error } = await supabase.from("audit_results").upsert(updateData, {
@@ -1251,6 +1275,105 @@ function analyzeImgTags(html: string) {
     missingAltSrcs: missingAlt.map(img => img.src),
     imgTags // for reference, can be removed if not needed
   };
+}
+// Analyze HTML tags for structure, presence, and best practices
+async function analyzeTags(html: string) {
+  const results: any = {
+    detectedTags: {
+      gtm: {
+        script: false,
+        noscript: false,
+        details: [],
+        message: '',
+      },
+      gtag: {
+        found: false,
+        details: [],
+        message: '',
+      },
+      clickcease: {
+        script: false,
+        noscriptImg: false,
+        noscriptAnchor: false,
+        details: [],
+        message: '',
+      },
+    },
+  };
+
+  // 1. Google Tag Manager (GTM)
+  const gtmScriptPattern = /\(function\(w,d,s,l,i\)\{w\[l\]=w\[l\]\|\|\[\];w\[l\]\.push\(\{'gtm\.start':/;
+  const gtmIdPattern = /GTM-[A-Z0-9]+/g;
+  const gtmJsPattern = /googletagmanager\.com\/gtm\.js/;
+  const gtmNoscriptPattern = /<iframe[^>]+src=["']https:\/\/www\.googletagmanager\.com\/ns\.html\?id=GTM-[A-Z0-9]+/i;
+
+  // 2. Google tag (gtag.js)
+  const gtagJsPattern = /googletagmanager\.com\/gtag\/js/;
+
+  // 3. ClickCease
+  const clickceaseScriptPattern = /clickcease\.com\/monitor\/stat\.js/;
+  const clickceaseNoscriptImgPattern = /<img[^>]+src=['"]https:\/\/monitor\.clickcease\.com\/stats\/stats\.aspx/i;
+  const clickceaseNoscriptAnchorPattern = /<a[^>]+href=['"]https:\/\/www\.clickcease\.com/i;
+
+  // GTM detection
+  const gtmScriptFound = gtmScriptPattern.test(html) || gtmJsPattern.test(html) || gtmIdPattern.test(html);
+  const gtmScriptDetails = [
+    ...(html.match(gtmScriptPattern) || []),
+    ...(html.match(gtmJsPattern) || []),
+    ...(html.match(gtmIdPattern) || []),
+  ];
+  const gtmNoscriptFound = gtmNoscriptPattern.test(html);
+  const gtmNoscriptDetails = html.match(gtmNoscriptPattern) || [];
+  // Extract all GTM container IDs
+  const gtmIds = Array.from(new Set((html.match(/GTM-[A-Z0-9]+/g) || [])));
+  results.detectedTags.gtm.script = gtmScriptFound;
+  results.detectedTags.gtm.noscript = gtmNoscriptFound;
+  results.detectedTags.gtm.details = [...gtmScriptDetails, ...gtmNoscriptDetails];
+  results.detectedTags.gtm.ids = gtmIds;
+  results.detectedTags.gtm.message = gtmScriptFound || gtmNoscriptFound
+    ? 'Google Tag Manager detected.'
+    : 'No Google Tag Manager detected.';
+
+  // gtag.js detection
+  const gtagFound = gtagJsPattern.test(html);
+  const gtagDetails = html.match(gtagJsPattern) || [];
+  // Extract all gtag.js Measurement IDs (GA4)
+  const gtagIds = Array.from(new Set((html.match(/G-[A-Z0-9]+/g) || [])));
+  // Extract all gtag.js script links
+  const gtagLinkPattern = /https:\/\/www\.googletagmanager\.com\/gtag\/js\?id=G-[A-Z0-9]+/g;
+  const gtagLinks = Array.from(new Set((html.match(gtagLinkPattern) || [])));
+  results.detectedTags.gtag.found = gtagFound;
+  results.detectedTags.gtag.details = gtagDetails;
+  results.detectedTags.gtag.ids = gtagIds;
+  results.detectedTags.gtag.links = gtagLinks;
+  results.detectedTags.gtag.message = gtagFound
+    ? 'Google tag (gtag.js) detected.'
+    : 'No Google tag (gtag.js) detected.';
+
+  // ClickCease detection
+  const clickceaseScriptFound = clickceaseScriptPattern.test(html);
+  const clickceaseScriptDetails = html.match(clickceaseScriptPattern) || [];
+  const clickceaseNoscriptImgFound = clickceaseNoscriptImgPattern.test(html);
+  const clickceaseNoscriptImgDetails = html.match(clickceaseNoscriptImgPattern) || [];
+  const clickceaseNoscriptAnchorFound = clickceaseNoscriptAnchorPattern.test(html);
+  const clickceaseNoscriptAnchorDetails = html.match(clickceaseNoscriptAnchorPattern) || [];
+  results.detectedTags.clickcease.script = clickceaseScriptFound;
+  results.detectedTags.clickcease.noscriptImg = clickceaseNoscriptImgFound;
+  results.detectedTags.clickcease.noscriptAnchor = clickceaseNoscriptAnchorFound;
+  results.detectedTags.clickcease.details = [
+    ...clickceaseScriptDetails,
+    ...clickceaseNoscriptImgDetails,
+    ...clickceaseNoscriptAnchorDetails,
+  ];
+  results.detectedTags.clickcease.message =
+    clickceaseScriptFound || clickceaseNoscriptImgFound || clickceaseNoscriptAnchorFound
+      ? 'ClickCease detected.'
+      : 'No ClickCease detected.';
+
+  // Print the result for debugging
+  console.log('[analyzeTags] Tag detection result:', JSON.stringify(results, null, 2));
+
+  return results;
 }
 // Analyze UI image using Gemini Vision API
 // This version ignores the image and just sends a simple prompt to Gemini for testing.

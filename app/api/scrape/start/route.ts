@@ -41,8 +41,7 @@ export async function POST(request: Request) {
     const { project_id } = body;
     const { data: projectData } = await supabase.from("audit_projects").select("crawl_type").eq("id", project_id).single();
     const crawl_type = projectData?.crawl_type;
-    console.log("**************crawl_type**************",crawl_type);
-    console.log("Received body:", body);
+  
     
     // Validate crawl_type - if not specified, default to 'full'
     if (crawl_type && !['single', 'full'].includes(crawl_type)) {
@@ -98,13 +97,27 @@ export async function POST(request: Request) {
       .update({ status: "crawling" })
       .eq("id", project_id);
 
-    // Start crawling in the background based on crawl_type
-    await crawlWebsite(project_id, project.base_url, user.id, existingUrls, crawl_type);
+    // Configure scraper based on crawl type
+    // - 'single': Crawl only the base URL (maxPages: 1, maxDepth: 0)
+    // - 'full': Crawl the entire website (maxPages: 50, maxDepth: 3)
+    const scraperOptions = {
+      maxPages: crawl_type === 'single' ? 1 : 50,
+      maxDepth: crawl_type === 'single' ? 0 : 3,
+      followExternal: false,
+      respectRobotsTxt: true,
+    };
+    const avgTimePerPage = 1.5; // seconds
+    const estimatedTimeSec = scraperOptions.maxPages * avgTimePerPage;
 
+    // Start crawling in the background based on crawl_type
+    await crawlWebsite(project_id, project.base_url, user.id, existingUrls, crawl_type, scraperOptions);
+
+    // Now estimatedTimeSec is in scope for the response
     return NextResponse.json({
       message: "Crawling started",
       project_id,
       isRecrawl: project.status === "completed",
+      estimated_time_sec: estimatedTimeSec,
     });
   } catch (error) {
     return NextResponse.json(
@@ -119,24 +132,12 @@ async function crawlWebsite(
   baseUrl: string,
   userId: string,
   existingUrls: Set<string>,
-  crawlType?: string
+  crawlType?: string,
+  scraperOptions?: any // or the correct type
 ) {
   const supabase = await createClient();
   
-  // Configure scraper based on crawl type
-  // - 'single': Crawl only the base URL (maxPages: 1, maxDepth: 0)
-  // - 'full': Crawl the entire website (maxPages: 50, maxDepth: 3)
-  const scraperOptions = {
-    maxPages: crawlType === 'single' ? 1 : 50,
-    maxDepth: crawlType === 'single' ? 0 : 3,
-    followExternal: false,
-    respectRobotsTxt: true,
-  };
-  
   const scraper = new WebScraper(baseUrl, scraperOptions);
-
-  console.log(`Starting crawl with type: ${crawlType || 'full'}`);
-  console.log(`Scraper options:`, scraperOptions);
 
   try {
     let pagesCrawled = 0;

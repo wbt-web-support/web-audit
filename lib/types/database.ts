@@ -60,6 +60,7 @@ export type AuditResult = {
   ui_quality_analysis: Record<string, any> | null;
   image_relevance_analysis: Record<string, any> | null;
   context_analysis: Record<string, any> | null;
+  tags_analysis?: Record<string, any> | null;
   
   // Overall scores and status
   overall_score: number | null;

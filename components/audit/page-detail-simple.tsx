@@ -125,6 +125,7 @@ interface PageAnalysis {
     missingAltCount: number;
     imgTags: Array<{ src: string; hasAlt: boolean }>;
   };
+  tags_analysis?: any;
 }
 
 interface PageDetailSimpleProps {
@@ -177,6 +178,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   const [performanceAnalyzing, setPerformanceAnalyzing] = useState(false);
   const [performanceCached, setPerformanceCached] = useState(false);
   const [performanceCachedAt, setPerformanceCachedAt] = useState<string | null>(null);
+  const [activeTechnicalTab, setActiveTechnicalTab] = useState("tags_analysis");
 
   // Fetch results from audit_results table
   const fetchAnalysisResults = useCallback(async () => {
@@ -206,6 +208,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             setSeoCached(true);
             setSeoCachedAt(data.results.created_at || data.results.updated_at);
             setSeoAnalyzing(false);
+          }
+          if (data.results.tags_analysis) {
+            newAnalysis.tags_analysis = data.results.tags_analysis;
           }
           if (data.results.phone_ui_quality_analysis) {
             newAnalysis.phone_ui_quality_analysis =
@@ -307,6 +312,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                 data.results.created_at || data.results.updated_at
               );
               hasSeoCache = true;
+            }
+            if (data.results.tags_analysis) {
+              basicAnalysis.tags_analysis = data.results.tags_analysis;
             }
             if (data.results.phone_ui_quality_analysis) {
               basicAnalysis.phone_ui_quality_analysis =
@@ -1323,6 +1331,13 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       id: "images",
                       label: "Images",
                       icon: Image,
+                      analyzing: false,
+                      cached: false,
+                    },
+                    {
+                      id: "technical_fixes",
+                      label: "Technical Fixes",
+                      icon: Shield,
                       analyzing: false,
                       cached: false,
                     },
@@ -2524,6 +2539,121 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                         </div>
                       );
                     })()}
+                  </div>
+                )}
+                {/* *********************************************************************************** */}
+
+                {activeAnalysisTab === "technical_fixes" && (
+                  <div className="space-y-6">
+                    {/* Sub-tabs for Technical Fixes */}
+                    <div className="border-b mb-4">
+                      <div className="flex gap-1">
+                        {[{ id: "tags_analysis", label: "Tags Analysis" }].map((tab) => (
+                          <button
+                            key={tab.id}
+                            onClick={() => setActiveTechnicalTab(tab.id)}
+                            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                              activeTechnicalTab === tab.id
+                                ? "border-primary text-primary bg-primary/10"
+                                : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                            }`}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Sub-tab Content */}
+                    {activeTechnicalTab === "tags_analysis" && (
+                      <div>
+                        {(() => {
+                          const tagsAnalysis = (analysis as any)?.tags_analysis;
+                          if (!tagsAnalysis || !tagsAnalysis.detectedTags || Object.keys(tagsAnalysis.detectedTags).length === 0) {
+                            return (
+                              <div className="text-center py-12">
+                                <p className="text-muted-foreground">No tags analysis data present.</p>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                              {Object.entries(tagsAnalysis.detectedTags).map(([tag, info]: [string, any]) => (
+                                <div key={tag} className="rounded-xl shadow-lg border border-primary/20  dark:from-zinc-900 dark:via-blue-950 dark:to-zinc-900 p-6 flex flex-col gap-3 relative hover:scale-[1.02] transition-transform">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <div className="rounded-full bg-primary/10 p-2">
+                                      <Shield className="h-6 w-6 text-primary" />
+                                    </div>
+                                    <span className="font-bold text-lg text-primary tracking-wide uppercase">{tag}</span>
+                                    {info.message && (
+                                      <span className="ml-2 text-xs text-muted-foreground italic" title="{info.message}">
+                                        {info.message}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {info.ids && info.ids.length > 0 && (
+                                    <div className="mb-1">
+                                      <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">IDs:</span>
+                                      <div className="flex flex-wrap gap-2 mt-1">
+                                        {info.ids.map((id: string, idx: number) => (
+                                          <span key={idx} className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded text-xs font-mono shadow-sm border border-blue-200 dark:border-blue-800">
+                                            {id}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {info.links && info.links.length > 0 && (
+                                    <div className="mb-1">
+                                      <span className="text-xs font-semibold text-green-700 dark:text-green-300">Links:</span>
+                                      <ul className="list-none mt-1 space-y-1">
+                                        {info.links.map((link: string, idx: number) => (
+                                          <li key={idx}>
+                                            <a href={link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-green-700 dark:text-green-300 hover:underline text-xs font-medium">
+                                              <ExternalLink className="h-3 w-3 inline" />
+                                              {link}
+                                            </a>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  {info.details && info.details.length > 0 && (
+                                    <div className="mb-1">
+                                      <span className="text-xs font-semibold text-purple-700 dark:text-purple-300">Details:</span>
+                                      <ul className="list-disc list-inside text-xs ml-4 mt-1 text-muted-foreground space-y-1">
+                                        {info.details.map((detail: string, idx: number) => (
+                                          <li key={idx}>{detail}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  <div className="flex flex-wrap gap-2 mt-2">
+                                    {typeof info.script === "boolean" && (
+                                      <span className={`px-2 py-1 rounded text-xs font-semibold border ${info.script ? 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900 dark:text-emerald-300 dark:border-emerald-800' : 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900 dark:text-red-300 dark:border-red-800'}`}
+                                        title="Script tag present">
+                                        Script: {info.script ? "Yes" : "No"}
+                                      </span>
+                                    )}
+                                    {typeof info.noscript === "boolean" && (
+                                      <span className={`px-2 py-1 rounded text-xs font-semibold border ${info.noscript ? 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900 dark:text-emerald-300 dark:border-emerald-800' : 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900 dark:text-red-300 dark:border-red-800'}`}
+                                        title="NoScript tag present">
+                                        NoScript: {info.noscript ? "Yes" : "No"}
+                                      </span>
+                                    )}
+                                    {typeof info.found === "boolean" && (
+                                      <span className={`px-2 py-1 rounded text-xs font-semibold border ${info.found ? 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900 dark:text-emerald-300 dark:border-emerald-800' : 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900 dark:text-red-300 dark:border-red-800'}`}
+                                        title="Tag found">
+                                        Found: {info.found ? "Yes" : "No"}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
                 )}
                 {/* *********************************************************************************** */}

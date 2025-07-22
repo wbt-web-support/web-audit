@@ -74,6 +74,8 @@ export function AuditMain() {
   const searchParams = useSearchParams();
   const selectedProjectId = searchParams.get('project');
   const crawlingStartedRef = useRef(false);
+  const [crawlProgress, setCrawlProgress] = useState(0); // percent
+  const [isCrawling, setIsCrawling] = useState(false);
   useEffect(() => {
     fetchData();
   }, [selectedProjectId]);
@@ -156,12 +158,11 @@ export function AuditMain() {
         try {
           const resultsResponse = await fetch(`/api/audit-projects/${selectedProjectId}/results`);
             const resultsData = await resultsResponse.json();
-            console.log("resultsData **********",resultsData)
-            console.log("crawlingStartedRef **********",crawlingStartedRef)
+            
 
             if(resultsData.project.status=="pending" && !crawlingStartedRef.current){
               crawlingStartedRef.current = true;
-              console.log("projectResponse **********",projectResponse)
+          
               startCrawling(projectData.project.id)
             }
             if (resultsResponse.ok && resultsData.pageResults) {
@@ -231,11 +232,37 @@ export function AuditMain() {
     }
   };
 
+  // Poll for crawl progress when crawling is active
+  useEffect(() => {
+    if (!isCrawling || !projects[0]) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/audit-projects/${projects[0].id}`);
+        const data = await res.json();
+        if (data.project.status !== 'crawling') {
+          setIsCrawling(false);
+          setCrawlProgress(0);
+          clearInterval(interval);
+          return;
+        }
+        const total = data.project.total_pages || 50; // fallback to maxPages
+        const crawled = data.project.pages_crawled || 0;
+        setCrawlProgress(Math.min(100, Math.round((crawled / total) * 100)));
+      } catch {
+        // ignore errors
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [isCrawling, projects]);
+
+  // Start polling on crawl start
   const startCrawling = async (projectId: string) => {
     setCrawling(true);
+    setIsCrawling(true);
+    setCrawlProgress(0);
     setCurrentAction(`Starting crawl for project ${projectId}`);
     setError('');
-toast("crawling is started");
+    toast("crawling is started");
     try {
       const response = await fetch('/api/scrape/start', {
         method: 'POST',
@@ -246,13 +273,20 @@ toast("crawling is started");
       });
 
       const data = await response.json();
+      if (data.estimated_time_sec) {
+        toast(`Estimated crawling time: ${Math.round(data.estimated_time_sec)} seconds`);
+      }
       fetchData();
       toast("crawling is end");
       if (!response.ok) {
         setError(data.error || 'Failed to start crawling');
+        setIsCrawling(false);
+        setCrawlProgress(0);
       }
     } catch (error) {
       setError('Failed to start crawling');
+      setIsCrawling(false);
+      setCrawlProgress(0);
     } finally {
       setCrawling(false);
       setCurrentAction('');
@@ -528,7 +562,8 @@ toast("crawling is started");
       });
 
       const data = await response.json();
-
+     console.log("data **********",data)
+     return;
       if (!response.ok) {
         setError(data.error || 'Failed to start analysis');
         setAnalyzingPages(prev => {
@@ -678,7 +713,7 @@ toast("crawling is started");
           <Link href={`/projects/edit/${projects[0].id}`}>
             <Button variant="outline">
               <Settings className="h-4 w-4 mr-2" />
-              Edit Projects
+              Edit Project
             </Button>
           </Link>
         </div>
@@ -765,11 +800,29 @@ toast("crawling is started");
                 {projects[0].status === 'completed' && (
                       <Button
                         size="sm"
-                    onClick={() => startCrawling(projects[0].id)}
-                        disabled={crawling}
+                        onClick={() => startCrawling(projects[0].id)}
+                        disabled={crawling || isCrawling}
+                        className="relative overflow-hidden"
+                        style={{ background: isCrawling ? '#fff' : undefined }}
                       >
-                    <RefreshCw className={`h-4 w-4 transition-all ${crawling ? "animate-spin" : ""}`} />
-                     {crawling?"Recrawling":"Recrawl"} 
+                        {isCrawling && (
+                          <div
+                            className="absolute left-0 top-0 h-full bg-blue-500 z-0 transition-all"
+                            style={{
+                              width: `${crawlProgress}%`,
+                              opacity: 0.2,
+                              pointerEvents: 'none',
+                            }}
+                          />
+                        )}
+                        <span className="relative z-10 flex items-center">
+                          <RefreshCw className={`h-4 w-4 transition-all ${crawling || isCrawling ? "animate-spin" : ""}`} />
+                          {isCrawling
+                            ? `Crawling... ${crawlProgress}%`
+                            : crawling
+                              ? "Recrawling"
+                              : "Recrawl"}
+                        </span>
                       </Button>
                     )}
                 {projects[0].status === 'crawling' && (
@@ -1106,7 +1159,7 @@ toast("crawling is started");
                       className="p-2 text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
                       onClick={() => handleSort('title')}
                     >
-                      Page {getSortIcon('title')}
+                      Pages {getSortIcon('title')}
                     </th>
                     <th 
                       className="w-20 p-2 text-xs font-medium text-muted-foreground text-center cursor-pointer hover:text-foreground transition-colors"
