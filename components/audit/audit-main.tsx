@@ -152,6 +152,7 @@ export function AuditMain() {
 
       
       const projectData = await projectResponse.json();
+      
       if (projectResponse.ok) {
         setProjects([projectData.project]);
         // Fetch analyzed pages from the selected project
@@ -305,8 +306,7 @@ export function AuditMain() {
     
     // Mark pages as analyzing
     setAnalyzingPages(new Set(pageIds));
-    console.log("project id ",projectId)
-    console.log("pageIds ",pageIds)
+
     try {
       const response = await fetch(`/api/audit-projects/${projectId}/analyze`, {
         method: 'POST',
@@ -680,6 +680,7 @@ export function AuditMain() {
   });
 
   const activeProjects = projects.filter(s => s.status === 'crawling' || s.status === 'analyzing');
+   
 
   if (loading) {
     return (
@@ -690,6 +691,8 @@ export function AuditMain() {
       </div>
     );
   }
+
+
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
@@ -857,6 +860,55 @@ export function AuditMain() {
         </Card>
       )}
 
+   {projects[0].custom_urls_analysis && Array.isArray(projects[0].custom_urls_analysis) && projects[0].custom_urls_analysis.length > 0 &&  (
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Custom URLs</CardTitle>
+          <CardDescription>Tracked URLs and their presence in the crawl</CardDescription>
+          <div className="mt-2 text-sm text-muted-foreground">
+            {projects[0].custom_urls_analysis.filter(u => u.isPresent).length} / {projects[0].custom_urls_analysis.length} URLs found
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {projects[0].custom_urls_analysis.map((item, idx) => (
+              <div
+                key={idx}
+                className="relative rounded-xl border bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 shadow-sm p-4 flex flex-col gap-2 hover:shadow-lg transition-shadow group"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  {item.isPresent ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-200">
+                      <CheckCircle className="h-4 w-4 mr-1 text-emerald-500" /> Present
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200">
+                      <XCircle className="h-4 w-4 mr-1 text-red-500" /> Missing
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-mono text-blue-700 dark:text-blue-300" title={item.pageLink}>{item.pageLink}</span>
+                  <button
+                    className="ml-1 p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900 transition"
+                    title="Copy URL"
+                    onClick={() => {
+                      navigator.clipboard.writeText(item.pageLink);
+                      toast('Copied URL!');
+                    }}
+                  >
+                    <CodeSquare className="h-4 w-4 text-blue-400 group-hover:text-blue-600" />
+                  </button>
+                  <a href={item.pageLink} target="_blank" rel="noopener noreferrer" className="ml-1 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition" title="Open URL">
+                    <ExternalLink className="h-4 w-4 text-gray-400 group-hover:text-blue-500" />
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    )}
       {/* Pages List */}
       <Card>
         <CardHeader>
@@ -1130,7 +1182,7 @@ export function AuditMain() {
               </p>
             </div>
           ) : (
-            <div className=" overflow-hidden">
+            <div className=" overflow-x-scroll">
               <table className="w-full">
                 <thead className="bg-muted/50 border-b">
                   <tr className="text-left">

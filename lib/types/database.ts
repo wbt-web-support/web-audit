@@ -28,6 +28,8 @@ export type AuditProject = {
   instructions?: string[] | null;
   crawl_type?: string | null;
   services?: string[] | null;
+  custom_urls?: string[] | null;
+  custom_urls_analysis?: { pageLink: string; isPresent: boolean }[] | null;
 };
 
 export interface ScrapedPage {
@@ -61,6 +63,7 @@ export type AuditResult = {
   image_relevance_analysis: Record<string, any> | null;
   context_analysis: Record<string, any> | null;
   tags_analysis?: Record<string, any> | null;
+  social_meta_analysis?: Record<string, any> | null;
   
   // Overall scores and status
   overall_score: number | null;

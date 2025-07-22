@@ -284,8 +284,12 @@ async function performSinglePageAnalysis(
     const tabletUiPromise = screenshotAndAnalyzeUI("tablet");
     const desktopUiPromise = screenshotAndAnalyzeUI("desktop");
 
+    // --- Social Meta Analysis (parallel) ---
+    let socialMetaAnalysis = null;
+    const socialMetaPromise = analyzeSocialMetaTags(page.html || "");
+
     // --- Wait for all analyses to finish ---
-    const [grammarResult, seoResult, perfResult, tagsResult, phoneUiResult, tabletUiResult, desktopUiResult] = await Promise.all([
+    const [grammarResult, seoResult, perfResult, tagsResult, phoneUiResult, tabletUiResult, desktopUiResult, socialMetaResult] = await Promise.all([
       grammarPromise,
       seoPromise,
       performancePromise,
@@ -293,6 +297,7 @@ async function performSinglePageAnalysis(
       phoneUiPromise,
       tabletUiPromise,
       desktopUiPromise,
+      socialMetaPromise,
     ]);
 
     grammarAnalysis = grammarResult;
@@ -302,6 +307,7 @@ async function performSinglePageAnalysis(
     phoneUiAnalysis = phoneUiResult;
     tabletUiAnalysis = tabletUiResult;
     desktopUiAnalysis = desktopUiResult;
+    socialMetaAnalysis = socialMetaResult;
 
     // Log the performanceAnalysis result
     console.log('[PERFORMANCE ANALYSIS]', performanceAnalysis);
@@ -359,7 +365,8 @@ async function performSinglePageAnalysis(
       desktopUiAnalysis,
       performanceAnalysis,
       overallScore,
-      tagsAnalysis
+      tagsAnalysis,
+      socialMetaAnalysis
     );
     console.log(`[DB] Analysis results saved for page ${page.id}`);
 
@@ -385,6 +392,7 @@ async function performSinglePageAnalysis(
         cached_at: cachedAt,
         freshly_scraped: true,
         custom_instructions_analysis: customInstructionsAnalysis,
+        social_meta_analysis: socialMetaAnalysis,
       };
     }
     if (analysisTypes.includes("grammar") && analysisTypes.includes("seo")) {
@@ -397,6 +405,7 @@ async function performSinglePageAnalysis(
         cached_at: cachedAt,
         freshly_scraped: true,
         custom_instructions_analysis: customInstructionsAnalysis,
+        social_meta_analysis: socialMetaAnalysis,
       };
     } else if (analysisTypes.includes("grammar")) {
       return {
@@ -406,6 +415,7 @@ async function performSinglePageAnalysis(
         cached_at: cachedAt,
         freshly_scraped: true,
         custom_instructions_analysis: customInstructionsAnalysis,
+        social_meta_analysis: socialMetaAnalysis,
       };
     } else if (analysisTypes.includes("seo")) {
       return {
@@ -415,6 +425,7 @@ async function performSinglePageAnalysis(
         cached_at: cachedAt,
         freshly_scraped: true,
         custom_instructions_analysis: customInstructionsAnalysis,
+        social_meta_analysis: socialMetaAnalysis,
       };
     }
     if (analysisTypes.includes("tagsAnalysis")) {
@@ -429,6 +440,7 @@ async function performSinglePageAnalysis(
         cached_at: cachedAt,
         freshly_scraped: true,
         custom_instructions_analysis: customInstructionsAnalysis,
+        social_meta_analysis: socialMetaAnalysis,
       };
     }
 
@@ -459,7 +471,8 @@ async function upsertAnalysisResult(
   desktopUiAnalysis: any,
   performanceAnalysis: any,
   overallScore: number,
-  tagsAnalysis: any = null
+  tagsAnalysis: any = null,
+  socialMetaAnalysis: any = null
 ) {
   const status =
     overallScore >= 80 ? "pass" : overallScore >= 60 ? "warning" : "fail";
@@ -505,6 +518,9 @@ async function upsertAnalysisResult(
   }
   if (tagsAnalysis) {
     updateData.tags_analysis = tagsAnalysis;
+  }
+  if (socialMetaAnalysis) {
+    updateData.social_meta_analysis = socialMetaAnalysis;
   }
 
   const { error } = await supabase.from("audit_results").upsert(updateData, {
@@ -1675,6 +1691,91 @@ async function uploadScreenshotToStorage(
   return publicUrl;
 }
 
+/**
+ * Analyze social media meta tags (Open Graph, Twitter, etc.) in the HTML.
+ * Returns a JSON object with presence, platform, image link, title, description, and other relevant info.
+ */
+async function analyzeSocialMetaTags(html: string): Promise<any> {
+  // Helper to extract meta property or name
+  function extractMeta(html: string, key: string, attr: 'property' | 'name' = 'property'): string | null {
+    const regex = new RegExp(`<meta[^>]*${attr}=["']${key}["'][^>]*content=["']([^"']*?)["']`, 'i');
+    const match = html.match(regex);
+    return match ? match[1] : null;
+  }
+
+  // Platforms and their relevant tags
+  const platforms = [
+    {
+      name: 'Open Graph',
+      keys: [
+        { key: 'og:title', label: 'title' },
+        { key: 'og:description', label: 'description' },
+        { key: 'og:image', label: 'image' },
+        { key: 'og:url', label: 'url' },
+        { key: 'og:type', label: 'type' },
+        { key: 'og:site_name', label: 'site_name' },
+      ],
+      attr: 'property',
+    },
+    {
+      name: 'Twitter',
+      keys: [
+        { key: 'twitter:card', label: 'card' },
+        { key: 'twitter:title', label: 'title' },
+        { key: 'twitter:description', label: 'description' },
+        { key: 'twitter:image', label: 'image' },
+        { key: 'twitter:url', label: 'url' },
+        { key: 'twitter:site', label: 'site' },
+        { key: 'twitter:creator', label: 'creator' },
+      ],
+      attr: 'name',
+    },
+    // Add more platforms if needed
+  ];
+
+  const result: any = {
+    platforms: {},
+    summary: [],
+  };
+
+  for (const platform of platforms) {
+    const platformResult: any = { present: false, tags: {}, missing: [] };
+    for (const tag of platform.keys) {
+      const value = extractMeta(html, tag.key, platform.attr as any);
+      if (value) {
+        platformResult.present = true;
+        platformResult.tags[tag.label] = value;
+      } else {
+        platformResult.missing.push(tag.label);
+      }
+    }
+    result.platforms[platform.name] = platformResult;
+    if (platformResult.present) {
+      result.summary.push(`${platform.name} meta tags present: ${Object.keys(platformResult.tags).join(', ')}`);
+    } else {
+      result.summary.push(`${platform.name} meta tags missing`);
+    }
+  }
+
+  // Collect all images for preview
+  result.images = [];
+  for (const platform of platforms) {
+    const img = result.platforms[platform.name]?.tags?.image;
+    if (img) {
+      result.images.push({ platform: platform.name, url: img });
+    }
+  }
+
+  // Add a quick access for main title/description/image
+  result.main = {
+    title: result.platforms['Open Graph']?.tags?.title || result.platforms['Twitter']?.tags?.title || null,
+    description: result.platforms['Open Graph']?.tags?.description || result.platforms['Twitter']?.tags?.description || null,
+    image: result.platforms['Open Graph']?.tags?.image || result.platforms['Twitter']?.tags?.image || null,
+    url: result.platforms['Open Graph']?.tags?.url || result.platforms['Twitter']?.tags?.url || null,
+  };
+ 
+  return result;
+}
 
 // async function analyzePerformance(url: string): Promise<any> {
 //   /**

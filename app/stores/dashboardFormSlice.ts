@@ -14,6 +14,7 @@ interface DashboardFormState {
   inputUrl: string;
   companyDetails: CompanyDetails;
   instructions: string[]; // Added for custom instructions
+  urls: string[]; // Added for custom URLs
 }
 
 const initialState: DashboardFormState = {
@@ -28,6 +29,7 @@ const initialState: DashboardFormState = {
     customInfo: '',
   },
   instructions: [''], // Default to one empty instruction
+  urls: [''], // Default to one empty URL
 };
 
 export const dashboardFormSlice = createSlice({
@@ -57,6 +59,9 @@ export const dashboardFormSlice = createSlice({
     setInstructions: (state, action: PayloadAction<string[]>) => {
       state.instructions = action.payload;
     },
+    setUrls: (state, action: PayloadAction<string[]>) => {
+      state.urls = action.payload;
+    },
     clearForm: (state) => {
       state.selectedServices = [];
       state.crawlType = "full";
@@ -69,6 +74,7 @@ export const dashboardFormSlice = createSlice({
         customInfo: '',
       };
       state.instructions = [''];
+      state.urls = [''];
     },
     clearServices: (state) => {
       state.selectedServices = [];
@@ -84,6 +90,7 @@ export const {
   setInputUrl, 
   setCompanyDetails,
   setInstructions, // Export setInstructions
+  setUrls, // Export setUrls
   clearForm, 
   clearServices 
 } = dashboardFormSlice.actions;

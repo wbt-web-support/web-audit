@@ -13,10 +13,13 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
 import { Settings } from 'lucide-react';
+import { toast } from 'react-toastify';
 
 const SERVICES = [
     { label: "Check Contact details Consistency", value: "contact_details_consistency" },
     { label: "Add custom instructions", value: "custom_instructions" },
+    { label: "Check Custom URLs", value: "check_custom_urls" },
+   
   ];
   
 
@@ -28,14 +31,23 @@ const SERVICES = [
 export default function ServicesDropdown() {
   const dispatch = useDispatch();
   const selected = useSelector((state: RootState) => state.dashboardForm.selectedServices);
+  const crawlType = useSelector((state: RootState) => state.dashboardForm.crawlType);
 
   const handleCheckbox = (value: string) => {
-    let newSelected;
+    // Allow deselection always
     if (selected.includes(value)) {
-      newSelected = selected.filter((v) => v !== value);
-    } else {
-      newSelected = [...selected, value];
+      // Deselecting, always allowed
+      const newSelected = selected.filter((v) => v !== value);
+      dispatch(setSelectedServices(newSelected));
+      return;
     }
+    // If user tries to select 'check_custom_urls' and crawlType is not 'full', show toast and block
+    if (value === 'check_custom_urls' && crawlType !== 'full') {
+      toast.info("Custom URLs can only be added when 'Full Website' crawl type is selected.");
+      return;
+    }
+    // Otherwise, allow selection
+    const newSelected = [...selected, value];
     dispatch(setSelectedServices(newSelected));
   };
 

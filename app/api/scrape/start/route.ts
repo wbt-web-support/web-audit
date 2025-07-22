@@ -25,6 +25,21 @@ function normalizeUrl(url: string): string {
   }
 }
 
+// List of file extensions to skip
+const SKIP_EXTENSIONS = [
+  ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip", ".rar", ".7z", ".tar", ".gz", ".mp3", ".mp4", ".avi", ".mov", ".wmv"
+];
+
+// Helper to check if URL should be skipped
+function shouldSkipUrl(url: string): boolean {
+  const lowerUrl = url.toLowerCase();
+  // Skip if URL ends with any of the extensions
+  if (SKIP_EXTENSIONS.some(ext => lowerUrl.endsWith(ext))) return true;
+  // Optionally, skip all /wp-content/uploads/ URLs
+  if (lowerUrl.includes("/wp-content/uploads/")) return true;
+  return false;
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
@@ -39,9 +54,13 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const { project_id } = body;
-    const { data: projectData } = await supabase.from("audit_projects").select("crawl_type").eq("id", project_id).single();
+    const { data: projectData } = await supabase
+      .from("audit_projects")
+      .select("crawl_type, custom_urls")
+      .eq("id", project_id)
+      .single();
     const crawl_type = projectData?.crawl_type;
-  
+    const custom_urls = projectData?.custom_urls;
     
     // Validate crawl_type - if not specified, default to 'full'
     if (crawl_type && !['single', 'full'].includes(crawl_type)) {
@@ -112,12 +131,83 @@ export async function POST(request: Request) {
     // Start crawling in the background based on crawl_type
     await crawlWebsite(project_id, project.base_url, user.id, existingUrls, crawl_type, scraperOptions);
 
-    // Now estimatedTimeSec is in scope for the response
+    // Check custom_urls directly (not via crawler)
+    let customUrlResults: { pageLink: string; isPresent: boolean }[] = [];
+    if (Array.isArray(custom_urls) && custom_urls.length > 0) {
+      customUrlResults = await Promise.all(
+        custom_urls.map(async (url: string) => {
+          try {
+            const res = await fetch(url, { method: 'HEAD' });
+            return { pageLink: url, isPresent: res.ok };
+          } catch {
+            return { pageLink: url, isPresent: false };
+          }
+        })
+      );
+      // Save customUrlResults to custom_urls_analysis column
+      await supabase
+        .from("audit_projects")
+        .update({ custom_urls_analysis: customUrlResults })
+        .eq("id", project_id);
+
+      // Insert present custom URLs into scraped_pages if not already present
+      let newCustomPages = 0;
+      // Prepare a WebScraper instance for scraping individual pages
+      const WebScraperClass = (await import("@/lib/services/web-scraper")).WebScraper;
+      const scraper = new WebScraperClass(project.base_url, {});
+      for (const result of customUrlResults) {
+        if (result.isPresent) {
+          const normalizedUrl = normalizeUrl(result.pageLink);
+          if (!existingUrls.has(normalizedUrl) && !shouldSkipUrl(normalizedUrl)) {
+            try {
+              // Scrape the page for full data
+              const pageData = await scraper.scrapePage(normalizedUrl);
+              await supabase.from("scraped_pages").insert({
+                audit_project_id: project_id,
+                url: normalizedUrl,
+                title: pageData.title || (function() {
+                  // fallback: last segment or 'home'
+                  try {
+                    const urlObj = new URL(normalizedUrl);
+                    const segments = urlObj.pathname.split("/").filter(Boolean);
+                    return segments.length > 0 ? segments[segments.length - 1] : "home";
+                  } catch { return "Custom URL"; }
+                })(),
+                content: pageData.content,
+                html: pageData.html,
+                status_code: pageData.statusCode,
+              });
+              existingUrls.add(normalizedUrl);
+              newCustomPages++;
+            } catch (err) {
+              // If scraping fails, skip this custom URL
+              // Optionally, log error
+            }
+          }
+        }
+      }
+      // After all inserts, increment pages_crawled once if any new custom pages were added
+      if (newCustomPages > 0) {
+        const { data: projectStats } = await supabase
+          .from("audit_projects")
+          .select("pages_crawled")
+          .eq("id", project_id)
+          .single();
+        const newCount = (projectStats?.pages_crawled || 0) + newCustomPages;
+        await supabase
+          .from("audit_projects")
+          .update({ pages_crawled: newCount })
+          .eq("id", project_id);
+      }
+    }
+
+    // Now estimatedTimeSec is in scope for the respons
     return NextResponse.json({
       message: "Crawling started",
       project_id,
       isRecrawl: project.status === "completed",
       estimated_time_sec: estimatedTimeSec,
+      customUrlResults,
     });
   } catch (error) {
     return NextResponse.json(
@@ -155,22 +245,28 @@ async function crawlWebsite(
       if (currentProject?.status === "failed") {
         throw new Error("Crawling stopped by user");
       }
-      console.log(`Crawling page: ${pageData.url}`);
-      console.log(`Crawling page Data: ${JSON.stringify(pageData)}`);
+      // console.log(`Crawling page: ${pageData.url}`);
+      // console.log(`Crawling page Data: ${JSON.stringify(pageData)}`);
 
       // Normalize the URL to prevent hash fragment duplicates
       const normalizedUrl = normalizeUrl(pageData.url);
       
+      // Skip unwanted URLs
+      if (shouldSkipUrl(normalizedUrl)) {
+        // console.log(`Skipping static or upload URL: ${normalizedUrl}`);
+        return; // Don't save or update this page
+      }
+      
       // Log if URL was normalized (different from original)
       if (normalizedUrl !== pageData.url) {
-        console.log(`URL normalized: ${pageData.url} → ${normalizedUrl}`);
+        // console.log(`URL normalized: ${pageData.url} → ${normalizedUrl}`);
       }
 
       // Check if page already exists (using normalized URL)
       const pageExists = existingUrls.has(normalizedUrl);
 
       if (pageExists) {
-        console.log(`Updating existing page: ${normalizedUrl}`);
+        // console.log(`Updating existing page: ${normalizedUrl}`);
         // Update existing page
         const { error } = await supabase
           .from("scraped_pages")
@@ -206,7 +302,7 @@ async function crawlWebsite(
           existingUrls.add(normalizedUrl); // Add normalized URL to prevent duplicates in this project
         }
       }
-      console.log(`Pages crawled: ${pagesCrawled}`);
+      // console.log(`Pages crawled: ${pagesCrawled}`);
       // Update progress
       await supabase
         .from("audit_projects")
@@ -223,7 +319,7 @@ async function crawlWebsite(
       })
       .eq("id", projectId);
 
-    console.log(`Crawling completed (${crawlType || 'full'}): ${pagesCrawled} pages crawled`);
+    // console.log(`Crawling completed (${crawlType || 'full'}): ${pagesCrawled} pages crawled`);
     
   } catch (error: any) {
     // Check if it was stopped by user

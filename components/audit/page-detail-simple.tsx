@@ -126,6 +126,7 @@ interface PageAnalysis {
     imgTags: Array<{ src: string; hasAlt: boolean }>;
   };
   tags_analysis?: any;
+  social_meta_analysis?: any;
 }
 
 interface PageDetailSimpleProps {
@@ -211,6 +212,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
           }
           if (data.results.tags_analysis) {
             newAnalysis.tags_analysis = data.results.tags_analysis;
+          }
+          if (data.results.social_meta_analysis) {
+            newAnalysis.social_meta_analysis = data.results.social_meta_analysis;
           }
           if (data.results.phone_ui_quality_analysis) {
             newAnalysis.phone_ui_quality_analysis =
@@ -315,6 +319,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             }
             if (data.results.tags_analysis) {
               basicAnalysis.tags_analysis = data.results.tags_analysis;
+            }
+            if (data.results.social_meta_analysis) {
+              basicAnalysis.social_meta_analysis = data.results.social_meta_analysis;
             }
             if (data.results.phone_ui_quality_analysis) {
               basicAnalysis.phone_ui_quality_analysis =
@@ -2548,7 +2555,10 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                     {/* Sub-tabs for Technical Fixes */}
                     <div className="border-b mb-4">
                       <div className="flex gap-1">
-                        {[{ id: "tags_analysis", label: "Tags Analysis" }].map((tab) => (
+                        {[
+                          { id: "tags_analysis", label: "Tags Analysis" },
+                          { id: "social_share_preview", label: "Social Share Preview" },
+                        ].map((tab) => (
                           <button
                             key={tab.id}
                             onClick={() => setActiveTechnicalTab(tab.id)}
@@ -2649,6 +2659,91 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                                   </div>
                                 </div>
                               ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+                    {activeTechnicalTab === "social_share_preview" && (
+                      <div>
+                        {(() => {
+                          const socialMeta = (analysis as any)?.social_meta_analysis;
+                          if (!socialMeta) {
+                            return (
+                              <div className="text-center py-12">
+                                <p className="text-muted-foreground">No social share preview data present.</p>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="space-y-6">
+                              {/* Main Preview */}
+                              {socialMeta.main && (
+                                <div className="flex flex-col md:flex-row gap-6 items-start border rounded-lg p-4 bg-muted/10">
+                                  {socialMeta.main.image && (
+                                    <img
+                                      src={socialMeta.main.image}
+                                      alt="Social Preview"
+                                      className="w-40 h-40 object-cover rounded border"
+                                    />
+                                  )}
+                                  <div className="flex-1 space-y-2">
+                                    <div className="font-bold text-lg">{socialMeta.main.title}</div>
+                                    <div className="text-muted-foreground text-sm">{socialMeta.main.description}</div>
+                                    <div className="text-xs text-blue-700 dark:text-blue-300 break-all">{socialMeta.main.url}</div>
+                                  </div>
+                                </div>
+                              )}
+                              {/* Summary */}
+                              {Array.isArray(socialMeta.summary) && socialMeta.summary.length > 0 && (
+                                <div className="space-y-1">
+                                  <div className="font-medium mb-1">Summary</div>
+                                  <ul className="list-disc list-inside text-xs text-muted-foreground">
+                                    {socialMeta.summary.map((item: string, idx: number) => (
+                                      <li key={idx}>{item}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {/* Platforms */}
+                              {socialMeta.platforms && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  {Object.entries(socialMeta.platforms).map(([platform, info]: [string, any]) => (
+                                    <div key={platform} className="border rounded-lg p-4 bg-muted/5">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <span className="font-semibold text-primary">{platform}</span>
+                                        {info.present ? (
+                                          <Badge variant="outline" className="text-xs bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900 dark:text-emerald-300 dark:border-emerald-800">Present</Badge>
+                                        ) : (
+                                          <Badge variant="outline" className="text-xs bg-red-100 text-red-700 border-red-200 dark:bg-red-900 dark:text-red-300 dark:border-red-800">Missing</Badge>
+                                        )}
+                                      </div>
+                                      {/* Tags */}
+                                      {info.tags && Object.keys(info.tags).length > 0 && (
+                                        <div className="mb-2">
+                                          <div className="font-medium text-xs mb-1">Tags</div>
+                                          <ul className="list-disc list-inside text-xs ml-4 text-muted-foreground">
+                                            {Object.entries(info.tags).map(([tag, value]: [string, any]) => (
+                                              <li key={tag}><span className="font-semibold">{tag}:</span> {value}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      {/* Missing Tags */}
+                                      {Array.isArray(info.missing) && info.missing.length > 0 && (
+                                        <div className="mb-2">
+                                          <div className="font-medium text-xs mb-1 text-destructive">Missing Tags</div>
+                                          <ul className="list-disc list-inside text-xs ml-4 text-destructive">
+                                            {info.missing.map((tag: string, idx: number) => (
+                                              <li key={idx}>{tag}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           );
                         })()}

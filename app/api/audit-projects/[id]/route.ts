@@ -81,6 +81,7 @@ export async function PUT(
       instructions,
       crawlType,
       services,
+      custom_urls // <-- add this
     } = body;
 
     if (!base_url) {
@@ -133,6 +134,7 @@ export async function PUT(
       instructions: instructions || null,
       crawl_type: crawlType || null,
       services: services || null,
+      custom_urls: custom_urls || null, // <-- add this
     };
 
     const { data: project, error } = await supabase

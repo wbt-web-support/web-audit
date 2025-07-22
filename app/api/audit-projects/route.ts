@@ -41,13 +41,14 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     console.log("Received body:", body);
-    
+   
     const { 
       base_url, 
       crawlType, 
       services, 
       companyDetails,
-      instructions
+      instructions,
+      custom_urls
     } = body;
 
     const {
@@ -90,6 +91,7 @@ export async function POST(request: Request) {
         email: email || null,
         address: address || null,
         custom_info: customInfo || null,
+        custom_urls: custom_urls || null,
         // if you have this in the body
       })
       .select()

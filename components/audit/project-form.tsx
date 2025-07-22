@@ -35,10 +35,12 @@ import {
   setSelectedServices,
   setInstructions,
   clearForm,
+  setUrls,
 } from "@/app/stores/dashboardFormSlice";
 import { RootState } from "@/app/stores/store";
 import CustomInstructions from "@/app/(dashboard)/dashboard/components/CustomInstructions";
 import ServicesDropdown from "@/app/(dashboard)/dashboard/components/ServicesDropdown";
+import CustomUrls from "@/app/(dashboard)/dashboard/components/CustomUrls";
 
 interface ProjectFormProps {
   project?: AuditProject | null;
@@ -65,7 +67,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
   const dispatch = useDispatch();
   
   // Get Redux state for create mode
-  const { inputUrl, selectedServices, instructions } = useSelector((state: RootState) => state.dashboardForm);
+  const { inputUrl, selectedServices, instructions, urls } = useSelector((state: RootState) => state.dashboardForm);
 
   useEffect(() => {
     if (project) {
@@ -86,14 +88,28 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
       if (project.instructions && project.instructions.length > 0) {
         dispatch(setInstructions(project.instructions));
       }
-      
+
+      // Load custom URLs from project data into Redux store
+      if (Array.isArray(project.custom_urls) && project.custom_urls.length > 0) {
+        dispatch(setUrls(project.custom_urls));
+      } else {
+        dispatch(setUrls([""]));
+      }
+
       console.log("project**********", project);
     }
   }, [project, dispatch]);
 
   useEffect(() => {
     console.log("crawlType**********", crawlType);
-  }, [crawlType]);
+    if (crawlType === 'single') {
+      dispatch(setUrls(['']));
+      // Deselect 'check_custom_urls' if selected
+      if (selectedServices.includes('check_custom_urls')) {
+        dispatch(setSelectedServices(selectedServices.filter(s => s !== 'check_custom_urls')));
+      }
+    }
+  }, [crawlType, dispatch, selectedServices]);
 
   // Sync company details to Redux store
   useEffect(() => {
@@ -156,6 +172,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
           customInfo,
         },
         instructions: instructions,
+        custom_urls: (Array.isArray(urls) && urls.filter(u => u && u.trim()).length > 0) ? urls.filter(u => u && u.trim()) : null,
       };
 
       const response = await fetch("/api/audit-projects", {
@@ -198,6 +215,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
         crawlType: crawlType,
         services: selectedServices,
         instructions: instructions,
+        custom_urls: (Array.isArray(urls) && urls.filter(u => u && u.trim()).length > 0) ? urls.filter(u => u && u.trim()) : null,
       };
 
       const response = await fetch(`/api/audit-projects/${project?.id}`, {
@@ -346,97 +364,104 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
             )}
 
             {/* Company Details Section - Only show when contact_details_consistency is selected */}
-            {selectedServices.includes('contact_details_consistency') ? (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {selectedServices.includes('contact_details_consistency') ? (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label
+                        htmlFor="companyName"
+                        className="flex items-center gap-2"
+                      >
+                        <Building className="h-4 w-4" />
+                        Company Name
+                      </Label>
+                      <Input
+                        id="companyName"
+                        type="text"
+                        placeholder="Acme Corporation"
+                        value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                        disabled={loading || isProjectRunning}
+                        className="mt-1"
+                      />
+                    </div>
+
+                    <div>
+                      <Label
+                        htmlFor="phoneNumber"
+                        className="flex items-center gap-2"
+                      >
+                        <Phone className="h-4 w-4" />
+                        Phone Number
+                      </Label>
+                      <Input
+                        id="phoneNumber"
+                        type="tel"
+                        placeholder="+1 (555) 123-4567"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        disabled={loading || isProjectRunning}
+                        className="mt-1"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="email" className="flex items-center gap-2">
+                        <Mail className="h-4 w-4" />
+                        Email Address
+                      </Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="contact@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        disabled={loading || isProjectRunning}
+                        className="mt-1"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="address" className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        Address
+                      </Label>
+                      <Input
+                        id="address"
+                        type="text"
+                        placeholder="123 Main St, City, State 12345"
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        disabled={loading || isProjectRunning}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+
                   <div>
-                    <Label
-                      htmlFor="companyName"
-                      className="flex items-center gap-2"
-                    >
-                      <Building className="h-4 w-4" />
-                      Company Name
+                    <Label htmlFor="customInfo" className="flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Additional Information
                     </Label>
                     <Input
-                      id="companyName"
+                      id="customInfo"
                       type="text"
-                      placeholder="Acme Corporation"
-                      value={companyName}
-                      onChange={(e) => setCompanyName(e.target.value)}
+                      placeholder="Any other information to verify (hours, services, etc.)"
+                      value={customInfo}
+                      onChange={(e) => setCustomInfo(e.target.value)}
                       disabled={loading || isProjectRunning}
                       className="mt-1"
                     />
                   </div>
+                </>
+              ) : null}
 
-                  <div>
-                    <Label
-                      htmlFor="phoneNumber"
-                      className="flex items-center gap-2"
-                    >
-                      <Phone className="h-4 w-4" />
-                      Phone Number
-                    </Label>
-                    <Input
-                      id="phoneNumber"
-                      type="tel"
-                      placeholder="+1 (555) 123-4567"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      disabled={loading || isProjectRunning}
-                      className="mt-1"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="email" className="flex items-center gap-2">
-                      <Mail className="h-4 w-4" />
-                      Email Address
-                    </Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="contact@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      disabled={loading || isProjectRunning}
-                      className="mt-1"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="address" className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4" />
-                      Address
-                    </Label>
-                    <Input
-                      id="address"
-                      type="text"
-                      placeholder="123 Main St, City, State 12345"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      disabled={loading || isProjectRunning}
-                      className="mt-1"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="customInfo" className="flex items-center gap-2">
-                    <FileText className="h-4 w-4" />
-                    Additional Information
-                  </Label>
-                  <Input
-                    id="customInfo"
-                    type="text"
-                    placeholder="Any other information to verify (hours, services, etc.)"
-                    value={customInfo}
-                    onChange={(e) => setCustomInfo(e.target.value)}
-                    disabled={loading || isProjectRunning}
-                    className="mt-1"
-                  />
-                </div>
-              </>
-            ) : null}
+            {/* Custom URLs - Show when check_custom_urls service is selected */}
+            {selectedServices.includes('check_custom_urls') && crawlType === 'full' && (
+              <div className="custom_urls">
+                <CustomUrls crawlType={crawlType} />
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row items-stretch gap-3 pt-4">
@@ -455,7 +480,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
                 {mode === "create" ? "Search" : "Save Changes"}
               </Button>
 
-              {mode === "edit" && (
+              {/* {mode === "edit" && (
                 <Button
                   type="button"
                   variant="outline"
@@ -465,7 +490,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
                 >
                   Cancel
                 </Button>
-              )}
+              )} */}
             </div>
           </form>
         </CardContent>

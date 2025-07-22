@@ -49,7 +49,7 @@ export function SignUpForm({
       });
       if (error) throw error;
       console.log("sign up success going to sign up success page");
-      // router.push("/auth/sign-up-success");
+      router.push("/auth/sign-up-success");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
