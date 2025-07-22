@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { WebScraper } from "@/lib/services/web-scraper";
 import { NextResponse } from "next/server";
 import { toast } from "react-toastify";
+import * as cheerio from "cheerio";
 
 // URL normalization function (same as in WebScraper)
 function normalizeUrl(url: string): string {
@@ -226,8 +227,38 @@ async function crawlWebsite(
   scraperOptions?: any // or the correct type
 ) {
   const supabase = await createClient();
-  
   const scraper = new WebScraper(baseUrl, scraperOptions);
+
+  // Aggregate all images across all pages
+  const allImages: Array<{
+    src: string;
+    alt: string;
+    format: string;
+    size: number | null;
+    is_small: boolean | null;
+    page_url: string;
+  }> = [];
+
+  function getFileFormat(url: string): string {
+    try {
+      const u = new URL(url);
+      const ext = u.pathname.split(".").pop();
+      return ext ? ext.toLowerCase() : "";
+    } catch {
+      return "";
+    }
+  }
+
+  async function getImageSize(url: string): Promise<number | null> {
+    try {
+      const res = await fetch(url, { method: "HEAD" });
+      if (res.ok) {
+        const size = res.headers.get("content-length");
+        return size ? parseInt(size, 10) : null;
+      }
+    } catch {}
+    return null;
+  }
 
   try {
     let pagesCrawled = 0;
@@ -308,7 +339,42 @@ async function crawlWebsite(
         .from("audit_projects")
         .update({ pages_crawled: pagesCrawled })
         .eq("id", projectId);
+
+      // Extract images from HTML using cheerio
+      const $ = cheerio.load(pageData.html);
+      const imgTags = $("img[src]");
+      for (let i = 0; i < imgTags.length; i++) {
+        const img = imgTags[i];
+        const srcRaw = $(img).attr("src") || "";
+        const alt = $(img).attr("alt") || "";
+        // Make src absolute
+        let src = srcRaw;
+        try {
+          src = new URL(srcRaw, normalizedUrl).href;
+        } catch {}
+        const format = getFileFormat(src);
+        let size: number | null = null;
+        let is_small: boolean | null = null;
+        if (["jpg", "jpeg", "png", "svg", "webp", "gif"].includes(format)) {
+          size = await getImageSize(src);
+          is_small = size !== null ? size < 500 * 1024 : null;
+        }
+        allImages.push({
+          src,
+          alt,
+          format,
+          size,
+          is_small,
+          page_url: normalizedUrl,
+        });
+      }
     });
+
+    // After crawling, store all image analysis in audit_projects
+    await supabase
+      .from("audit_projects")
+      .update({ all_image_analysis: allImages })
+      .eq("id", projectId);
 
     // Update project status to completed crawling (ready for analysis)
     await supabase

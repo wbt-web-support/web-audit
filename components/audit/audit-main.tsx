@@ -76,6 +76,7 @@ export function AuditMain() {
   const crawlingStartedRef = useRef(false);
   const [crawlProgress, setCrawlProgress] = useState(0); // percent
   const [isCrawling, setIsCrawling] = useState(false);
+  const [showAllImageAnalysis, setShowAllImageAnalysis] = useState(false);
   useEffect(() => {
     fetchData();
   }, [selectedProjectId]);
@@ -909,6 +910,73 @@ export function AuditMain() {
         </CardContent>
       </Card>
     )}
+   {projects[0].all_image_analysis && Array.isArray(projects[0].all_image_analysis) && projects[0].all_image_analysis.length > 0 &&  (
+  <Card className="mb-6">
+    <CardHeader>
+      <div className="flex items-center justify-between">
+        <div>
+          <CardTitle>All Image Analysis</CardTitle>
+          <CardDescription>Summary of all images found during the crawl</CardDescription>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowAllImageAnalysis(prev => !prev)}
+        >
+          {showAllImageAnalysis ? 'Close' : 'Open'}
+        </Button>
+      </div>
+      <div className="mt-2 text-sm text-muted-foreground">
+        {projects[0].all_image_analysis.length} images found
+      </div>
+    </CardHeader>
+    {showAllImageAnalysis && (
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="min-w-full border text-xs">
+            <thead className="bg-muted/50">
+              <tr>
+                <th className="p-2 border">Preview</th>
+                <th className="p-2 border">Alt</th>
+                <th className="p-2 border">Src</th>
+                <th className="p-2 border">Size (KB)</th>
+                <th className="p-2 border">Format</th>
+                <th className="p-2 border">Is Small?</th>
+                <th className="p-2 border">Page URL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projects[0].all_image_analysis.map((img, idx) => (
+                <tr key={idx} className="border-b hover:bg-muted/20">
+                  <td className="p-2 border text-center">
+                    <a href={img.src} target="_blank" rel="noopener noreferrer">
+                      <img
+                        src={img.src}
+                        alt={img.alt || 'image'}
+                        style={{ maxWidth: 48, maxHeight: 48, objectFit: 'contain', borderRadius: 4 }}
+                        loading="lazy"
+                      />
+                    </a>
+                  </td>
+                  <td className="p-2 border">{img.alt || <span className="text-muted-foreground">(none)</span>}</td>
+                  <td className="p-2 border max-w-xs truncate">
+                    <a href={img.src} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">{img.src}</a>
+                  </td>
+                  <td className="p-2 border text-center">{img.size ? (img.size / 1024).toFixed(1) : '—'}</td>
+                  <td className="p-2 border text-center">{img.format || '—'}</td>
+                  <td className="p-2 border text-center">{img.is_small ? 'Yes' : 'No'}</td>
+                  <td className="p-2 border max-w-xs truncate">
+                    <a href={img.page_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">{img.page_url}</a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    )}
+  </Card>
+)}
       {/* Pages List */}
       <Card>
         <CardHeader>

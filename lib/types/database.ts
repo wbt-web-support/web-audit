@@ -8,7 +8,7 @@ export type UserProfile = {
 
 export type AuditProjectStatus = 'pending' | 'crawling' | 'analyzing' | 'completed' | 'failed';
 
-export type AuditProject = {
+export interface AuditProject {
   id: string;
   user_id: string;
   base_url: string;
@@ -30,7 +30,15 @@ export type AuditProject = {
   services?: string[] | null;
   custom_urls?: string[] | null;
   custom_urls_analysis?: { pageLink: string; isPresent: boolean }[] | null;
-};
+  all_image_analysis?: Array<{
+    src: string;
+    alt: string;
+    format: string;
+    size: number | null;
+    is_small: boolean | null;
+    page_url: string;
+  }>;
+}
 
 export interface ScrapedPage {
   id: string;
