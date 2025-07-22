@@ -127,6 +127,14 @@ interface PageAnalysis {
   };
   tags_analysis?: any;
   social_meta_analysis?: any;
+  image_analysis?: Array<{
+    src: string;
+    alt: string | null;
+    format: string | null;
+    sizeKb: number | null;
+    isLessThan500kb: boolean | null;
+  }>;
+  performance_analysis?: any;
 }
 
 interface PageDetailSimpleProps {
@@ -180,6 +188,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   const [performanceCached, setPerformanceCached] = useState(false);
   const [performanceCachedAt, setPerformanceCachedAt] = useState<string | null>(null);
   const [activeTechnicalTab, setActiveTechnicalTab] = useState("tags_analysis");
+  const [imageModal, setImageModal] = useState<{ open: boolean; src: string | null }>({ open: false, src: null });
 
   // Fetch results from audit_results table
   const fetchAnalysisResults = useCallback(async () => {
@@ -216,6 +225,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
           if (data.results.social_meta_analysis) {
             newAnalysis.social_meta_analysis = data.results.social_meta_analysis;
           }
+          if (data.results.image_analysis) {
+            newAnalysis.image_analysis = data.results.image_analysis;
+          }
           if (data.results.phone_ui_quality_analysis) {
             newAnalysis.phone_ui_quality_analysis =
               data.results.phone_ui_quality_analysis;
@@ -242,9 +254,14 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
           // Performance analysis
           if (data.results.performance_analysis) {
+            newAnalysis.performance_analysis = data.results.performance_analysis;
             setPerformanceCached(true);
             setPerformanceCachedAt(data.results.created_at || data.results.updated_at);
             setPerformanceAnalyzing(false);
+          }
+
+          if (data.results.image_analysis) {
+            newAnalysis.image_analysis = data.results.image_analysis;
           }
 
           return newAnalysis;
@@ -322,6 +339,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             }
             if (data.results.social_meta_analysis) {
               basicAnalysis.social_meta_analysis = data.results.social_meta_analysis;
+            }
+            if (data.results.image_analysis) {
+              basicAnalysis.image_analysis = data.results.image_analysis;
             }
             if (data.results.phone_ui_quality_analysis) {
               basicAnalysis.phone_ui_quality_analysis =
@@ -1314,19 +1334,12 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       cached: seoCached,
                     },
                     {
-                      id: "performance & accessibility",
+                      id: "performance_analysis",
                       label: "Performance & Accessibility",
                       icon: BarChart3,
-                      analyzing: false,
-                      cached: false,
+                      analyzing: performanceAnalyzing,
+                      cached: performanceCached,
                     },
-                    // {
-                    //   id: "accessibility",
-                    //   label: "Accessibility",
-                    //   icon: Shield,
-                    //   analyzing: false,
-                    //   cached: false,
-                    // },
                     {
                       id: "ui_quality",
                       label: "UI Quality",
@@ -2467,89 +2480,312 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                 )}
                 {/* *********************************************************************************** */}
 
-                {activeAnalysisTab === "performance & accessibility" && (
+                {activeAnalysisTab === "performance_analysis" && (
                   <div className="space-y-6">
-                    {/* Only show a single performance result, no device tabs */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <BarChart3 className="h-5 w-5" />
+                        <h3 className="text-lg font-semibold">Performance & Accessibility</h3>
+                        {performanceAnalyzing && (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        )}
+                        {performanceCached && !performanceAnalyzing && (
+                          <Badge variant="outline" className="text-xs">
+                            Cached
+                          </Badge>
+                        )}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={refreshPerformanceAnalysis}
+                        disabled={performanceAnalyzing}
+                      >
+                        <RefreshCw className="h-3 w-3 mr-1" />
+                        Refresh Analysis
+                      </Button>
+                    </div>
                     {(() => {
-                      const perf = (analysis as any)?.performance_analysis;
-                      console.log('Performance analysis raw data:', perf);
+                      let perf: any = (analysis as any)?.performance_analysis;
+                      if (!perf && typeof (analysis as any)?.performance_analysis === 'string') {
+                        try {
+                          perf = JSON.parse((analysis as any).performance_analysis);
+                        } catch {
+                          perf = null;
+                        }
+                      }
                       if (!perf) {
-                        console.log('No performance_analysis found in analysis:', analysis);
                         return (
-                          <div className="text-center py-12">
+                          <div className="text-center py-8">
                             <p className="text-muted-foreground">No performance data available.</p>
                           </div>
                         );
                       }
-                      // Extract scores and metrics
-                      const perfScore = perf.performance?.score || 0;
-                      const accScore = perf.accessibility?.score || 0;
-                      // Core Web Vitals
-                      const metrics = {
-                        FCP: perf.performance?.metrics?.firstContentfulPaint,
-                        LCP: perf.performance?.metrics?.largestContentfulPaint,
-                        TBT: perf.performance?.metrics?.totalBlockingTime,
-                        CLS: perf.performance?.metrics?.cumulativeLayoutShift,
-                        SI: perf.performance?.metrics?.speedIndex,
-                        INP: perf.performance?.metrics?.timeToInteractive,
-                      };
-                      // Opportunities
-                      const opportunities = perf.performance?.opportunities || [];
-                      // Accessibility issues
-                      const problems = perf.accessibility?.issues || [];
+                      // Summary Section
                       return (
-                        <div className="space-y-8">
-                          {/* Scores */}
-                          <div className="flex flex-wrap gap-8 items-center justify-center">
-                            <RadialScore score={perfScore} label="Performance" color="#10b981" />
-                            <RadialScore score={accScore} label="Accessibility" color="#6366f1" />
+                        <>
+                          {/* Summary & Quick Wins */}
+                          {perf.summary && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="text-base">Summary</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="space-y-2">
+                                    <div className="font-medium">Overall Grade: <span className="text-lg font-bold">{perf.summary.overallGrade || '-'}</span></div>
+                                    {perf.summary.primaryIssues && perf.summary.primaryIssues.length > 0 && (
+                                      <div>
+                                        <div className="font-medium text-destructive mb-1 text-sm">Primary Issues:</div>
+                                        <ul className="list-disc list-inside text-xs text-destructive space-y-1">
+                                          {perf.summary.primaryIssues.map((issue: string, idx: number) => (
+                                            <li key={idx}>{issue}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  </div>
+                                </CardContent>
+                              </Card>
+                              {perf.summary.quickWins && perf.summary.quickWins.length > 0 && (
+                                <Card>
+                                  <CardHeader>
+                                    <CardTitle className="text-base">Quick Wins</CardTitle>
+                                  </CardHeader>
+                                  <CardContent>
+                                    <ul className="list-disc list-inside text-xs text-emerald-700 dark:text-emerald-300 space-y-1">
+                                      {perf.summary.quickWins.map((win: string, idx: number) => (
+                                        <li key={idx}>{win}</li>
+                                      ))}
+                                    </ul>
+                                  </CardContent>
+                                </Card>
+                              )}
+                            </div>
+                          )}
+                          {/* Metrics & Scores */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                            <Card>
+                              <CardHeader>
+                                <CardTitle className="text-base">Performance Metrics</CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <div className="grid grid-cols-2 gap-4">
+                                  {perf.performance && perf.performance.metrics && Object.entries(perf.performance.metrics).map(([key, value]: [string, any]) => (
+                                    <div key={key} className="p-2 border rounded text-center">
+                                      <div className="text-xs text-muted-foreground mb-1">{key}</div>
+                                      <div className="text-lg font-bold">{value !== undefined && value !== null ? value : 'N/A'}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </CardContent>
+                            </Card>
+                            <Card>
+                              <CardHeader>
+                                <CardTitle className="text-base">Scores</CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <div className="flex flex-wrap gap-8 items-center justify-center">
+                                  <RadialScore score={perf.performance?.score || 0} label="Performance" color="#10b981" />
+                                  <RadialScore score={perf.accessibility?.score || 0} label="Accessibility" color="#6366f1" />
+                                </div>
+                              </CardContent>
+                            </Card>
                           </div>
-                          {/* Metrics */}
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                            {Object.entries(metrics).map(([key, value]) => (
-                              <div key={key} className="p-4 border rounded-lg text-center">
-                                <div className="text-xs text-muted-foreground mb-1">{key}</div>
-                                <div className="text-lg font-bold">{value || 'N/A'}</div>
-                              </div>
-                            ))}
-                          </div>
+                          {/* Core Web Vitals */}
+                          {perf.performance && perf.performance.coreWebVitals && (
+                            <div className="mt-6">
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="text-base">Core Web Vitals</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {Object.entries(perf.performance.coreWebVitals).map(([key, val]: [string, any]) => (
+                                      <div key={key} className="p-2 border rounded text-center">
+                                        <div className="text-xs text-muted-foreground mb-1">{key}</div>
+                                        <div className="text-lg font-bold">{val.value !== undefined && val.value !== null ? val.value : 'N/A'}</div>
+                                        <div className={`text-xs mt-1 ${val.rating === 'good' ? 'text-emerald-600' : val.rating === 'poor' ? 'text-red-600' : 'text-yellow-600'}`}>{val.rating}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            </div>
+                          )}
                           {/* Opportunities */}
-                          {opportunities.length > 0 && (
-                            <div>
-                              <h4 className="font-medium mb-2 text-yellow-700">Opportunities</h4>
-                              <div className="space-y-2">
-                                {opportunities.map((opp: any, i: number) => (
-                                  <div key={i} className="p-3 border-l-4 border-yellow-400 bg-yellow-50 dark:bg-yellow-950/20 rounded">
-                                    <div className="font-semibold">{opp.title}</div>
-                                    <div className="text-xs text-muted-foreground">{opp.description}</div>
-                                    {opp.savings && <div className="text-xs mt-1">Estimated savings: {opp.savings}ms</div>}
+                          {perf.performance && perf.performance.opportunities && perf.performance.opportunities.length > 0 && (
+                            <div className="mt-6">
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="text-base text-yellow-700">Opportunities</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="space-y-2">
+                                    {perf.performance.opportunities.map((opp: any, i: number) => (
+                                      <div key={i} className="p-3 border-l-4 border-yellow-400 bg-yellow-50 dark:bg-yellow-950/20 rounded">
+                                        <div className="font-semibold">{opp.title}</div>
+                                        <div className="text-xs text-muted-foreground">{opp.description}</div>
+                                        {opp.savings && <div className="text-xs mt-1">Estimated savings: {opp.savings}ms</div>}
+                                        {opp.impact && <div className="text-xs mt-1">Impact: {opp.impact}</div>}
+                                      </div>
+                                    ))}
                                   </div>
-                                ))}
-                              </div>
+                                </CardContent>
+                              </Card>
                             </div>
                           )}
-                          {/* Problems */}
-                          {problems.length > 0 && (
-                            <div>
-                              <h4 className="font-medium mb-2 text-destructive">Accessibility Issues</h4>
-                              <div className="space-y-2">
-                                {problems.map((prob: any, i: number) => (
-                                  <div key={i} className="p-3 border-l-4 border-red-400 bg-red-50 dark:bg-red-950/20 rounded">
-                                    <div className="font-semibold">{prob.title}</div>
-                                    <div className="text-xs text-muted-foreground">{prob.description}</div>
-                                    {prob.severity && <div className="text-xs mt-1">Severity: {prob.severity}</div>}
+                          {/* Accessibility Issues */}
+                          {perf.accessibility && perf.accessibility.issues && perf.accessibility.issues.length > 0 && (
+                            <div className="mt-6">
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="text-base text-destructive">Accessibility Issues</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="space-y-2">
+                                    {perf.accessibility.issues.map((issue: any, i: number) => (
+                                      <div key={i} className="p-3 border-l-4 border-red-400 bg-red-50 dark:bg-red-950/20 rounded">
+                                        <div className="font-semibold">{issue.title}</div>
+                                        <div className="text-xs text-muted-foreground">{issue.description}</div>
+                                        {issue.severity && <div className="text-xs mt-1">Severity: {issue.severity}</div>}
+                                        {issue.impact && <div className="text-xs mt-1">Impact: {issue.impact}</div>}
+                                        {issue.elements && <div className="text-xs mt-1">Elements: {issue.elements}</div>}
+                                      </div>
+                                    ))}
                                   </div>
-                                ))}
-                              </div>
+                                </CardContent>
+                              </Card>
                             </div>
                           )}
-                        </div>
+                          {/* Accessibility Recommendations */}
+                          {perf.accessibility && perf.accessibility.recommendations && perf.accessibility.recommendations.length > 0 && (
+                            <div className="mt-6">
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="text-base text-primary">Accessibility Recommendations</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="space-y-2">
+                                    {perf.accessibility.recommendations.map((rec: any, i: number) => (
+                                      <div key={i} className="p-3 bg-primary/10 border border-primary/20 rounded text-primary text-sm">
+                                        <div className="font-semibold">{rec.title}</div>
+                                        <div className="text-xs text-muted-foreground">{rec.description}</div>
+                                        {rec.priority && <div className="text-xs mt-1">Priority: {rec.priority}</div>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            </div>
+                          )}
+                        </>
                       );
                     })()}
                   </div>
                 )}
                 {/* *********************************************************************************** */}
 
+                {activeAnalysisTab === "images" && (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Image className="h-5 w-5" />
+                        <h3 className="text-lg font-semibold">Images</h3>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => startFullAnalysis()}
+                      >
+                        <RefreshCw className="h-3 w-3 mr-1" />
+                        Refresh Analysis
+                      </Button>
+                    </div>
+                    {((): React.ReactNode => {
+                      let images: any[] = [];
+                      if (Array.isArray(analysis.image_analysis)) {
+                        images = analysis.image_analysis;
+                      } else if (typeof analysis.image_analysis === 'string') {
+                        try {
+                          images = JSON.parse(analysis.image_analysis);
+                        } catch {
+                          images = [];
+                        }
+                      }
+                      if (images.length > 0) {
+                        return (
+                          <div className="overflow-x-auto">
+                            <table className="min-w-full border text-xs">
+                              <thead>
+                                <tr className="bg-muted">
+                                  <th className="p-2 border">Preview</th>
+                                  <th className="p-2 border">Link</th>
+                                  <th className="p-2 border">Alt</th>
+                                  <th className="p-2 border">Format</th>
+                                  <th className="p-2 border">Size (KB)</th>
+                                  <th className="p-2 border">&lt;500KB?</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {images.map((img: any, idx: number) => (
+                                  <tr key={idx} className="hover:bg-primary/10">
+                                    <td className="p-2 border text-center">
+                                      {img.src ? (
+                                        <img
+                                          src={img.src}
+                                          alt={img.alt || "preview"}
+                                          className="w-12 h-12 object-contain cursor-pointer border rounded"
+                                          onClick={() => setImageModal({ open: true, src: img.src })}
+                                        />
+                                      ) : (
+                                        <span>-</span>
+                                      )}
+                                    </td>
+                                    <td className="p-2 border break-all max-w-xs">
+                                      {img.src ? (
+                                        <a href={img.src} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                                          {img.src}
+                                        </a>
+                                      ) : (
+                                        <span>-</span>
+                                      )}
+                                    </td>
+                                    <td className="p-2 border">{img.alt || <span className="italic text-muted-foreground">(none)</span>}</td>
+                                    <td className="p-2 border">{img.format || "-"}</td>
+                                    <td className="p-2 border">{img.sizeKb !== null && img.sizeKb !== undefined ? img.sizeKb : "-"}</td>
+                                    <td className="p-2 border text-center">
+                                      {img.isLessThan500kb === null || img.isLessThan500kb === undefined ? "-" : img.isLessThan500kb ? (
+                                        <span className="text-emerald-600 font-bold">Yes</span>
+                                      ) : (
+                                        <span className="text-red-600 font-bold">No</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      } else {
+                        return (
+                          <div className="text-center py-8">
+                            <p className="text-muted-foreground">No images found on this page.</p>
+                          </div>
+                        );
+                      }
+                    })()}
+                    {/* Image Preview Modal */}
+                    {imageModal.open && imageModal.src && (
+                      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setImageModal({ open: false, src: null })}>
+                        <div className="bg-white dark:bg-zinc-900 rounded-lg p-4 max-w-lg w-full relative" onClick={e => e.stopPropagation()}>
+                          <button className="absolute top-2 right-2 text-xl" onClick={() => setImageModal({ open: false, src: null })}>&times;</button>
+                          <img src={imageModal.src} alt="Full preview" className="w-full h-auto max-h-[70vh] object-contain rounded" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {activeAnalysisTab === "technical_fixes" && (
                   <div className="space-y-6">
                     {/* Sub-tabs for Technical Fixes */}
@@ -2752,21 +2988,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                   </div>
                 )}
                 {/* *********************************************************************************** */}
-
-                {/* Other tabs - Coming Soon */}
-                {["performance", "accessibility", "images"].includes(
-                  activeAnalysisTab
-                ) && (
-                  <div className="text-center py-16">
-                    <div className="text-6xl mb-4">🚧</div>
-                    <h3 className="text-xl font-semibold mb-2">Coming Soon</h3>
-                    <p className="text-muted-foreground">
-                      {activeAnalysisTab.charAt(0).toUpperCase() +
-                        activeAnalysisTab.slice(1).replace("_", " ")}{" "}
-                      analysis is being developed
-                    </p>
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>

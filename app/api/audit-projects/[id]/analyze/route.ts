@@ -64,7 +64,7 @@ export async function POST(
     const {
       page_ids,
       analyze_all = false,
-      analysis_types = ["grammar", "seo", "ui","performance",'tagsAnalysis'], // Default to both
+      analysis_types = ["grammar", "seo", "ui", "performance", "tagsAnalysis", "images"], // Default now includes images
       use_cache = true, // Default to use cache
       background = null, // Auto-determine based on page count
       force_refresh = false, // Force refresh cached results
@@ -252,19 +252,13 @@ async function performSinglePageAnalysis(
     async function screenshotAndAnalyzeUI(device: "phone" | "tablet" | "desktop") {
       try {
         console.log(`[TASK] [${device}] Starting screenshot for page ${page.id}`);
-        // Take screenshot
-        const localPath = path.join(
-          process.cwd(),
-          "public",
-          `screenshot_${page.id}_${device}.png`
-        );
-        const screenshotPath = await takeScreenshot(page.url, page.id, device);
-        console.log(`[DONE] [${device}] Screenshot complete for page ${page.id}`);
-        // Upload screenshot
+        // Take screenshot as buffer
+        const buffer = await takeScreenshotBuffer(page.url, device);
+        if (!buffer) throw new Error("Screenshot buffer is null");
+        // Upload screenshot buffer
         const storagePath = `project_${project.id}/screenshot_${page.id}_${device}.png`;
-        const publicUrl = await uploadScreenshotToStorage(localPath, storagePath);
+        const publicUrl = await uploadScreenshotBufferToStorage(buffer, storagePath);
         screenshotUrls[device] = publicUrl;
-        console.log(`[DONE] [${device}] Screenshot uploaded for page ${page.id}: ${publicUrl}`);
         // If UI analysis requested, start it
         if (analysisTypes.includes("ui") && publicUrl) {
           console.log(`[TASK] [${device}] Starting UI analysis for page ${page.id}`);
@@ -288,8 +282,14 @@ async function performSinglePageAnalysis(
     let socialMetaAnalysis = null;
     const socialMetaPromise = analyzeSocialMetaTags(page.html || "");
 
+    // --- Add this new function for image analysis ---
+    let imageAnalysis = null;
+    let imagePromise: Promise<any[] | null> =
+      analysisTypes.includes("images")
+        ? analyzeImages(page.html || "", page.url)
+        : Promise.resolve(null);
     // --- Wait for all analyses to finish ---
-    const [grammarResult, seoResult, perfResult, tagsResult, phoneUiResult, tabletUiResult, desktopUiResult, socialMetaResult] = await Promise.all([
+    const [grammarResult, seoResult, perfResult, tagsResult, phoneUiResult, tabletUiResult, desktopUiResult, socialMetaResult, imageResult] = await Promise.all([
       grammarPromise,
       seoPromise,
       performancePromise,
@@ -298,6 +298,7 @@ async function performSinglePageAnalysis(
       tabletUiPromise,
       desktopUiPromise,
       socialMetaPromise,
+      imagePromise,
     ]);
 
     grammarAnalysis = grammarResult;
@@ -308,6 +309,7 @@ async function performSinglePageAnalysis(
     tabletUiAnalysis = tabletUiResult;
     desktopUiAnalysis = desktopUiResult;
     socialMetaAnalysis = socialMetaResult;
+    imageAnalysis = imageResult;
 
     // Log the performanceAnalysis result
     console.log('[PERFORMANCE ANALYSIS]', performanceAnalysis);
@@ -366,7 +368,8 @@ async function performSinglePageAnalysis(
       performanceAnalysis,
       overallScore,
       tagsAnalysis,
-      socialMetaAnalysis
+      socialMetaAnalysis,
+      imageAnalysis
     );
     console.log(`[DB] Analysis results saved for page ${page.id}`);
 
@@ -443,6 +446,14 @@ async function performSinglePageAnalysis(
         social_meta_analysis: socialMetaAnalysis,
       };
     }
+    if (analysisTypes.includes("images")) {
+      return {
+        image_analysis: imageAnalysis,
+        cached,
+        cached_at: cachedAt,
+        freshly_scraped: true,
+      };
+    }
 
     return { error: "No valid analysis types specified" };
   } catch (error) {
@@ -472,7 +483,8 @@ async function upsertAnalysisResult(
   performanceAnalysis: any,
   overallScore: number,
   tagsAnalysis: any = null,
-  socialMetaAnalysis: any = null
+  socialMetaAnalysis: any = null,
+  imageAnalysis: any = null
 ) {
   const status =
     overallScore >= 80 ? "pass" : overallScore >= 60 ? "warning" : "fail";
@@ -521,6 +533,9 @@ async function upsertAnalysisResult(
   }
   if (socialMetaAnalysis) {
     updateData.social_meta_analysis = socialMetaAnalysis;
+  }
+  if (imageAnalysis) {
+    updateData.image_analysis = imageAnalysis;
   }
 
   const { error } = await supabase.from("audit_results").upsert(updateData, {
@@ -1691,6 +1706,78 @@ async function uploadScreenshotToStorage(
   return publicUrl;
 }
 
+// New buffer-based screenshot function
+async function takeScreenshotBuffer(
+  url: string,
+  device: "phone" | "tablet" | "desktop"
+): Promise<Buffer | null> {
+  let browser: import("puppeteer").Browser | null = null;
+  try {
+    console.log("taking screenshot for device (buffer)", device);
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+    const page = await browser.newPage();
+    // Set viewport based on device
+    let viewport;
+    switch (device) {
+      case "phone":
+        viewport = { width: 375, height: 812 };
+        break;
+      case "tablet":
+        viewport = { width: 768, height: 1024 };
+        break;
+      default:
+        viewport = { width: 1440, height: 3000 };
+    }
+    await page.setViewport(viewport);
+    await page.goto(url, { waitUntil: "networkidle2" });
+    await page.waitForSelector("body");
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await autoScroll(page);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    // Take screenshot as buffer
+    const buffer = await page.screenshot({ type: "png", fullPage: true });
+    return buffer as Buffer;
+  } catch (error) {
+    console.error("Error taking screenshot (buffer):", error);
+    return null;
+  } finally {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeError) {
+        console.error("Error closing browser (buffer):", closeError);
+      }
+    }
+  }
+}
+
+// New buffer-based upload function
+async function uploadScreenshotBufferToStorage(
+  buffer: Buffer,
+  storagePath: string
+): Promise<string | null> {
+  console.log("uploading screenshot buffer to storage");
+  const supabase = await createClient();
+  const { data, error } = await supabase.storage
+    .from("screenshots") // bucket name
+    .upload(storagePath, buffer, {
+      upsert: true,
+      contentType: "image/png",
+    });
+  if (error) {
+    console.error("Supabase Storage upload error (buffer):", error);
+    return null;
+  }
+  // Get public URL
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("screenshots").getPublicUrl(storagePath);
+  return publicUrl;
+}
+
 /**
  * Analyze social media meta tags (Open Graph, Twitter, etc.) in the HTML.
  * Returns a JSON object with presence, platform, image link, title, description, and other relevant info.
@@ -1775,6 +1862,51 @@ async function analyzeSocialMetaTags(html: string): Promise<any> {
   };
  
   return result;
+}
+
+// --- Add this new function for image analysis ---
+async function analyzeImages(html: string, baseUrl: string): Promise<any[]> {
+  const imgMatches = html.match(/<img[^>]*src=["']([^"']*?)["'][^>]*>/gi) || [];
+  const images = await Promise.all(imgMatches.map(async (match) => {
+    const src = match.match(/src=["']([^"']*?)["']/)?.[1] || "";
+    const altMatch = match.match(/alt=["']([^"']*?)["']/i);
+    const alt = altMatch ? altMatch[1] : null;
+    let format = null;
+    let sizeKb = null;
+    let isLessThan500kb = null;
+    try {
+      // Resolve relative URLs
+      let url = src;
+      if (src && !src.startsWith('http')) {
+        if (src.startsWith('/')) {
+          const base = new URL(baseUrl);
+          url = base.origin + src;
+        } else {
+          url = baseUrl.replace(/\/[^/]*$/, '/') + src;
+        }
+      }
+      format = url.split('.').pop()?.split('?')[0].toLowerCase() || null;
+      // Only fetch if it's http(s)
+      if (url.startsWith('http')) {
+        const res = await axios.head(url, { timeout: 5000 });
+        const size = res.headers['content-length'] ? parseInt(res.headers['content-length']) : null;
+        if (size !== null && !isNaN(size)) {
+          sizeKb = Math.round(size / 1024);
+          isLessThan500kb = size < 500 * 1024;
+        }
+      }
+    } catch (e) {
+      // Ignore fetch errors, leave size null
+    }
+    return {
+      src,
+      alt,
+      format,
+      sizeKb,
+      isLessThan500kb,
+    };
+  }));
+  return images;
 }
 
 // async function analyzePerformance(url: string): Promise<any> {
