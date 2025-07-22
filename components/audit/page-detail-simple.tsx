@@ -228,6 +228,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
           if (data.results.image_analysis) {
             newAnalysis.image_analysis = data.results.image_analysis;
           }
+          if (data.results.performance_analysis) {
+            newAnalysis.performance_analysis = data.results.performance_analysis;
+          }
           if (data.results.phone_ui_quality_analysis) {
             newAnalysis.phone_ui_quality_analysis =
               data.results.phone_ui_quality_analysis;
@@ -262,6 +265,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
           if (data.results.image_analysis) {
             newAnalysis.image_analysis = data.results.image_analysis;
+          }
+          if (data.results.performance_analysis) {
+            newAnalysis.performance_analysis = data.results.performance_analysis;
           }
 
           return newAnalysis;
@@ -342,6 +348,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             }
             if (data.results.image_analysis) {
               basicAnalysis.image_analysis = data.results.image_analysis;
+            }
+            if (data.results.performance_analysis) {
+              basicAnalysis.performance_analysis = data.results.performance_analysis;
             }
             if (data.results.phone_ui_quality_analysis) {
               basicAnalysis.phone_ui_quality_analysis =
