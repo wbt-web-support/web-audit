@@ -138,6 +138,13 @@ This project now supports automated performance analysis using the [Google PageS
 - You must have a valid API key set for performance analysis to work.
 - See [Google's API documentation](https://developers.google.com/speed/docs/insights/rest/v5/pagespeedapi/runpagespeed) for more details on the response format.
 
+## New Feature: All Links Analysis
+
+- The backend now collects all internal and external links from every crawled page and stores them in the `audit_projects.all_links_analysis` field (JSONB).
+- Each link includes: `href`, `type` (internal/external), anchor text, and the page URL where it was found.
+- The dashboard UI displays a summary and a table of all unique links found during the crawl, similar to the image analysis section.
+- Migration: a new column is added to the `audit_projects` table for this feature.
+
 ## Feedback and issues
 
 Please file feedback and issues over on the [Supabase GitHub org](https://github.com/supabase/supabase/issues/new/choose).

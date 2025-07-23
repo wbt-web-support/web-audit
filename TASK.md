@@ -9,3 +9,7 @@
 - [x] Store results in performance_analysis field in DB
 - [x] Document setup and usage in README
 - [ ] Add frontend display of performance results (TODO) 
+
+## Completed Tasks
+
+- [2024-06-08] Implemented all_links_analysis: backend now collects all internal/external links during crawl, stores in audit_projects.all_links_analysis, and dashboard UI displays a summary/table of all links. Includes migration and README update. 

@@ -38,6 +38,12 @@ export interface AuditProject {
     is_small: boolean | null;
     page_url: string;
   }>;
+  all_links_analysis?: Array<{
+    href: string;
+    type: 'internal' | 'external';
+    text: string;
+    page_url: string;
+  }>;
 }
 
 export interface ScrapedPage {

@@ -238,6 +238,13 @@ async function crawlWebsite(
     is_small: boolean | null;
     page_url: string;
   }> = [];
+  // Aggregate all links across all pages
+  const allLinks: Array<{
+    href: string;
+    type: 'internal' | 'external';
+    text: string;
+    page_url: string;
+  }> = [];
 
   function getFileFormat(url: string): string {
     try {
@@ -368,12 +375,49 @@ async function crawlWebsite(
           page_url: normalizedUrl,
         });
       }
+
+      // Extract links from HTML using cheerio
+      const aTags = $("a[href]");
+      for (let i = 0; i < aTags.length; i++) {
+        const a = aTags[i];
+        let hrefRaw = $(a).attr("href") || "";
+        let text = $(a).text().trim();
+        // Make href absolute
+        let href = hrefRaw;
+        try {
+          href = new URL(hrefRaw, normalizedUrl).href;
+        } catch {
+          // If relative, try to resolve
+          try {
+            href = new URL(hrefRaw, baseUrl).href;
+          } catch {}
+        }
+        // Determine if internal or external
+        let type: 'internal' | 'external' = 'external';
+        try {
+          const hrefUrl = new URL(href);
+          const base = new URL(baseUrl);
+          type = hrefUrl.hostname === base.hostname ? 'internal' : 'external';
+        } catch {}
+        allLinks.push({
+          href,
+          type,
+          text,
+          page_url: normalizedUrl,
+        });
+      }
     });
 
     // After crawling, store all image analysis in audit_projects
     await supabase
       .from("audit_projects")
       .update({ all_image_analysis: allImages })
+      .eq("id", projectId);
+
+    // After crawling, store all links analysis in audit_projects
+    await supabase
+      .from("audit_projects")
+      .update({ all_links_analysis: allLinks })
       .eq("id", projectId);
 
     // Update project status to completed crawling (ready for analysis)

@@ -77,6 +77,7 @@ export function AuditMain() {
   const [crawlProgress, setCrawlProgress] = useState(0); // percent
   const [isCrawling, setIsCrawling] = useState(false);
   const [showAllImageAnalysis, setShowAllImageAnalysis] = useState(false);
+  const [showAllLinksAnalysis, setShowAllLinksAnalysis] = useState(false);
   useEffect(() => {
     fetchData();
   }, [selectedProjectId]);
@@ -927,7 +928,16 @@ export function AuditMain() {
         </Button>
       </div>
       <div className="mt-2 text-sm text-muted-foreground">
-        {projects[0].all_image_analysis.length} images found
+        {/* Show unique image count by src */}
+        {(() => {
+          const seen = new Set();
+          const uniqueCount = projects[0].all_image_analysis.filter(img => {
+            if (seen.has(img.src)) return false;
+            seen.add(img.src);
+            return true;
+          }).length;
+          return `${uniqueCount} unique images found`;
+        })()}
       </div>
     </CardHeader>
     {showAllImageAnalysis && (
@@ -936,6 +946,7 @@ export function AuditMain() {
           <table className="min-w-full border text-xs">
             <thead className="bg-muted/50">
               <tr>
+                <th className="p-2 border text-center">#</th>
                 <th className="p-2 border">Preview</th>
                 <th className="p-2 border">Alt</th>
                 <th className="p-2 border">Src</th>
@@ -946,30 +957,39 @@ export function AuditMain() {
               </tr>
             </thead>
             <tbody>
-              {projects[0].all_image_analysis.map((img, idx) => (
-                <tr key={idx} className="border-b hover:bg-muted/20">
-                  <td className="p-2 border text-center">
-                    <a href={img.src} target="_blank" rel="noopener noreferrer">
-                      <img
-                        src={img.src}
-                        alt={img.alt || 'image'}
-                        style={{ maxWidth: 48, maxHeight: 48, objectFit: 'contain', borderRadius: 4 }}
-                        loading="lazy"
-                      />
-                    </a>
-                  </td>
-                  <td className="p-2 border">{img.alt || <span className="text-muted-foreground">(none)</span>}</td>
-                  <td className="p-2 border max-w-xs truncate">
-                    <a href={img.src} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">{img.src}</a>
-                  </td>
-                  <td className="p-2 border text-center">{img.size ? (img.size / 1024).toFixed(1) : '—'}</td>
-                  <td className="p-2 border text-center">{img.format || '—'}</td>
-                  <td className="p-2 border text-center">{img.is_small ? 'Yes' : 'No'}</td>
-                  <td className="p-2 border max-w-xs truncate">
-                    <a href={img.page_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">{img.page_url}</a>
-                  </td>
-                </tr>
-              ))}
+              {/* Filter out duplicate images by src and add serial numbers */}
+              {(() => {
+                const seen = new Set();
+               return projects[0].all_image_analysis.filter(img => {
+                 if (seen.has(img.src)) return false;
+                 seen.add(img.src);
+                 return true;
+               }).map((img, idx) => (
+                 <tr key={idx} className="border-b hover:bg-muted/20">
+                   <td className="p-2 border text-center">{idx + 1}</td>
+                   <td className="p-2 border text-center">
+                     <a href={img.src} target="_blank" rel="noopener noreferrer">
+                       <img
+                         src={img.src}
+                         alt={img.alt || 'image'}
+                         style={{ maxWidth: 48, maxHeight: 48, objectFit: 'contain', borderRadius: 4 }}
+                         loading="lazy"
+                       />
+                     </a>
+                   </td>
+                   <td className="p-2 border">{img.alt || <span className="text-muted-foreground">(none)</span>}</td>
+                   <td className="p-2 border max-w-xs truncate">
+                     <a href={img.src} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">{img.src}</a>
+                   </td>
+                   <td className="p-2 border text-center">{img.size ? (img.size / 1024).toFixed(1) : '—'}</td>
+                   <td className="p-2 border text-center">{img.format || '—'}</td>
+                   <td className="p-2 border text-center">{img.is_small ? 'Yes' : 'No'}</td>
+                   <td className="p-2 border max-w-xs truncate">
+                     <a href={img.page_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">{img.page_url}</a>
+                   </td>
+                 </tr>
+               ));
+              })()}
             </tbody>
           </table>
         </div>
@@ -977,6 +997,79 @@ export function AuditMain() {
     )}
   </Card>
 )}
+
+  {/* All Links Analysis Section */}
+  {projects[0].all_links_analysis && Array.isArray(projects[0].all_links_analysis) && projects[0].all_links_analysis.length > 0 &&  (
+    <Card className="mb-6">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>All Links Analysis</CardTitle>
+            <CardDescription>Summary of all internal and external links found during the crawl</CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowAllLinksAnalysis(prev => !prev)}
+          >
+            {showAllLinksAnalysis ? 'Close' : 'Open'}
+          </Button>
+        </div>
+        <div className="mt-2 text-sm text-muted-foreground">
+          {/* Show unique link count by href */}
+          {(() => {
+            const seen = new Set();
+            const uniqueCount = projects[0].all_links_analysis.filter(link => {
+              if (seen.has(link.href)) return false;
+              seen.add(link.href);
+              return true;
+            }).length;
+            return `${uniqueCount} unique links found`;
+          })()}
+        </div>
+      </CardHeader>
+      {showAllLinksAnalysis && (
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="min-w-full border text-xs">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="p-2 border text-center">#</th>
+                  <th className="p-2 border">Href</th>
+                  <th className="p-2 border">Type</th>
+                  <th className="p-2 border">Anchor Text</th>
+                  <th className="p-2 border">Page URL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* Filter out duplicate links by href and add serial numbers */}
+                {(() => {
+                  const seen = new Set();
+                  return projects[0].all_links_analysis.filter(link => {
+                    if (seen.has(link.href)) return false;
+                    seen.add(link.href);
+                    return true;
+                  }).map((link, idx) => (
+                    <tr key={idx} className="border-b hover:bg-muted/20">
+                      <td className="p-2 border text-center">{idx + 1}</td>
+                      <td className="p-2 border max-w-xs truncate">
+                        <a href={link.href} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">{link.href}</a>
+                      </td>
+                      <td className="p-2 border text-center">{link.type.charAt(0).toUpperCase() + link.type.slice(1)}</td>
+                      <td className="p-2 border">{link.text || <span className="text-muted-foreground">(none)</span>}</td>
+                      <td className="p-2 border max-w-xs truncate">
+                        <a href={link.page_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">{link.page_url}</a>
+                      </td>
+                    </tr>
+                  ));
+                })()}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      )}
+    </Card>
+  )}
       {/* Pages List */}
       <Card>
         <CardHeader>
