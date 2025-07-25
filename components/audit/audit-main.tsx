@@ -949,7 +949,23 @@ export function AuditMain() {
                 <th className="p-2 border text-center">#</th>
                 <th className="p-2 border">Preview</th>
                 <th className="p-2 border">Alt</th>
-                <th className="p-2 border">Src</th>
+                <th className="p-2 border">Src 
+                  <button
+                    type="button"
+                    className="ml-2 inline-flex items-center px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-600 dark:text-blue-300 text-xs font-medium border border-blue-200 dark:border-blue-800 transition"
+                    title="Copy all image URLs"
+                    onClick={() => {
+                      const allImages = projects[0]?.all_image_analysis?.map(img => img.src) || [];
+                      // Remove duplicates
+                      const uniqueImages = Array.from(new Set(allImages));
+                      navigator.clipboard.writeText(uniqueImages.join('\n'));
+                      toast('Copied all images URLs!');
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16h8M8 12h8m-7 8h6a2 2 0 002-2V6a2 2 0 00-2-2H8a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    Copy All
+                  </button>
+                </th>
                 <th className="p-2 border">Size (KB)</th>
                 <th className="p-2 border">Format</th>
                 <th className="p-2 border">Is Small?</th>
