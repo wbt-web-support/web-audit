@@ -41,6 +41,7 @@ import { RootState } from "@/app/stores/store";
 import CustomInstructions from "@/app/(dashboard)/dashboard/components/CustomInstructions";
 import ServicesDropdown from "@/app/(dashboard)/dashboard/components/ServicesDropdown";
 import CustomUrls from "@/app/(dashboard)/dashboard/components/CustomUrls";
+import CheckStripKeys from "@/app/(dashboard)/dashboard/components/CheckStripKeys";
 
 interface ProjectFormProps {
   project?: AuditProject | null;
@@ -67,7 +68,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
   const dispatch = useDispatch();
   
   // Get Redux state for create mode
-  const { inputUrl, selectedServices, instructions, urls } = useSelector((state: RootState) => state.dashboardForm);
+  const { inputUrl, selectedServices, instructions, urls, stripeKeyUrls } = useSelector((state: RootState) => state.dashboardForm);
 
   useEffect(() => {
     if (project) {
@@ -173,8 +174,9 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
         },
         instructions: instructions,
         custom_urls: (Array.isArray(urls) && urls.filter(u => u && u.trim()).length > 0) ? urls.filter(u => u && u.trim()) : null,
+        stripe_key_urls: (Array.isArray(stripeKeyUrls) && stripeKeyUrls.filter(u => u && u.trim()).length > 0) ? stripeKeyUrls.filter(u => u && u.trim()) : null,
       };
-
+      console.log("payload:**************", payload);
       const response = await fetch("/api/audit-projects", {
         method: "POST",
         headers: {
@@ -182,7 +184,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
         },
         body: JSON.stringify(payload),
       });
-
+      console.log("response:**************", response);
       const data = await response.json();
       if (response.ok) {
         router.push(`/audit?project=${data.project.id}`);
@@ -216,8 +218,9 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
         services: selectedServices,
         instructions: instructions,
         custom_urls: (Array.isArray(urls) && urls.filter(u => u && u.trim()).length > 0) ? urls.filter(u => u && u.trim()) : null,
+        stripe_key_urls: (Array.isArray(stripeKeyUrls) && stripeKeyUrls.filter(u => u && u.trim()).length > 0) ? stripeKeyUrls.filter(u => u && u.trim()) : null,
       };
-
+      
       const response = await fetch(`/api/audit-projects/${project?.id}`, {
         method: "PUT",
         headers: {
@@ -225,7 +228,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
         },
         body: JSON.stringify(payload),
       });
-
+    
       const data = await response.json();
       if (response.ok) {
         if (onSubmit && data.project) {
@@ -362,7 +365,14 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
                 )}
               </div>
             )}
+            {/* Stripe Key URLs are managed ONLY by CheckStripKeys and stored in stripeKeyUrls */}
+            {selectedServices.includes('check_stripe_keys') && (
+              <div className="check_stripe_keys">
+              <CheckStripKeys />
+              </div>
+            )}
 
+                 
             {/* Company Details Section - Only show when contact_details_consistency is selected */}
               {selectedServices.includes('contact_details_consistency') ? (
                 <>
@@ -457,6 +467,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
               ) : null}
 
             {/* Custom URLs - Show when check_custom_urls service is selected */}
+            {/* CustomUrls manages ONLY custom_urls (urls in Redux) */}
             {selectedServices.includes('check_custom_urls') && crawlType === 'full' && (
               <div className="custom_urls">
                 <CustomUrls crawlType={crawlType} />

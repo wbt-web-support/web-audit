@@ -3,6 +3,7 @@ import { WebScraper } from "@/lib/services/web-scraper";
 import { NextResponse } from "next/server";
 import { toast } from "react-toastify";
 import * as cheerio from "cheerio";
+import pLimit from "p-limit";
 
 // URL normalization function (same as in WebScraper)
 function normalizeUrl(url: string): string {
@@ -28,14 +29,36 @@ function normalizeUrl(url: string): string {
 
 // List of file extensions to skip
 const SKIP_EXTENSIONS = [
-  ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip", ".rar", ".7z", ".tar", ".gz", ".mp3", ".mp4", ".avi", ".mov", ".wmv"
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".gif",
+  ".svg",
+  ".webp",
+  ".pdf",
+  ".doc",
+  ".docx",
+  ".xls",
+  ".xlsx",
+  ".ppt",
+  ".pptx",
+  ".zip",
+  ".rar",
+  ".7z",
+  ".tar",
+  ".gz",
+  ".mp3",
+  ".mp4",
+  ".avi",
+  ".mov",
+  ".wmv",
 ];
 
 // Helper to check if URL should be skipped
 function shouldSkipUrl(url: string): boolean {
   const lowerUrl = url.toLowerCase();
   // Skip if URL ends with any of the extensions
-  if (SKIP_EXTENSIONS.some(ext => lowerUrl.endsWith(ext))) return true;
+  if (SKIP_EXTENSIONS.some((ext) => lowerUrl.endsWith(ext))) return true;
   // Optionally, skip all /wp-content/uploads/ URLs
   if (lowerUrl.includes("/wp-content/uploads/")) return true;
   return false;
@@ -62,15 +85,15 @@ export async function POST(request: Request) {
       .single();
     const crawl_type = projectData?.crawl_type;
     const custom_urls = projectData?.custom_urls;
-    
+
     // Validate crawl_type - if not specified, default to 'full'
-    if (crawl_type && !['single', 'full'].includes(crawl_type)) {
+    if (crawl_type && !["single", "full"].includes(crawl_type)) {
       return NextResponse.json(
         { error: "Invalid crawl_type. Must be 'single' or 'full'" },
         { status: 400 }
       );
     }
-    
+
     if (!project_id) {
       return NextResponse.json(
         { error: "project_id is required" },
@@ -92,6 +115,59 @@ export async function POST(request: Request) {
         { status: 404 }
       );
     }
+
+    // --- STRIPE KEY URL LOGIC ---
+    // Get stripe_key_urls from project (array or null)
+    let stripeKeyUrls: string[] = Array.isArray(project.stripe_key_urls)
+      ? project.stripe_key_urls
+      : typeof project.stripe_key_urls === "string" && project.stripe_key_urls
+      ? [project.stripe_key_urls]
+      : [];
+
+    // Normalize and replace base URL if present
+    const baseUrl = project.base_url.replace(/\/+$/, "");
+    stripeKeyUrls = stripeKeyUrls.map((url) => {
+      // If url is absolute and starts with http(s), replace its origin with baseUrl's origin
+      try {
+        const urlObj = new URL(url, baseUrl);
+        // If the url already has a base, replace it with project.base_url
+        if (urlObj.origin !== new URL(baseUrl).origin) {
+          urlObj.protocol = new URL(baseUrl).protocol;
+          urlObj.host = new URL(baseUrl).host;
+        }
+        // If url is relative, make it absolute using baseUrl
+        return urlObj.href;
+      } catch {
+        // If not a valid URL, treat as relative to baseUrl
+        return baseUrl + (url.startsWith("/") ? url : "/" + url);
+      }
+    });
+
+    // Helper to fetch and extract Stripe keys from a URL
+    let getStripeKeysFromUrl = async (url: string) => {
+      try {
+        const response = await fetch(url);
+        const text = await response.text();
+        const keys = text.match(/pk_(live|test)_[0-9A-Za-z]{24,}/g);
+        return keys;
+      } catch (err) {
+        return null;
+      }
+    };
+
+    // For each stripeKeyUrl, fetch and extract keys
+    let allStripeKeys: { url: string; keys: string[] | null }[] = [];
+    for (const url of stripeKeyUrls) {
+      const keys = await getStripeKeysFromUrl(url);
+      allStripeKeys.push({ url, keys });
+    }
+    console.log("Stripe key results:", allStripeKeys);
+
+    // Store the Stripe key results in the audit_projects table
+    await supabase
+      .from("audit_projects")
+      .update({ stripe_keys_analysis: allStripeKeys })
+      .eq("id", project_id);
 
     if (project.status === "crawling" || project.status === "analyzing") {
       return NextResponse.json(
@@ -121,8 +197,8 @@ export async function POST(request: Request) {
     // - 'single': Crawl only the base URL (maxPages: 1, maxDepth: 0)
     // - 'full': Crawl the entire website (maxPages: 50, maxDepth: 3)
     const scraperOptions = {
-      maxPages: crawl_type === 'single' ? 1 : 50,
-      maxDepth: crawl_type === 'single' ? 0 : 3,
+      maxPages: crawl_type === "single" ? 1 : 50,
+      maxDepth: crawl_type === "single" ? 0 : 3,
       followExternal: false,
       respectRobotsTxt: true,
     };
@@ -130,7 +206,14 @@ export async function POST(request: Request) {
     const estimatedTimeSec = scraperOptions.maxPages * avgTimePerPage;
 
     // Start crawling in the background based on crawl_type
-    await crawlWebsite(project_id, project.base_url, user.id, existingUrls, crawl_type, scraperOptions);
+    await crawlWebsite(
+      project_id,
+      project.base_url,
+      user.id,
+      existingUrls,
+      crawl_type,
+      scraperOptions
+    );
 
     // Check custom_urls directly (not via crawler)
     let customUrlResults: { pageLink: string; isPresent: boolean }[] = [];
@@ -138,7 +221,7 @@ export async function POST(request: Request) {
       customUrlResults = await Promise.all(
         custom_urls.map(async (url: string) => {
           try {
-            const res = await fetch(url, { method: 'HEAD' });
+            const res = await fetch(url, { method: "HEAD" });
             return { pageLink: url, isPresent: res.ok };
           } catch {
             return { pageLink: url, isPresent: false };
@@ -154,26 +237,38 @@ export async function POST(request: Request) {
       // Insert present custom URLs into scraped_pages if not already present
       let newCustomPages = 0;
       // Prepare a WebScraper instance for scraping individual pages
-      const WebScraperClass = (await import("@/lib/services/web-scraper")).WebScraper;
+      const WebScraperClass = (await import("@/lib/services/web-scraper"))
+        .WebScraper;
       const scraper = new WebScraperClass(project.base_url, {});
       for (const result of customUrlResults) {
         if (result.isPresent) {
           const normalizedUrl = normalizeUrl(result.pageLink);
-          if (!existingUrls.has(normalizedUrl) && !shouldSkipUrl(normalizedUrl)) {
+          if (
+            !existingUrls.has(normalizedUrl) &&
+            !shouldSkipUrl(normalizedUrl)
+          ) {
             try {
               // Scrape the page for full data
               const pageData = await scraper.scrapePage(normalizedUrl);
               await supabase.from("scraped_pages").insert({
                 audit_project_id: project_id,
                 url: normalizedUrl,
-                title: pageData.title || (function() {
-                  // fallback: last segment or 'home'
-                  try {
-                    const urlObj = new URL(normalizedUrl);
-                    const segments = urlObj.pathname.split("/").filter(Boolean);
-                    return segments.length > 0 ? segments[segments.length - 1] : "home";
-                  } catch { return "Custom URL"; }
-                })(),
+                title:
+                  pageData.title ||
+                  (function () {
+                    // fallback: last segment or 'home'
+                    try {
+                      const urlObj = new URL(normalizedUrl);
+                      const segments = urlObj.pathname
+                        .split("/")
+                        .filter(Boolean);
+                      return segments.length > 0
+                        ? segments[segments.length - 1]
+                        : "home";
+                    } catch {
+                      return "Custom URL";
+                    }
+                  })(),
                 content: pageData.content,
                 html: pageData.html,
                 status_code: pageData.statusCode,
@@ -241,7 +336,7 @@ async function crawlWebsite(
   // Aggregate all links across all pages
   const allLinks: Array<{
     href: string;
-    type: 'internal' | 'external';
+    type: "internal" | "external";
     text: string;
     page_url: string;
   }> = [];
@@ -256,7 +351,8 @@ async function crawlWebsite(
     }
   }
 
-  async function getImageSize(url: string): Promise<number | null> {
+  async function getImageSize(url: string, skipSizeCheck = false): Promise<number | null> {
+    if (skipSizeCheck) return null;
     try {
       const res = await fetch(url, { method: "HEAD" });
       if (res.ok) {
@@ -271,7 +367,7 @@ async function crawlWebsite(
     let pagesCrawled = 0;
     let pagesUpdated = 0;
     let newPages = 0;
-    
+
     await scraper.crawl(async (pageData) => {
       // Check if project should stop crawling
       const { data: currentProject } = await supabase
@@ -288,13 +384,13 @@ async function crawlWebsite(
 
       // Normalize the URL to prevent hash fragment duplicates
       const normalizedUrl = normalizeUrl(pageData.url);
-      
+
       // Skip unwanted URLs
       if (shouldSkipUrl(normalizedUrl)) {
         // console.log(`Skipping static or upload URL: ${normalizedUrl}`);
         return; // Don't save or update this page
       }
-      
+
       // Log if URL was normalized (different from original)
       if (normalizedUrl !== pageData.url) {
         // console.log(`URL normalized: ${pageData.url} → ${normalizedUrl}`);
@@ -347,65 +443,84 @@ async function crawlWebsite(
         .update({ pages_crawled: pagesCrawled })
         .eq("id", projectId);
 
-      // Extract images from HTML using cheerio
+      // Extract images and links from HTML using cheerio in parallel
       const $ = cheerio.load(pageData.html);
-      const imgTags = $("img[src]");
-      for (let i = 0; i < imgTags.length; i++) {
-        const img = imgTags[i];
-        const srcRaw = $(img).attr("src") || "";
-        const alt = $(img).attr("alt") || "";
-        // Make src absolute
-        let src = srcRaw;
-        try {
-          src = new URL(srcRaw, normalizedUrl).href;
-        } catch {}
-        const format = getFileFormat(src);
-        let size: number | null = null;
-        let is_small: boolean | null = null;
-        if (["jpg", "jpeg", "png", "svg", "webp", "gif"].includes(format)) {
-          size = await getImageSize(src);
-          is_small = size !== null ? size < 500 * 1024 : null;
-        }
-        allImages.push({
-          src,
-          alt,
-          format,
-          size,
-          is_small,
-          page_url: normalizedUrl,
-        });
-      }
+      const limit = pLimit(15); // Increased concurrency from 5 to 15
+      const imgTags = $("img[src]").toArray();
+      const aTags = $("a[href]").toArray();
 
-      // Extract links from HTML using cheerio
-      const aTags = $("a[href]");
-      for (let i = 0; i < aTags.length; i++) {
-        const a = aTags[i];
-        let hrefRaw = $(a).attr("href") || "";
-        let text = $(a).text().trim();
-        // Make href absolute
-        let href = hrefRaw;
-        try {
-          href = new URL(hrefRaw, normalizedUrl).href;
-        } catch {
-          // If relative, try to resolve
+      // Image extraction promise
+      const imagesPromise = Promise.all(
+        imgTags.map((img) => {
+          return limit(async () => {
+            const srcRaw = $(img).attr("src") || "";
+            const alt = $(img).attr("alt") || "";
+            // Make src absolute
+            let src = srcRaw;
+            try {
+              src = new URL(srcRaw, normalizedUrl).href;
+            } catch {}
+            const format = getFileFormat(src);
+            let size: number | null = null;
+            let is_small: boolean | null = null;
+            // Skip image size check for speed
+            // If you want to enable, set skipImageSizeCheck = false
+            const skipImageSizeCheck = true;
+            if (["jpg", "jpeg", "png", "svg", "webp", "gif"].includes(format)) {
+              size = await getImageSize(src, skipImageSizeCheck);
+              is_small = size !== null ? size < 500 * 1024 : null;
+            }
+            return {
+              src,
+              alt,
+              format,
+              size,
+              is_small,
+              page_url: normalizedUrl,
+            };
+          });
+        })
+      );
+
+      // Link extraction promise
+      const linksPromise = Promise.resolve(
+        aTags.map((a) => {
+          let hrefRaw = $(a).attr("href") || "";
+          let text = $(a).text().trim();
+          // Make href absolute
+          let href = hrefRaw;
           try {
-            href = new URL(hrefRaw, baseUrl).href;
+            href = new URL(hrefRaw, normalizedUrl).href;
+          } catch {
+            // If relative, try to resolve
+            try {
+              href = new URL(hrefRaw, baseUrl).href;
+            } catch {}
+          }
+          // Determine if internal or external
+          let type: "internal" | "external" = "external";
+          try {
+            const hrefUrl = new URL(href);
+            const base = new URL(baseUrl);
+            type = hrefUrl.hostname === base.hostname ? "internal" : "external";
           } catch {}
-        }
-        // Determine if internal or external
-        let type: 'internal' | 'external' = 'external';
-        try {
-          const hrefUrl = new URL(href);
-          const base = new URL(baseUrl);
-          type = hrefUrl.hostname === base.hostname ? 'internal' : 'external';
-        } catch {}
-        allLinks.push({
-          href,
-          type,
-          text,
-          page_url: normalizedUrl,
-        });
-      }
+          return {
+            href,
+            type,
+            text,
+            page_url: normalizedUrl,
+          };
+        })
+      );
+
+      // Run both in parallel
+      console.log(`Image section started`);
+      console.log(`Link section started`);
+      const [images, links] = await Promise.all([imagesPromise, linksPromise]);
+      allImages.push(...images);
+      allLinks.push(...links);
+      console.log(`Image section completed`);
+      console.log(`Link section completed`);
     });
 
     // After crawling, store all image analysis in audit_projects
@@ -430,7 +545,6 @@ async function crawlWebsite(
       .eq("id", projectId);
 
     // console.log(`Crawling completed (${crawlType || 'full'}): ${pagesCrawled} pages crawled`);
-    
   } catch (error: any) {
     // Check if it was stopped by user
     const { data: currentProject } = await supabase
@@ -453,4 +567,3 @@ async function crawlWebsite(
 }
 
 // function take screenshot of the pages
-

@@ -48,7 +48,8 @@ export async function POST(request: Request) {
       services, 
       companyDetails,
       instructions,
-      custom_urls
+      custom_urls,
+      stripe_key_urls
     } = body;
 
     const {
@@ -92,7 +93,7 @@ export async function POST(request: Request) {
         address: address || null,
         custom_info: customInfo || null,
         custom_urls: custom_urls || null,
-        // if you have this in the body
+        stripe_key_urls: stripe_key_urls || null,
       })
       .select()
       .single();

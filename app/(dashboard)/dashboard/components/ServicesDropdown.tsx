@@ -19,6 +19,7 @@ const SERVICES = [
     { label: "Check Contact details Consistency", value: "contact_details_consistency" },
     { label: "Add custom instructions", value: "custom_instructions" },
     { label: "Check Custom URLs", value: "check_custom_urls" },
+    { label: "Check Stripe Keys", value: "check_stripe_keys" },
    
   ];
   

@@ -15,6 +15,7 @@ interface DashboardFormState {
   companyDetails: CompanyDetails;
   instructions: string[]; // Added for custom instructions
   urls: string[]; // Added for custom URLs
+  stripeKeyUrls: string[]; // Stripe key check URLs
 }
 
 const initialState: DashboardFormState = {
@@ -29,7 +30,8 @@ const initialState: DashboardFormState = {
     customInfo: '',
   },
   instructions: [''], // Default to one empty instruction
-  urls: [''], // Default to one empty URL
+  urls: [], // Default to empty array for custom URLs
+  stripeKeyUrls: [], // Default to empty
 };
 
 export const dashboardFormSlice = createSlice({
@@ -60,7 +62,22 @@ export const dashboardFormSlice = createSlice({
       state.instructions = action.payload;
     },
     setUrls: (state, action: PayloadAction<string[]>) => {
+      // Only for custom_urls (not for stripe_key_urls)
       state.urls = action.payload;
+    },
+    addUrl: (state, action: PayloadAction<string>) => {
+      // Only for custom_urls (not for stripe_key_urls)
+      if (action.payload && !state.urls.includes(action.payload)) {
+        state.urls.push(action.payload);
+      }
+    },
+    deleteUrl: (state, action: PayloadAction<string>) => {
+      // Only for custom_urls (not for stripe_key_urls)
+      state.urls = state.urls.filter(url => url !== action.payload);
+    },
+    setStripeKeyUrls: (state, action: PayloadAction<string[]>) => {
+      // Only for stripe_key_urls (not for custom_urls)
+      state.stripeKeyUrls = action.payload;
     },
     clearForm: (state) => {
       state.selectedServices = [];
@@ -74,7 +91,8 @@ export const dashboardFormSlice = createSlice({
         customInfo: '',
       };
       state.instructions = [''];
-      state.urls = [''];
+      state.urls = [];
+      state.stripeKeyUrls = []; // Clear stripeKeyUrls on form clear
     },
     clearServices: (state) => {
       state.selectedServices = [];
@@ -91,6 +109,9 @@ export const {
   setCompanyDetails,
   setInstructions, // Export setInstructions
   setUrls, // Export setUrls
+  addUrl, // Export addUrl
+  deleteUrl, // Export deleteUrl
+  setStripeKeyUrls, // Export setStripeKeyUrls
   clearForm, 
   clearServices 
 } = dashboardFormSlice.actions;
