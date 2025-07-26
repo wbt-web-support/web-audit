@@ -967,20 +967,48 @@ export function AuditMain() {
                   </button>
                 </th>
                 <th className="p-2 border">Size (KB)</th>
-                <th className="p-2 border">Format</th>
-                <th className="p-2 border">Is Small?</th>
-                <th className="p-2 border">Page URL</th>
+                <th className="p-2 border text-center w-[10%]">Format</th>
+                <th className="p-2 border text-center w-20">Is Small?</th>
+                <th className="p-2 border">Page URL
+                  <button
+                    type="button"
+                    className="ml-2 inline-flex items-center px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-600 dark:text-blue-300 text-xs font-medium border border-blue-200 dark:border-blue-800 transition"
+                    title="Copy all page URLs"
+                    onClick={() => {
+                      const allPageUrls = projects[0]?.all_image_analysis?.map(img => img.page_url) || [];
+                      // Remove duplicates
+                      const uniquePageUrls = Array.from(new Set(allPageUrls));
+                      navigator.clipboard.writeText(uniquePageUrls.join('\n'));
+                      toast('Copied all page URLs!');
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16h8M8 12h8m-7 8h6a2 2 0 002-2V6a2 2 0 00-2-2H8a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    Copy All
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {/* Filter out duplicate images by src and add serial numbers */}
+              {/* Filter out duplicate images by src, sort by format, and add serial numbers */}
               {(() => {
                 const seen = new Set();
-               return projects[0].all_image_analysis.filter(img => {
-                 if (seen.has(img.src)) return false;
-                 seen.add(img.src);
-                 return true;
-               }).map((img, idx) => (
+                const uniqueImages = projects[0].all_image_analysis.filter(img => {
+                  if (seen.has(img.src)) return false;
+                  seen.add(img.src);
+                  return true;
+                });
+                
+                // Sort by format: JPG, WebP, PNG, SVG, then others
+                const formatOrder = { 'jpg': 1, 'jpeg': 1, 'webp': 2, 'png': 3, 'svg': 4 };
+                const sortedImages = uniqueImages.sort((a, b) => {
+                  const aFormat = (a.format || '').toLowerCase();
+                  const bFormat = (b.format || '').toLowerCase();
+                  const aOrder = formatOrder[aFormat as keyof typeof formatOrder] || 5;
+                  const bOrder = formatOrder[bFormat as keyof typeof formatOrder] || 5;
+                  return aOrder - bOrder;
+                });
+                
+                return sortedImages.map((img, idx) => (
                  <tr key={idx} className="border-b hover:bg-muted/20">
                    <td className="p-2 border text-center">{idx + 1}</td>
                    <td className="p-2 border text-center">
@@ -998,8 +1026,8 @@ export function AuditMain() {
                      <a href={img.src} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">{img.src}</a>
                    </td>
                    <td className="p-2 border text-center">{img.size ? (img.size / 1024).toFixed(1) : '—'}</td>
-                   <td className="p-2 border text-center">{img.format || '—'}</td>
-                   <td className="p-2 border text-center">{img.is_small ? 'Yes' : 'No'}</td>
+                   <td className="p-2 border text-center text-xs font-mono w-[10%]">{img.format || '—'}</td>
+                   <td className="p-2 border text-center text-xs">{img.is_small ? 'Yes' : 'No'}</td>
                    <td className="p-2 border max-w-xs truncate">
                      <a href={img.page_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">{img.page_url}</a>
                    </td>
@@ -1054,7 +1082,23 @@ export function AuditMain() {
                   <th className="p-2 border">Href</th>
                   <th className="p-2 border">Type</th>
                   <th className="p-2 border">Anchor Text</th>
-                  <th className="p-2 border">Page URL</th>
+                  <th className="p-2 border">Page URL
+                    <button
+                      type="button"
+                      className="ml-2 inline-flex items-center px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-600 dark:text-blue-300 text-xs font-medium border border-blue-200 dark:border-blue-800 transition"
+                      title="Copy all page URLs"
+                      onClick={() => {
+                        const allPageUrls = projects[0]?.all_links_analysis?.map(link => link.page_url) || [];
+                        // Remove duplicates
+                        const uniquePageUrls = Array.from(new Set(allPageUrls));
+                        navigator.clipboard.writeText(uniquePageUrls.join('\n'));
+                        toast('Copied all page URLs!');
+                      }}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16h8M8 12h8m-7 8h6a2 2 0 002-2V6a2 2 0 00-2-2H8a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                      Copy All
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>

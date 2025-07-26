@@ -1872,8 +1872,8 @@ async function analyzeImages(html: string, baseUrl: string): Promise<any[]> {
     const altMatch = match.match(/alt=["']([^"']*?)["']/i);
     const alt = altMatch ? altMatch[1] : null;
     let format = null;
-    let sizeKb = null;
-    let isLessThan500kb = null;
+    // let sizeKb = null;
+    // let isLessThan500kb = null;
     try {
       // Resolve relative URLs
       let url = src;
@@ -1887,14 +1887,14 @@ async function analyzeImages(html: string, baseUrl: string): Promise<any[]> {
       }
       format = url.split('.').pop()?.split('?')[0].toLowerCase() || null;
       // Only fetch if it's http(s)
-      if (url.startsWith('http')) {
-        const res = await axios.head(url, { timeout: 5000 });
-        const size = res.headers['content-length'] ? parseInt(res.headers['content-length']) : null;
-        if (size !== null && !isNaN(size)) {
-          sizeKb = Math.round(size / 1024);
-          isLessThan500kb = size < 500 * 1024;
-        }
-      }
+      // if (url.startsWith('http')) {
+      //   const res = await axios.head(url, { timeout: 5000 });
+      //   const size = res.headers['content-length'] ? parseInt(res.headers['content-length']) : null;
+      //   if (size !== null && !isNaN(size)) {
+      //     sizeKb = Math.round(size / 1024);
+      //     isLessThan500kb = size < 500 * 1024;
+      //   }
+      // }
     } catch (e) {
       // Ignore fetch errors, leave size null
     }
@@ -1902,8 +1902,8 @@ async function analyzeImages(html: string, baseUrl: string): Promise<any[]> {
       src,
       alt,
       format,
-      sizeKb,
-      isLessThan500kb,
+      // sizeKb,
+      // isLessThan500kb,
     };
   }));
   return images;
