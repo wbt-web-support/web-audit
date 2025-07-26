@@ -7,6 +7,7 @@ import path from "path";
 import fs from "fs/promises";
 import axios from "axios";
 import { analyzePerformanceAndAccessibility } from "./analyzePerformanceWithPageSpeed";
+import { extractImagesFromHtmlAndText } from '@/lib/services/extract-resources';
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const PAGESPEED_API_KEY = process.env.PAGESPEED_API_KEY;
 
@@ -1866,47 +1867,7 @@ async function analyzeSocialMetaTags(html: string): Promise<any> {
 
 // --- Add this new function for image analysis ---
 async function analyzeImages(html: string, baseUrl: string): Promise<any[]> {
-  const imgMatches = html.match(/<img[^>]*src=["']([^"']*?)["'][^>]*>/gi) || [];
-  const images = await Promise.all(imgMatches.map(async (match) => {
-    const src = match.match(/src=["']([^"']*?)["']/)?.[1] || "";
-    const altMatch = match.match(/alt=["']([^"']*?)["']/i);
-    const alt = altMatch ? altMatch[1] : null;
-    let format = null;
-    // let sizeKb = null;
-    // let isLessThan500kb = null;
-    try {
-      // Resolve relative URLs
-      let url = src;
-      if (src && !src.startsWith('http')) {
-        if (src.startsWith('/')) {
-          const base = new URL(baseUrl);
-          url = base.origin + src;
-        } else {
-          url = baseUrl.replace(/\/[^/]*$/, '/') + src;
-        }
-      }
-      format = url.split('.').pop()?.split('?')[0].toLowerCase() || null;
-      // Only fetch if it's http(s)
-      // if (url.startsWith('http')) {
-      //   const res = await axios.head(url, { timeout: 5000 });
-      //   const size = res.headers['content-length'] ? parseInt(res.headers['content-length']) : null;
-      //   if (size !== null && !isNaN(size)) {
-      //     sizeKb = Math.round(size / 1024);
-      //     isLessThan500kb = size < 500 * 1024;
-      //   }
-      // }
-    } catch (e) {
-      // Ignore fetch errors, leave size null
-    }
-    return {
-      src,
-      alt,
-      format,
-      // sizeKb,
-      // isLessThan500kb,
-    };
-  }));
-  return images;
+  return extractImagesFromHtmlAndText(html, baseUrl);
 }
 
 // async function analyzePerformance(url: string): Promise<any> {

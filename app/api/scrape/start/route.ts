@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { toast } from "react-toastify";
 import * as cheerio from "cheerio";
 import pLimit from "p-limit";
+import { extractImagesFromHtmlAndText, extractLinksFromHtmlAndText } from '@/lib/services/extract-resources';
 
 // URL normalization function (same as in WebScraper)
 function normalizeUrl(url: string): string {
@@ -351,6 +352,11 @@ async function crawlWebsite(
     }
   }
 
+  // Helper function to check if URL is a data URL (base64 encoded)
+  function isDataUrl(url: string): boolean {
+    return url.startsWith('data:');
+  }
+
   async function getImageSize(url: string, skipSizeCheck = false): Promise<number | null> {
     if (skipSizeCheck) return null;
     try {
@@ -443,84 +449,13 @@ async function crawlWebsite(
         .update({ pages_crawled: pagesCrawled })
         .eq("id", projectId);
 
-      // Extract images and links from HTML using cheerio in parallel
-      const $ = cheerio.load(pageData.html);
-      const limit = pLimit(15); // Increased concurrency from 5 to 15
-      const imgTags = $("img[src]").toArray();
-      const aTags = $("a[href]").toArray();
-
-      // Image extraction promise
-      const imagesPromise = Promise.all(
-        imgTags.map((img) => {
-          return limit(async () => {
-            const srcRaw = $(img).attr("src") || "";
-            const alt = $(img).attr("alt") || "";
-            // Make src absolute
-            let src = srcRaw;
-            try {
-              src = new URL(srcRaw, normalizedUrl).href;
-            } catch {}
-            const format = getFileFormat(src);
-            let size: number | null = null;
-            let is_small: boolean | null = null;
-            // Skip image size check for speed
-            // If you want to enable, set skipImageSizeCheck = false
-            const skipImageSizeCheck = true;
-            if (["jpg", "jpeg", "png", "svg", "webp", "gif"].includes(format)) {
-              size = await getImageSize(src, skipImageSizeCheck);
-              is_small = size !== null ? size < 500 * 1024 : null;
-            }
-            return {
-              src,
-              alt,
-              format,
-              size,
-              is_small,
-              page_url: normalizedUrl,
-            };
-          });
-        })
-      );
-
-      // Link extraction promise
-      const linksPromise = Promise.resolve(
-        aTags.map((a) => {
-          let hrefRaw = $(a).attr("href") || "";
-          let text = $(a).text().trim();
-          // Make href absolute
-          let href = hrefRaw;
-          try {
-            href = new URL(hrefRaw, normalizedUrl).href;
-          } catch {
-            // If relative, try to resolve
-            try {
-              href = new URL(hrefRaw, baseUrl).href;
-            } catch {}
-          }
-          // Determine if internal or external
-          let type: "internal" | "external" = "external";
-          try {
-            const hrefUrl = new URL(href);
-            const base = new URL(baseUrl);
-            type = hrefUrl.hostname === base.hostname ? "internal" : "external";
-          } catch {}
-          return {
-            href,
-            type,
-            text,
-            page_url: normalizedUrl,
-          };
-        })
-      );
-
-      // Run both in parallel
-      console.log(`Image section started`);
-      console.log(`Link section started`);
-      const [images, links] = await Promise.all([imagesPromise, linksPromise]);
-      allImages.push(...images);
-      allLinks.push(...links);
-      console.log(`Image section completed`);
-      console.log(`Link section completed`);
+      // Use shared utility for image and link extraction
+      const allPageImages = extractImagesFromHtmlAndText(pageData.html, normalizedUrl);
+      const allPageLinks = extractLinksFromHtmlAndText(pageData.html, normalizedUrl);
+      allImages.push(...allPageImages);
+      allLinks.push(...allPageLinks);
+      console.log(`Image section completed - Found ${allPageImages.length} unique images`);
+      console.log(`Link section completed - Found ${allPageLinks.length} unique links`);
     });
 
     // After crawling, store all image analysis in audit_projects
