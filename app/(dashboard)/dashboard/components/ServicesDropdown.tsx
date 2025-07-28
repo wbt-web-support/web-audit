@@ -1,31 +1,21 @@
 "use client"
-import React, { useRef, useEffect } from 'react'
-import { ArrowUp, ArrowDown } from "lucide-react";
+import React from 'react'
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '@/app/stores/store';
 import { setSelectedServices } from '@/app/stores/dashboardFormSlice';
-import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuCheckboxItem,
-} from '@/components/ui/dropdown-menu';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Settings } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 const SERVICES = [
-    { label: "Check Contact details Consistency", value: "contact_details_consistency" },
+    { label: "Brand Consistency", value: "contact_details_consistency" },
+    { label: "Hidden URL", value: "check_custom_urls" },
+    { label: "Stripe Keys Check", value: "check_stripe_keys" },
     { label: "Add custom instructions", value: "custom_instructions" },
-    { label: "Check Custom URLs", value: "check_custom_urls" },
-    { label: "Check Stripe Keys", value: "check_stripe_keys" },
-   
-  ];
-  
+];
 
 /**
- * Dropdown for selecting additional audit services.
+ * Simple list of checkboxes for selecting additional audit services.
  * Fully supports dark/light mode and uses shared UI primitives.
  * Styled to match ProjectForm fields.
  */
@@ -34,9 +24,8 @@ export default function ServicesDropdown() {
   const selected = useSelector((state: RootState) => state.dashboardForm.selectedServices);
   const crawlType = useSelector((state: RootState) => state.dashboardForm.crawlType);
 
-  const handleCheckbox = (value: string) => {
-    // Allow deselection always
-    if (selected.includes(value)) {
+  const handleCheckbox = (value: string, checked: boolean) => {
+    if (!checked) {
       // Deselecting, always allowed
       const newSelected = selected.filter((v) => v !== value);
       dispatch(setSelectedServices(newSelected));
@@ -53,30 +42,25 @@ export default function ServicesDropdown() {
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full flex items-center justify-between text-left"
-        >
-          <span>
-            Other Services {selected.length > 0 ? `(${selected.length})` : ""}
-          </span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-full">
+    <div className="space-y-3">
+      <Label className="text-sm font-medium">Other Services</Label>
+      <div className="space-y-2">
         {SERVICES.map((service) => (
-          <DropdownMenuCheckboxItem
-            key={service.value}
-            checked={selected.includes(service.value)}
-            onCheckedChange={() => handleCheckbox(service.value)}
-            className="flex items-center gap-2 cursor-pointer data-[state=checked]:text-blue-600 dark:data-[state=checked]:text-blue-400"
-          >
-            {service.label}
-          </DropdownMenuCheckboxItem>
+          <div key={service.value} className="flex items-center space-x-2">
+            <Checkbox
+              id={service.value}
+              checked={selected.includes(service.value)}
+              onCheckedChange={(checked) => handleCheckbox(service.value, checked as boolean)}
+            />
+            <Label
+              htmlFor={service.value}
+              className="text-sm font-normal cursor-pointer"
+            >
+              {service.label}
+            </Label>
+          </div>
         ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </div>
+    </div>
   );
 }

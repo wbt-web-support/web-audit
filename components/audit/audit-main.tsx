@@ -565,7 +565,7 @@ export function AuditMain() {
 
       const data = await response.json();
      console.log("data **********",data)
-     return;
+  
       if (!response.ok) {
         setError(data.error || 'Failed to start analysis');
         setAnalyzingPages(prev => {
