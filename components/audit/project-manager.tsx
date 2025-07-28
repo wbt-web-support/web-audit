@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { AuditProject } from '@/lib/types/database';
 import { 
   Loader2, 
@@ -13,12 +14,36 @@ import {
   Calendar,
   Play,
   BarChart3,
-  Edit
+  Edit,
+  ExternalLink,
+  Link,
+  Image,
+  Eye,
+  TrendingUp,
+  Clock,
+  CheckCircle,
+  AlertTriangle,
+  XCircle,
+  Zap,
+  Activity,
+  Layers,
+  Target,
+  ArrowRight,
+  Sparkles,
+  Building,
+  Phone,
+  Mail,
+  MapPin,
+  FileText,
+  Search,
+  X
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export function ProjectManager() {
   const [projects, setProjects] = useState<AuditProject[]>([]);
+  const [filteredProjects, setFilteredProjects] = useState<AuditProject[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const router = useRouter();
@@ -38,6 +63,19 @@ export function ProjectManager() {
     fetchProjects();
   }, []);
 
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setFilteredProjects(projects);
+    } else {
+      const filtered = projects.filter(project => 
+        project.base_url.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        project.status.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (project.company_name && project.company_name.toLowerCase().includes(searchQuery.toLowerCase()))
+      );
+      setFilteredProjects(filtered);
+    }
+  }, [projects, searchQuery]);
+
   const fetchProjects = async () => {
     try {
       const response = await fetch('/api/audit-projects');
@@ -54,8 +92,6 @@ export function ProjectManager() {
       setLoading(false);
     }
   };
-
-
 
   const deleteProject = async (projectId: string) => {
     if (!confirm('Are you sure you want to delete this project? This will remove all crawled data and analysis results.')) {
@@ -80,19 +116,95 @@ export function ProjectManager() {
 
   const getStatusBadge = (status: string) => {
     const variants = {
-      pending: 'bg-muted text-muted-foreground',
-      crawling: 'bg-blue-500 dark:bg-blue-600 text-white',
-      completed: 'bg-emerald-500 dark:bg-emerald-600 text-white',
-      analyzing: 'bg-amber-500 dark:bg-amber-600 text-white',
-      analyzed: 'bg-purple-500 dark:bg-purple-600 text-white',
-      error: 'bg-destructive text-destructive-foreground'
+      pending: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+      crawling: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+      completed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
+      analyzing: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300',
+      analyzed: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
+      error: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+    };
+
+    const icons = {
+      pending: <Clock className="h-3 w-3" />,
+      crawling: <Activity className="h-3 w-3" />,
+      completed: <CheckCircle className="h-3 w-3" />,
+      analyzing: <Zap className="h-3 w-3" />,
+      analyzed: <Sparkles className="h-3 w-3" />,
+      error: <XCircle className="h-3 w-3" />
     };
 
     return (
-      <Badge className={variants[status as keyof typeof variants] || 'bg-muted text-muted-foreground'}>
+      <Badge className={`flex items-center gap-1 ${variants[status as keyof typeof variants] || 'bg-slate-100 text-slate-700'}`}>
+        {icons[status as keyof typeof icons]}
         {status.toUpperCase()}
       </Badge>
     );
+  };
+
+  const getStatusColor = (status: string) => {
+    const colors = {
+      pending: 'text-slate-500',
+      crawling: 'text-blue-500',
+      completed: 'text-emerald-500',
+      analyzing: 'text-amber-500',
+      analyzed: 'text-purple-500',
+      error: 'text-red-500'
+    };
+    return colors[status as keyof typeof colors] || 'text-slate-500';
+  };
+
+  const calculateMetrics = (project: AuditProject) => {
+    const totalLinks = project.all_links_analysis?.length || 0;
+    const internalLinks = project.all_links_analysis?.filter(link => link.type === 'internal').length || 0;
+    const externalLinks = project.all_links_analysis?.filter(link => link.type === 'external').length || 0;
+    const totalImages = project.all_image_analysis?.length || 0;
+    const smallImages = project.all_image_analysis?.filter(img => img.is_small).length || 0;
+    const largeImages = totalImages - smallImages;
+
+    // Calculate image format breakdowns
+    const imageFormats = project.all_image_analysis?.reduce((acc, img) => {
+      let format = img.format?.toLowerCase() || 'unknown';
+      
+      // Handle data URLs
+      if (format.startsWith('data:')) {
+        if (format.includes('image/svg+xml')) {
+          format = 'svg';
+        } else if (format.includes('image/jpeg') || format.includes('image/jpg')) {
+          format = 'jpg';
+        } else if (format.includes('image/png')) {
+          format = 'png';
+        } else if (format.includes('image/webp')) {
+          format = 'webp';
+        } else if (format.includes('image/gif')) {
+          format = 'gif';
+        } else if (format.includes('image/bmp')) {
+          format = 'bmp';
+        } else if (format.includes('image/tiff') || format.includes('image/tif')) {
+          format = 'tiff';
+        } else {
+          format = 'data-url';
+        }
+      }
+      
+      acc[format] = (acc[format] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>) || {};
+
+    // Get top formats (limit to 5 most common)
+    const topFormats = Object.entries(imageFormats)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 5);
+
+    return {
+      totalLinks,
+      internalLinks,
+      externalLinks,
+      totalImages,
+      smallImages,
+      largeImages,
+      imageFormats,
+      topFormats
+    };
   };
 
   const goToAudit = () => {
@@ -101,79 +213,151 @@ export function ProjectManager() {
 
   if (loading) {
     return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800">
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin" />
+            <div className="text-center">
+              <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />
+              <p className="text-slate-600 dark:text-slate-400">Loading your projects...</p>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Projects Management</h1>
-          <p className="text-muted-foreground">Create and manage your website audit Projects</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800">
+      <div className="container mx-auto px-4 py-8 space-y-8">
+                {/* Header Section */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
+              <Globe className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+            </div>
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-blue-600 dark:from-white dark:to-blue-400 bg-clip-text text-transparent">
+              Project Dashboard
+            </h1>
+          </div>
+                    <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl">
+            Monitor and manage your website audit projects with comprehensive analytics and insights
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          {/* <Button onClick={() => router.push('/projects/create')}>
-            <Plus className="h-4 w-4 mr-2" />
-            Create New Project
-          </Button> */}
-        
-        </div>
-      </div>
 
-      {error && (
-        <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
-          <div className="flex items-center gap-2 text-destructive">
+        {/* Search Section */}
+        <div className="flex items-center gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              type="text"
+              placeholder="Search projects by URL, status, or company..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 pr-10 bg-white/80 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 focus:ring-blue-500"
+            />
+            {searchQuery && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 hover:bg-slate-100 dark:hover:bg-slate-700"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+          <div className="text-sm text-slate-500 dark:text-slate-400">
+            {filteredProjects.length} of {projects.length} projects
+          </div>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
+            <div className="flex items-center gap-3 text-red-700 dark:text-red-400">
+              <AlertTriangle className="h-5 w-5" />
             <span>{error}</span>
           </div>
         </div>
       )}
 
-
-
-      {/* Projects List */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Your Projects</h2>
-        
-        {projects.length === 0 ? (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center py-8">
-                <Globe className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">No projects found</p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Create your first project to get started
-                </p>
+                {/* Projects Grid */}
+        <div className="space-y-6">
+          {filteredProjects.length === 0 ? (
+            <Card className="border-0 shadow-xl bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
+              <CardContent className="pt-12 pb-12">
+                <div className="text-center space-y-4">
+                  <div className="relative">
+                    <div className="w-24 h-24 bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 rounded-full mx-auto flex items-center justify-center">
+                      <Globe className="h-12 w-12 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-r from-emerald-400 to-blue-500 rounded-full flex items-center justify-center">
+                      <Plus className="h-4 w-4 text-white" />
+                    </div>
+                  </div>
+                                     <div className="space-y-2">
+                     <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
+                       {projects.length === 0 ? 'No projects yet' : 'No matching projects'}
+                     </h3>
+                     <p className="text-slate-600 dark:text-slate-400">
+                       {projects.length === 0 
+                         ? 'Create your first project to start analyzing websites'
+                         : `No projects match "${searchQuery}". Try adjusting your search terms.`
+                       }
+                     </p>
+                   </div>
+                  <Button 
+                    onClick={goToAudit}
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create New Project
+                  </Button>
               </div>
             </CardContent>
           </Card>
-        ) : (
-          <div className="grid gap-4">
-            {projects.map((project) => (
-              <Card key={project.id}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
+                    ) : (
+              <div className="grid gap-6">
+                {filteredProjects.map((project) => {
+                const metrics = calculateMetrics(project);
+                const progress = project.pages_crawled && project.total_pages 
+                  ? Math.round((project.pages_crawled / project.total_pages) * 100)
+                  : 0;
+
+                return (
+                  <Card key={project.id} className="border-0 shadow-xl bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-300 group">
+                    <CardHeader className="pb-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-4">
+                          <div className="p-3 bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 rounded-xl">
+                            <Globe className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                          </div>
+                          <div className="space-y-2">
                     <div className="flex items-center gap-3">
-                      <Globe className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <CardTitle className="text-lg">{project.base_url}</CardTitle>
-                        <CardDescription>
-                          Created: {new Date(project.created_at).toLocaleDateString()}
-                        </CardDescription>
+                              <h3 className="text-xl font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                {project.base_url}
+                              </h3>
+                              {getStatusBadge(project.status)}
+                            </div>
+                            <div className="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-4 w-4" />
+                                {new Date(project.created_at).toLocaleDateString()}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Clock className="h-4 w-4" />
+                                {new Date(project.updated_at).toLocaleDateString()}
+                              </div>
+                            </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {getStatusBadge(project.status)}
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => router.push(`/audit?project=${project.id}`)}
+                            className="border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/30"
                       >
-                        <BarChart3 className="h-4 w-4 mr-1" />
+                            <BarChart3 className="h-4 w-4 mr-2" />
                         View Details
                       </Button>
                       <Button
@@ -181,90 +365,269 @@ export function ProjectManager() {
                         variant="outline"
                         onClick={() => router.push(`/projects/edit/${project.id}`)}
                         disabled={project.status === 'crawling' || project.status === 'analyzing'}
-                        title={project.status === 'crawling' || project.status === 'analyzing' 
-                          ? 'Cannot edit project while it is running' 
-                          : 'Edit project details'}
+                            className="border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700/30"
                       >
-                        <Edit className="h-3 w-3 mr-1" />
+                            <Edit className="h-4 w-4 mr-2" />
                         Edit
                       </Button>
                       <Button
                         size="sm"
-                        variant="destructive"
+                            variant="outline"
                         onClick={() => deleteProject(project.id)}
+                            className="border-red-200 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30"
                       >
-                        <Trash2 className="h-3 w-3" />
+                            <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Status</p>
-                        <p className="font-medium">{project.status}</p>
+                    
+                    <CardContent className="space-y-6">
+                      {/* Progress Bar */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-slate-600 dark:text-slate-400">Progress</span>
+                          <span className="font-medium">{project.pages_crawled || 0} / {project.total_pages || 0} pages</span>
+                        </div>
+                        <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                          <div 
+                            className={`h-2 rounded-full transition-all duration-500 ${
+                              progress > 80 ? 'bg-emerald-500' : 
+                              progress > 50 ? 'bg-blue-500' : 
+                              progress > 20 ? 'bg-amber-500' : 'bg-slate-400'
+                            }`}
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Pages Crawled</p>
-                        <p className="font-medium">{project.pages_crawled || 0}</p>
+
+                      {/* Metrics Grid */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                            <span className="text-sm text-slate-600 dark:text-slate-400">Pages</span>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                              {project.pages_crawled || 0}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-500">Crawled</p>
+                          </div>
+                        </div>
+
+                        <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-lg p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <BarChart3 className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                            <span className="text-sm text-slate-600 dark:text-slate-400">Analysis</span>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                              {project.pages_analyzed || 0}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-500">Completed</p>
+                          </div>
                       </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Pages Analyzed</p>
-                        <p className="font-medium">{project.pages_analyzed || 0}</p>
+
+                        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 rounded-lg p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Link className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                            <span className="text-sm text-slate-600 dark:text-slate-400">Links</span>
                       </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Last Updated</p>
-                        <p className="font-medium">
-                          {new Date(project.updated_at).toLocaleDateString()}
+                          <div className="space-y-1">
+                            <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                              {metrics.totalLinks}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-500">
+                              {metrics.internalLinks} internal, {metrics.externalLinks} external
                         </p>
                       </div>
                     </div>
                     
-                    {/* Expected Company Information */}
+                                                 <div className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/20 dark:to-amber-800/20 rounded-lg p-4">
+                           <div className="flex items-center gap-2 mb-2">
+                             <Image className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                             <span className="text-sm text-slate-600 dark:text-slate-400">Images</span>
+                           </div>
+                           <div className="space-y-1">
+                             <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                               {metrics.totalImages}
+                             </p>
+                             <p className="text-xs text-slate-500 dark:text-slate-500">
+                               {metrics.largeImages} large, {metrics.smallImages} small
+                             </p>
+                             {metrics.topFormats.length > 0 && (
+                               <div className="flex flex-wrap gap-1 mt-2">
+                                 {metrics.topFormats.map(([format, count]) => (
+                                   <span key={format} className="px-2 py-1 bg-amber-200 dark:bg-amber-800/40 text-amber-800 dark:text-amber-200 text-xs rounded-full">
+                                     {format.toUpperCase()}: {count}
+                                   </span>
+                                 ))}
+                               </div>
+                             )}
+                           </div>
+                         </div>
+                      </div>
+
+                      {/* Detailed Metrics */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Links Breakdown */}
+                        <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4">
+                          <h4 className="font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                            <Link className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                            Link Analysis
+                          </h4>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-slate-600 dark:text-slate-400">Internal Links</span>
+                              <div className="flex items-center gap-2">
+                                <div className="w-16 bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                                  <div 
+                                    className="h-2 bg-blue-500 rounded-full"
+                                    style={{ width: `${metrics.totalLinks ? (metrics.internalLinks / metrics.totalLinks) * 100 : 0}%` }}
+                                  />
+                                </div>
+                                <span className="text-sm font-medium">{metrics.internalLinks}</span>
+                              </div>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-slate-600 dark:text-slate-400">External Links</span>
+                              <div className="flex items-center gap-2">
+                                <div className="w-16 bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                                  <div 
+                                    className="h-2 bg-emerald-500 rounded-full"
+                                    style={{ width: `${metrics.totalLinks ? (metrics.externalLinks / metrics.totalLinks) * 100 : 0}%` }}
+                                  />
+                                </div>
+                                <span className="text-sm font-medium">{metrics.externalLinks}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                                                 {/* Images Breakdown */}
+                         <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4">
+                           <h4 className="font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                             <Image className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                             Image Analysis
+                           </h4>
+                           <div className="space-y-3">
+                             <div className="flex justify-between items-center">
+                               <span className="text-sm text-slate-600 dark:text-slate-400">Large Images</span>
+                               <div className="flex items-center gap-2">
+                                 <div className="w-16 bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                                   <div 
+                                     className="h-2 bg-amber-500 rounded-full"
+                                     style={{ width: `${metrics.totalImages ? (metrics.largeImages / metrics.totalImages) * 100 : 0}%` }}
+                                   />
+                                 </div>
+                                 <span className="text-sm font-medium">{metrics.largeImages}</span>
+                               </div>
+                             </div>
+                             <div className="flex justify-between items-center">
+                               <span className="text-sm text-slate-600 dark:text-slate-400">Small Images</span>
+                               <div className="flex items-center gap-2">
+                                 <div className="w-16 bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                                   <div 
+                                     className="h-2 bg-purple-500 rounded-full"
+                                     style={{ width: `${metrics.totalImages ? (metrics.smallImages / metrics.totalImages) * 100 : 0}%` }}
+                                   />
+                                 </div>
+                                 <span className="text-sm font-medium">{metrics.smallImages}</span>
+                               </div>
+                             </div>
+                             
+                             {/* Image Formats Breakdown */}
+                             {metrics.topFormats.length > 0 && (
+                               <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
+                                 <h5 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Format Breakdown</h5>
+                                 <div className="space-y-2">
+                                   {metrics.topFormats.map(([format, count]) => (
+                                     <div key={format} className="flex justify-between items-center">
+                                       <span className="text-sm text-slate-600 dark:text-slate-400 capitalize">
+                                         {format.toUpperCase()}
+                                       </span>
+                                       <div className="flex items-center gap-2">
+                                         <div className="w-16 bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                                           <div 
+                                             className="h-2 rounded-full"
+                                             style={{ 
+                                               width: `${metrics.totalImages ? (count / metrics.totalImages) * 100 : 0}%`,
+                                               backgroundColor: format === 'jpg' || format === 'jpeg' ? '#f59e0b' :
+                                                             format === 'png' ? '#3b82f6' :
+                                                             format === 'svg' ? '#10b981' :
+                                                             format === 'webp' ? '#8b5cf6' :
+                                                             format === 'gif' ? '#ec4899' :
+                                                             format === 'bmp' ? '#ef4444' :
+                                                             format === 'tiff' ? '#f97316' :
+                                                             format === 'data-url' ? '#6366f1' : '#6b7280'
+                                             }}
+                                           />
+                                         </div>
+                                         <span className="text-sm font-medium">{count}</span>
+                                       </div>
+                                     </div>
+                                   ))}
+                                 </div>
+                               </div>
+                             )}
+                           </div>
+                         </div>
+                      </div>
+
+                      {/* Company Information */}
                     {(project.company_name || project.phone_number || project.email || project.address || project.custom_info) && (
-                      <div className="border-t pt-4">
-                        <p className="text-sm font-medium text-muted-foreground mb-2">Expected Company Information:</p>
+                        <div className="bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-800/50 dark:to-blue-900/20 rounded-lg p-4">
+                          <h4 className="font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                            <Target className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+                            Expected Company Information
+                          </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
                           {project.company_name && (
-                            <div>
-                              <span className="text-muted-foreground">Company:</span>
-                              <span className="ml-2 font-medium">{project.company_name}</span>
+                              <div className="flex items-center gap-2">
+                                <Building className="h-4 w-4 text-slate-500" />
+                                <span className="text-slate-600 dark:text-slate-400">Company:</span>
+                                <span className="font-medium text-slate-900 dark:text-white">{project.company_name}</span>
                             </div>
                           )}
                           {project.phone_number && (
-                            <div>
-                              <span className="text-muted-foreground">Phone:</span>
-                              <span className="ml-2 font-medium">{project.phone_number}</span>
+                              <div className="flex items-center gap-2">
+                                <Phone className="h-4 w-4 text-slate-500" />
+                                <span className="text-slate-600 dark:text-slate-400">Phone:</span>
+                                <span className="font-medium text-slate-900 dark:text-white">{project.phone_number}</span>
                             </div>
                           )}
                           {project.email && (
-                            <div>
-                              <span className="text-muted-foreground">Email:</span>
-                              <span className="ml-2 font-medium">{project.email}</span>
+                              <div className="flex items-center gap-2">
+                                <Mail className="h-4 w-4 text-slate-500" />
+                                <span className="text-slate-600 dark:text-slate-400">Email:</span>
+                                <span className="font-medium text-slate-900 dark:text-white">{project.email}</span>
                             </div>
                           )}
                           {project.address && (
-                            <div className="md:col-span-2">
-                              <span className="text-muted-foreground">Address:</span>
-                              <span className="ml-2 font-medium">{project.address}</span>
+                              <div className="flex items-center gap-2 md:col-span-2">
+                                <MapPin className="h-4 w-4 text-slate-500" />
+                                <span className="text-slate-600 dark:text-slate-400">Address:</span>
+                                <span className="font-medium text-slate-900 dark:text-white">{project.address}</span>
                             </div>
                           )}
                           {project.custom_info && (
-                            <div className="md:col-span-2 lg:col-span-3">
-                              <span className="text-muted-foreground">Additional Info:</span>
-                              <span className="ml-2 font-medium">{project.custom_info}</span>
+                              <div className="flex items-center gap-2 md:col-span-2 lg:col-span-3">
+                                <FileText className="h-4 w-4 text-slate-500" />
+                                <span className="text-slate-600 dark:text-slate-400">Additional Info:</span>
+                                <span className="font-medium text-slate-900 dark:text-white">{project.custom_info}</span>
                             </div>
                           )}
                         </div>
                       </div>
                     )}
-                  </div>
                 </CardContent>
               </Card>
-            ))}
+                );
+              })}
           </div>
         )}
+        </div>
       </div>
     </div>
   );
