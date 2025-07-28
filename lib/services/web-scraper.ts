@@ -84,7 +84,13 @@ export class WebScraper {
         pages.push(pageData);
         
         if (onPageScraped) {
-          await onPageScraped(pageData);
+          try {
+            await onPageScraped(pageData);
+          } catch (error) {
+            // If the callback throws an error (like stop signal), break out of the loop
+            console.log('Crawling stopped by callback:', error);
+            break;
+          }
         }
 
         // Add internal links to queue (normalized)

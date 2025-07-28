@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 
 import { AuditProject, ScrapedPage } from '@/lib/types/database';
+import { ImageAnalysisTable } from './image-analysis-table';
+import { LinksAnalysisTable } from './links-analysis-table';
 import { 
   Loader2, 
   Globe, 
@@ -36,6 +39,19 @@ import {
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'react-toastify';
+import { RootState } from '@/app/stores/store';
+import {
+  initializeSession,
+  startCrawling,
+  stopCrawling,
+  updateLiveCounts,
+  updateCrawledPages,
+  updateAnalyzedPages,
+  toggleImageAnalysis,
+  toggleLinksAnalysis,
+  completeCrawling,
+  setActiveProject,
+} from '@/app/stores/auditSlice';
 
 interface AnalyzedPage {
   page: ScrapedPage & {
@@ -52,8 +68,17 @@ interface AnalyzedPage {
 }
 
 export function AuditMain() {
+  const dispatch = useDispatch();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedProjectId = searchParams.get('project');
+  
+  // Redux state
+  const auditState = useSelector((state: RootState) => state.audit);
+  const currentSession = selectedProjectId ? auditState.sessions[selectedProjectId] : null;
+  
+  // Local state (keeping UI-specific state local)
   const [projects, setProjects] = useState<AuditProject[]>([]);
-  const [analyzedPages, setAnalyzedPages] = useState<AnalyzedPage[]>([]);
   const [selectedPages, setSelectedPages] = useState<Set<string>>(new Set());
   const [analyzingPages, setAnalyzingPages] = useState<Set<string>>(new Set());
   const [deletingPages, setDeletingPages] = useState<Set<string>>(new Set());
@@ -63,33 +88,31 @@ export function AuditMain() {
   const [analyzing, setAnalyzing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
-  const [currentAction, setCurrentAction] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [analysisFilter, setAnalysisFilter] = useState<string[]>([]);
   const [scoreRange, setScoreRange] = useState({ min: 0, max: 100 });
   const [sortField, setSortField] = useState<'title' | 'status' | 'score'>('title');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const selectedProjectId = searchParams.get('project');
   const crawlingStartedRef = useRef(false);
-  const [crawlProgress, setCrawlProgress] = useState(0); // percent
-  const [isCrawling, setIsCrawling] = useState(false);
-  const [showAllImageAnalysis, setShowAllImageAnalysis] = useState(false);
-  const [showAllLinksAnalysis, setShowAllLinksAnalysis] = useState(false);
+
   useEffect(() => {
     fetchData();
-  }, [selectedProjectId]);
+    // Initialize Redux session when component mounts or project changes
+    if (selectedProjectId) {
+      dispatch(initializeSession({ projectId: selectedProjectId }));
+      dispatch(setActiveProject({ projectId: selectedProjectId }));
+    }
+  }, [selectedProjectId, dispatch]);
 
 
 
   // Manual refresh function for user control
   const manualRefresh = async () => {
+    console.log('Manual refresh triggered');
     setError('');
-    setCurrentAction('Refreshing data...');
+    setLoading(true);
     await fetchData();
-    setCurrentAction('');
   };
 
   const toggleStatusFilter = (status: string) => {
@@ -166,7 +189,7 @@ export function AuditMain() {
             if(resultsData.project.status=="pending" && !crawlingStartedRef.current){
               crawlingStartedRef.current = true;
           
-              startCrawling(projectData.project.id)
+              startCrawlingProcess(projectData.project.id)
             }
             if (resultsResponse.ok && resultsData.pageResults) {
               
@@ -189,7 +212,10 @@ export function AuditMain() {
                 overallStatus: results?.overall_status || 'pending'
               };
             });
-            setAnalyzedPages(pages);
+            // Update Redux state with analyzed pages
+            if (selectedProjectId) {
+              dispatch(updateAnalyzedPages({ projectId: selectedProjectId, pages }));
+            }
             
             // Update analyzing state based on database analysis_status
             setAnalyzingPages(prev => {
@@ -211,19 +237,14 @@ export function AuditMain() {
                 }
               });
               
-              // If no pages are analyzing anymore, clear the action
-              if (newAnalyzing.size === 0 && prev.size > 0) {
-                setCurrentAction('');
-              }
-              
-              
-              
               return newAnalyzing;
             });
           }
         } catch {
           // Project exists but no pages yet
-          setAnalyzedPages([]);
+          if (selectedProjectId) {
+            dispatch(updateAnalyzedPages({ projectId: selectedProjectId, pages: [] }));
+          }
         }
       } else {
         setError(projectData.error || 'Failed to fetch project');
@@ -235,37 +256,158 @@ export function AuditMain() {
     }
   };
 
+  // Fetch crawled pages in real-time during crawling
+  const fetchCrawledPages = async () => {
+    if (!selectedProjectId || !currentSession?.isCrawling) return;
+    
+    try {
+      const response = await fetch(`/api/audit-projects/${selectedProjectId}/crawl-status`);
+      const data = await response.json();
+      
+      if (data.recent_pages && data.recent_pages.length > 0) {
+        // Convert crawled pages to AnalyzedPage format
+        const crawledPages = data.recent_pages.map((page: any) => ({
+          page: {
+            id: page.id,
+            url: page.url,
+            title: page.title || 'Untitled',
+            status_code: page.status_code,
+            analysis_status: 'pending' // All crawled pages start as pending
+          },
+          project: {
+            id: projects[0]?.id || selectedProjectId,
+            base_url: projects[0]?.base_url || '',
+            status: projects[0]?.status || 'crawling'
+          },
+          resultCount: 0, // No analysis results yet
+          overallScore: 0,
+          overallStatus: 'pending'
+        }));
+        
+        // Update Redux state with crawled pages
+        dispatch(updateCrawledPages({ projectId: selectedProjectId, pages: crawledPages }));
+      }
+    } catch (error) {
+      console.error('Error fetching crawled pages:', error);
+    }
+  };
+
   // Poll for crawl progress when crawling is active
   useEffect(() => {
-    if (!isCrawling || !projects[0]) return;
+    if (!currentSession?.isCrawling || !projects[0]) return;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/audit-projects/${projects[0].id}`);
+        const res = await fetch(`/api/audit-projects/${projects[0].id}/crawl-status`);
         const data = await res.json();
-        if (data.project.status !== 'crawling') {
-          setIsCrawling(false);
-          setCrawlProgress(0);
+        
+        if (!data.is_crawling) {
+          dispatch(completeCrawling({ projectId: projects[0].id }));
           clearInterval(interval);
+          
+          // Refresh data to get final state
+          fetchData();
           return;
         }
-        const total = data.project.total_pages || 50; // fallback to maxPages
-        const crawled = data.project.pages_crawled || 0;
-        setCrawlProgress(Math.min(100, Math.round((crawled / total) * 100)));
-      } catch {
-        // ignore errors
+        
+        // Update project data
+        
+        // Update live counts from API response
+        const newImageCount = data.project.total_images || 0;
+        const newLinkCount = data.project.total_links || 0;
+        const newInternalLinks = data.project.internal_links || 0;
+        const newExternalLinks = data.project.external_links || 0;
+        const newPagesCount = data.project.pages_crawled || 0;
+        
+        console.log('Live counts update:', {
+          images: newImageCount,
+          links: newLinkCount,
+          internal: newInternalLinks,
+          external: newExternalLinks,
+          pages: newPagesCount
+        });
+        
+        // Update Redux state with live counts
+        dispatch(updateLiveCounts({
+          projectId: projects[0].id,
+          imageCount: newImageCount,
+          linkCount: newLinkCount,
+          internalLinks: newInternalLinks,
+          externalLinks: newExternalLinks,
+          pagesCount: newPagesCount
+        }));
+        
+        // Update project data with live counts
+        if (projects[0]) {
+          setProjects(prev => prev.map(p => 
+            p.id === projects[0].id 
+              ? { 
+                  ...p, 
+                  pages_crawled: data.project.pages_crawled,
+                  total_pages: data.project.total_pages,
+                  all_image_analysis: data.project.total_images ? Array(data.project.total_images).fill({}) : [],
+                  all_links_analysis: data.project.total_links ? Array(data.project.total_links).fill({}) : []
+                }
+              : p
+          ));
+        }
+        
+        // Show recent page updates
+        if (data.recent_pages && data.recent_pages.length > 0) {
+          // Update Redux state with crawled pages
+          dispatch(updateCrawledPages({ projectId: projects[0].id, pages: data.recent_pages }));
+          
+          const latestPage = data.recent_pages[0];
+          if (latestPage && latestPage.title) {
+            // Update current action in Redux
+            dispatch(startCrawling({ projectId: projects[0].id }));
+          }
+          
+          // Update pages table with ALL crawled pages (no limit)
+          const crawledPages = data.recent_pages.map((page: any) => ({
+            page: {
+              id: page.id,
+              url: page.url,
+              title: page.title || 'Untitled',
+              status_code: page.status_code,
+              analysis_status: 'pending' // All crawled pages start as pending
+            },
+            project: {
+              id: projects[0]?.id || selectedProjectId,
+              base_url: projects[0]?.base_url || '',
+              status: projects[0]?.status || 'crawling'
+            },
+            resultCount: 0, // No analysis results yet
+            overallScore: 0,
+            overallStatus: 'pending'
+          }));
+          
+          // Update analyzed pages with real-time crawled pages
+          dispatch(updateAnalyzedPages({ projectId: projects[0].id, pages: crawledPages }));
+          console.log(`Updated pages table with ${crawledPages.length} crawled pages`);
+        } else if (data.recent_pages && data.recent_pages.length === 0) {
+          // Clear pages if no pages are crawled yet
+          dispatch(updateAnalyzedPages({ projectId: projects[0].id, pages: [] }));
+          dispatch(updateCrawledPages({ projectId: projects[0].id, pages: [] }));
+        }
+        
+      } catch (error) {
+        console.error('Crawl status polling error:', error);
       }
-    }, 2000);
+    }, 1000); // Poll every second for better real-time updates
     return () => clearInterval(interval);
-  }, [isCrawling, projects]);
+  }, [currentSession?.isCrawling, projects, dispatch]);
+
+
 
   // Start polling on crawl start
-  const startCrawling = async (projectId: string) => {
+  const startCrawlingProcess = async (projectId: string) => {
     setCrawling(true);
-    setIsCrawling(true);
-    setCrawlProgress(0);
-    setCurrentAction(`Starting crawl for project ${projectId}`);
     setError('');
-    toast("crawling is started");
+    
+    // Initialize Redux session and start crawling
+    dispatch(initializeSession({ projectId }));
+    dispatch(startCrawling({ projectId }));
+    
     try {
       const response = await fetch('/api/scrape/start', {
         method: 'POST',
@@ -276,34 +418,55 @@ export function AuditMain() {
       });
 
       const data = await response.json();
-      if (data.estimated_time_sec) {
-        toast(`Estimated crawling time: ${Math.round(data.estimated_time_sec)} seconds`);
-      }
-      fetchData();
-      toast("crawling is end");
+      
       if (!response.ok) {
-        setError(data.error || 'Failed to start crawling');
-        setIsCrawling(false);
-        setCrawlProgress(0);
+        const errorMessage = data.error || 'Failed to start crawling';
+        setError(errorMessage);
+        dispatch(stopCrawling({ projectId }));
+        toast.error(errorMessage);
+        return;
       }
+
+      // Show success message with estimated time
+      if (data.estimated_time_sec) {
+        toast.success(`Crawling started! Estimated time: ${Math.round(data.estimated_time_sec)} seconds`);
+      } else {
+        toast.success('Crawling started!');
+      }
+      
+      // Reset project data for fresh start
+      if (projects[0]) {
+        setProjects(prev => prev.map(p => 
+          p.id === projectId 
+            ? { 
+                ...p, 
+                pages_crawled: 0,
+                total_pages: 0,
+                all_image_analysis: [],
+                all_links_analysis: [],
+                custom_urls_analysis: [],
+                stripe_keys_analysis: [],
+                status: 'crawling'
+              }
+            : p
+        ));
+      }
+      
+      // Start polling immediately for real-time updates
+      console.log('Crawling started - polling for live updates...');
+      
     } catch (error) {
+      console.error('Start crawling error:', error);
       setError('Failed to start crawling');
-      setIsCrawling(false);
-      setCrawlProgress(0);
+      dispatch(stopCrawling({ projectId }));
     } finally {
       setCrawling(false);
-      setCurrentAction('');
     }
   };
 
   const startAnalysis = async (projectId: string, pageIds: string[]) => {
     setAnalyzing(true);
     const isBatchAnalysis = pageIds.length > 1;
-    setCurrentAction(
-      isBatchAnalysis 
-        ? `Starting batch analysis for ${pageIds.length} pages (maintaining 5 concurrent analyses)`
-        : `Starting analysis for 1 page`
-    );
     setError('');
     
     // Mark pages as analyzing
@@ -324,11 +487,6 @@ export function AuditMain() {
         setError(data.error || 'Failed to start analysis');
         setAnalyzingPages(new Set()); // Clear analyzing state on error
       } else {
-        setCurrentAction(
-          isBatchAnalysis
-            ? `Batch analyzing ${pageIds.length} pages with AI (processing in parallel for faster results)...`
-            : `Analyzing page with AI...`
-        );
         // Keep analyzing state until next data fetch shows completion
       }
     } catch (error) {
@@ -340,17 +498,54 @@ export function AuditMain() {
   };
 
   const stopProcess = async (projectId: string) => {
+    // Immediately update UI for instant feedback
+    dispatch(stopCrawling({ projectId }));
+    setError('');
+    
+    // Show toast notification
+    const stopToast = toast.loading('Stopping crawling process...');
+    
     try {
       const response = await fetch(`/api/audit-projects/${projectId}/stop`, {
         method: 'POST',
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const data = await response.json();
+        console.error('Stop process error:', data.error);
         setError(data.error || 'Failed to stop process');
+        // Revert UI state if stop failed
+        dispatch(startCrawling({ projectId }));
+        
+        // Update toast with error
+        toast.dismiss(stopToast);
+        toast.error(data.error || 'Failed to stop process');
+        return;
       }
+
+      // Success - update project status immediately
+      setProjects(prev => prev.map(p => 
+        p.id === projectId 
+          ? { ...p, status: 'failed' }
+          : p
+      ));
+      
+      console.log('Process stopped successfully:', data.message);
+      
+      // Update toast with success
+      toast.dismiss(stopToast);
+      toast.success('Crawling process stopped successfully');
+      
     } catch (error) {
-      setError('Failed to stop process');
+      console.error('Stop process network error:', error);
+      setError('Network error while stopping process');
+      // Revert UI state if stop failed
+      dispatch(startCrawling({ projectId }));
+      
+      // Update toast with error
+      toast.dismiss(stopToast);
+      toast.error('Network error while stopping process');
     }
   };
 
@@ -358,7 +553,6 @@ export function AuditMain() {
     if (analyzingPages.size === 0) return;
 
     const analyzingPageIds = Array.from(analyzingPages);
-    setCurrentAction(`Stopping analysis for ${analyzingPageIds.length} pages...`);
     setError('');
 
     try {
@@ -393,9 +587,9 @@ export function AuditMain() {
       setAnalyzingPages(new Set());
 
       if (successCount === analyzingPageIds.length) {
-        setCurrentAction('All analysis processes stopped successfully');
+        toast.success('All analysis processes stopped successfully');
       } else if (successCount > 0) {
-        setCurrentAction(`Stopped ${successCount} of ${analyzingPageIds.length} analysis processes`);
+        toast.success(`Stopped ${successCount} of ${analyzingPageIds.length} analysis processes`);
         setError(`${analyzingPageIds.length - successCount} processes could not be stopped`);
       } else {
         setError('Failed to stop analysis processes');
@@ -404,8 +598,6 @@ export function AuditMain() {
       setError('Failed to stop analysis processes');
       console.error('Stop all analysis error:', error);
     }
-
-    setTimeout(() => setCurrentAction(''), 3000);
   };
 
   const deletePage = async (pageId: string) => {
@@ -427,13 +619,6 @@ export function AuditMain() {
       if (response.ok) {
         console.log('Delete successful for page:', pageId);
         
-        // Immediately remove page from local state
-        setAnalyzedPages(prev => {
-          const updated = prev.filter(p => p.page.id !== pageId);
-          console.log('Updated pages after delete:', updated.length);
-          return updated;
-        });
-        
         // Remove from selected pages if it was selected
         setSelectedPages(prev => {
           const newSelected = new Set(prev);
@@ -449,8 +634,7 @@ export function AuditMain() {
         });
 
         // Show success message
-        setCurrentAction('Page deleted successfully');
-        setTimeout(() => setCurrentAction(''), 2000);
+        toast.success('Page deleted successfully');
       } else {
         const data = await response.json();
         console.error('Delete failed:', data);
@@ -479,7 +663,8 @@ export function AuditMain() {
     console.log('Starting bulk delete for pages:', selectedPageIds);
     setDeleting(true);
     setDeletingPages(new Set(selectedPageIds));
-    setCurrentAction(`Deleting ${selectedPageIds.length} pages...`);
+    // Show toast for bulk delete
+    toast.loading(`Deleting ${selectedPageIds.length} pages...`);
     setError('');
 
     try {
@@ -509,33 +694,22 @@ export function AuditMain() {
         }
       }
 
-      // Update local state - remove successfully deleted pages
-      const successfullyDeleted = selectedPageIds.filter(id => !failedPages.includes(id));
-      
-      setAnalyzedPages(prev => {
-        const updated = prev.filter(p => !successfullyDeleted.includes(p.page.id));
-        console.log(`Updated pages after bulk delete: ${updated.length} remaining`);
-        return updated;
-      });
-      
       // Clear selected pages
       setSelectedPages(new Set());
       
       // Clear analyzing and deleting pages
       setAnalyzingPages(prev => {
         const newAnalyzing = new Set(prev);
-        successfullyDeleted.forEach(id => newAnalyzing.delete(id));
+        selectedPageIds.forEach(id => newAnalyzing.delete(id));
         return newAnalyzing;
       });
 
       // Show result message
       if (deletedCount === selectedPageIds.length) {
-        setCurrentAction(`Successfully deleted ${deletedCount} pages`);
-        setTimeout(() => setCurrentAction(''), 3000);
+        toast.success(`Successfully deleted ${deletedCount} pages`);
       } else if (deletedCount > 0) {
-        setCurrentAction(`Deleted ${deletedCount} of ${selectedPageIds.length} pages`);
+        toast.success(`Deleted ${deletedCount} of ${selectedPageIds.length} pages`);
         setError(`${failedPages.length} pages failed to delete`);
-        setTimeout(() => setCurrentAction(''), 3000);
       } else {
         setError('Failed to delete any pages');
       }
@@ -626,6 +800,11 @@ export function AuditMain() {
     return analyzingPages.has(page.page.id) || page.page.analysis_status === 'analyzing';
   };
 
+  const isAnalysisDisabled = () => {
+    // Disable analysis if project is still crawling
+    return projects[0]?.status === 'crawling' || currentSession?.isCrawling;
+  };
+
   // Add polling effect when pages are analyzing
   useEffect(() => {
     if (analyzingPages.size === 0) return;
@@ -641,7 +820,7 @@ export function AuditMain() {
     return () => clearInterval(pollInterval);
   }, [analyzingPages.size]);
 
-  const filteredAndSortedPages = analyzedPages.filter(page => {
+  const filteredAndSortedPages = (currentSession?.analyzedPages || []).filter((page: AnalyzedPage) => {
     const matchesProject = !selectedProjectId || page.project.id === selectedProjectId;
     const matchesSearch = searchTerm === '' || 
       page.page.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -660,7 +839,7 @@ export function AuditMain() {
       (page.overallScore >= scoreRange.min && page.overallScore <= scoreRange.max);
     
     return matchesProject && matchesSearch && matchesStatus && matchesAnalysis && matchesScore;
-  }).sort((a, b) => {
+  }).sort((a: AnalyzedPage, b: AnalyzedPage) => {
     let comparison = 0;
     
     switch (sortField) {
@@ -680,8 +859,6 @@ export function AuditMain() {
     
     return sortDirection === 'asc' ? comparison : -comparison;
   });
-
-  const activeProjects = projects.filter(s => s.status === 'crawling' || s.status === 'analyzing');
    
 
   if (loading) {
@@ -706,6 +883,53 @@ export function AuditMain() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Start/Stop Crawl Buttons moved here */}
+          {projects.length > 0 && projects[0] && (
+            <>
+              {projects[0].status === 'pending' && (
+                <Button
+                  size="sm"
+                  onClick={() => startCrawlingProcess(projects[0].id)}
+                  disabled={crawling}
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Start Crawl
+                </Button>
+              )}
+              {(projects[0].status === 'completed' || projects[0].status === 'failed') && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (confirm('Are you sure you want to recrawl? This will reset all pages, images, links, and analysis data to start fresh.')) {
+                      startCrawlingProcess(projects[0].id);
+                    }
+                  }}
+                  disabled={crawling || currentSession?.isCrawling}
+                  className="relative overflow-hidden"
+                  style={{ background: currentSession?.isCrawling ? '#fff' : undefined }}
+                >
+                  <span className="relative z-10 flex items-center">
+                    <RefreshCw className={`h-4 w-4 transition-all ${crawling || currentSession?.isCrawling ? "animate-spin" : ""}`} />
+                    {currentSession?.isCrawling
+                      ? "Crawling..."
+                      : crawling
+                        ? "Starting Recrawl"
+                        : "Recrawl"}
+                  </span>
+                </Button>
+              )}
+              {projects[0].status === 'crawling' && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => stopProcess(projects[0].id)}
+                >
+                  <Square className="h-4 w-4 mr-2" />
+                  Stop Crawl
+                </Button>
+              )}
+            </>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -715,7 +939,7 @@ export function AuditMain() {
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
-          <Link href={`/projects/edit/${projects[0].id}`}>
+          <Link href={`/projects/edit/${projects[0]?.id ?? ''}`}>
             <Button variant="outline">
               <Settings className="h-4 w-4 mr-2" />
               Edit Project
@@ -733,129 +957,239 @@ export function AuditMain() {
         </div>
       )}
 
-      {currentAction && (
+      {(currentSession?.currentAction || currentSession?.isCrawling) && (
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3 text-blue-600">
               <Loader2 className="h-5 w-5 animate-spin" />
               <div>
                 <p className="font-medium">Process Running</p>
-                <p className="text-sm text-muted-foreground">{currentAction}</p>
+                <p className="text-sm text-muted-foreground">
+                  {currentSession?.currentAction || (currentSession?.isCrawling ? 'Crawling in progress...' : '')}
+                </p>
               </div>
             </div>
+            
+            {/* Recent Crawling Activity */}
+            {currentSession?.isCrawling && currentSession?.recentCrawledPages && currentSession.recentCrawledPages.length > 0 && (
+              <div className="mt-4 pt-4 border-t">
+                <p className="text-sm font-medium text-muted-foreground mb-2">
+                  Pages Crawled ({currentSession.recentCrawledPages.length} total):
+                </p>
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  {currentSession.recentCrawledPages.slice(0, 10).map((page: any, index: number) => (
+                    <div key={page.id || index} className="flex items-center gap-2 text-sm">
+                      <CheckCircle className="h-3 w-3 text-green-500" />
+                      <span className="truncate">
+                        {page.title || page.url}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        ({page.status_code || 'N/A'})
+                      </span>
+                    </div>
+                  ))}
+                  {currentSession.recentCrawledPages.length > 10 && (
+                    <div className="text-xs text-muted-foreground text-center">
+                      ... and {currentSession.recentCrawledPages.length - 10} more pages
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {/* Active Projects */}
-      {activeProjects.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Active Projects</CardTitle>
-            <CardDescription>Projects currently crawling or analyzing</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {activeProjects.map((project) => (
-                <div key={project.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <Globe className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="font-medium">{project.base_url}</p>
-                      <p className="text-sm text-muted-foreground">
-                        Status: {project.status} • Pages: {project.pages_crawled || 0} crawled, {project.pages_analyzed || 0} analyzed
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => stopProcess(project.id)}
-                  >
-                    <Square className="h-3 w-3 mr-1" />
-                    Stop
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+
 
       {/* Current Project Info */}
       {projects.length > 0 && projects[0] && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-                    <div>
+              <div>
                 <CardTitle>Current Project</CardTitle>
                 <CardDescription>{projects[0].base_url}</CardDescription>
-                    </div>
-              <div className="flex items-center gap-2">
-                {projects[0].status === 'pending' && (
-                  <Button
-                    size="sm"
-                    onClick={() => startCrawling(projects[0].id)}
-                    disabled={crawling}
-                  >
-                    <Play className="h-4 w-4 mr-2" />
-                    Start Crawl
-                  </Button>
-                )}
-                {projects[0].status === 'completed' && (
-                      <Button
-                        size="sm"
-                        onClick={() => startCrawling(projects[0].id)}
-                        disabled={crawling || isCrawling}
-                        className="relative overflow-hidden"
-                        style={{ background: isCrawling ? '#fff' : undefined }}
-                      >
-                        {isCrawling && (
-                          <div
-                            className="absolute left-0 top-0 h-full bg-blue-500 z-0 transition-all"
-                            style={{
-                              width: `${crawlProgress}%`,
-                              opacity: 0.2,
-                              pointerEvents: 'none',
-                            }}
-                          />
-                        )}
-                        <span className="relative z-10 flex items-center">
-                          <RefreshCw className={`h-4 w-4 transition-all ${crawling || isCrawling ? "animate-spin" : ""}`} />
-                          {isCrawling
-                            ? `Crawling... ${crawlProgress}%`
-                            : crawling
-                              ? "Recrawling"
-                              : "Recrawl"}
-                        </span>
-                      </Button>
-                    )}
-                {projects[0].status === 'crawling' && (
-                      <Button
-                        size="sm"
-                    variant="outline"
-                    onClick={() => stopProcess(projects[0].id)}
-                  >
-                    <Square className="h-4 w-4 mr-2" />
-                    Stop Crawl
-                      </Button>
-                    )}
-                  </div>
-                </div>
+              </div>
+              {/* Removed Start/Stop/Recrawl buttons from here */}
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Status</p>
-                <p className="font-medium">{projects[0].status}</p>
+
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {/* Status */}
+              <div className="flex items-center gap-3 p-3 rounded-lg border bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 hover:shadow-md transition-all cursor-pointer group">
+                <div className="flex-shrink-0">
+                  {projects[0].status === 'completed' ? (
+                    <CheckCircle className="h-6 w-6 text-emerald-500" />
+                  ) : projects[0].status === 'crawling' ? (
+                    <Loader2 className="h-6 w-6 text-blue-500 animate-spin" />
+                  ) : projects[0].status === 'analyzing' ? (
+                    <BarChart3 className="h-6 w-6 text-amber-500" />
+                  ) : projects[0].status === 'failed' ? (
+                    <XCircle className="h-6 w-6 text-red-500" />
+                  ) : (
+                    <Clock className="h-6 w-6 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-muted-foreground">Status</p>
+                  <p className="font-semibold text-sm capitalize">
+                    {projects[0].status === 'completed' ? (
+                      <span className="text-emerald-600 dark:text-emerald-400">Completed</span>
+                    ) : projects[0].status === 'crawling' ? (
+                      <span className="text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Crawling
+                      </span>
+                    ) : projects[0].status === 'analyzing' ? (
+                      <span className="text-amber-600 dark:text-amber-400">Analyzing</span>
+                    ) : projects[0].status === 'failed' ? (
+                      <span className="text-red-600 dark:text-red-400">Stopped</span>
+                    ) : (
+                      <span className="text-muted-foreground">Pending</span>
+                    )}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Pages Crawled</p>
-                <p className="font-medium">{projects[0].pages_crawled || 0}</p>
+
+              {/* Pages Crawled */}
+              <div className="flex items-center gap-3 p-3 rounded-lg border bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 hover:shadow-md transition-all">
+                <div className="flex-shrink-0">
+                  {projects[0].status === 'crawling' ? (
+                    <Loader2 className="h-6 w-6 text-green-500 animate-spin" />
+                  ) : (
+                    <Globe className="h-6 w-6 text-green-500" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-muted-foreground">Pages Crawled</p>
+                  <div className="flex items-baseline gap-1">
+                    <p className="font-semibold text-lg text-green-600 dark:text-green-400">
+                      {projects[0].pages_crawled || 0}
+                    </p>
+                    <span className="text-xs text-muted-foreground">
+                      / {projects[0].total_pages || 0}
+                    </span>
+                    {projects[0].status === 'crawling' && (
+                      <span className="text-xs text-green-600 dark:text-green-400 ml-2">
+                        <Loader2 className="h-3 w-3 inline animate-spin mr-1" />
+                        Crawling...
+                      </span>
+                    )}
+                  </div>
+
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Pages Analyzed</p>
-                <p className="font-medium">{analyzedPages.filter(p => getAnalysisStatus(p) === 'analyzed').length}</p>
+
+              {/* Pages Analyzed */}
+              <div className="flex items-center gap-3 p-3 rounded-lg border bg-gradient-to-r from-purple-50 to-violet-50 dark:from-purple-950 dark:to-violet-950 hover:shadow-md transition-all">
+                <div className="flex-shrink-0">
+                  <BarChart3 className="h-6 w-6 text-purple-500" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-muted-foreground">Pages Analyzed</p>
+                  <div className="flex items-baseline gap-1">
+                    <p className="font-semibold text-lg text-purple-600 dark:text-purple-400">
+                      {(currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => getAnalysisStatus(p) === 'analyzed').length}
+                    </p>
+                    <span className="text-xs text-muted-foreground">
+                      / {projects[0].pages_crawled || 0}
+                    </span>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Total Images */}
+              <div 
+                className="flex items-center gap-3 p-3 rounded-lg border bg-gradient-to-r from-pink-50 to-rose-50 dark:from-pink-950 dark:to-rose-950 hover:shadow-md transition-all cursor-pointer group"
+                onClick={() => {
+                  if (currentSession?.isCrawling) return; // Disable during crawling
+                  if (projects[0].all_image_analysis && projects[0].all_image_analysis.length > 0) {
+                    dispatch(toggleImageAnalysis({ projectId: projects[0].id, show: !currentSession?.showImageAnalysis }));
+                    dispatch(toggleLinksAnalysis({ projectId: projects[0].id, show: false })); // Hide links analysis when showing images
+                  }
+                }}
+              >
+                <div className="flex-shrink-0">
+                  <Eye className="h-6 w-6 text-pink-500 group-hover:text-pink-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-muted-foreground">Total Images</p>
+                  <div className="flex items-baseline gap-1">
+                    <p className="font-semibold text-lg text-pink-600 dark:text-pink-400">
+                      {currentSession?.isCrawling ? currentSession.liveImageCount : (projects[0].all_image_analysis ? projects[0].all_image_analysis.length : 0)}
+                    </p>
+                    <span className="text-xs text-muted-foreground">
+                      found
+                    </span>
+                  </div>
+                  {projects[0].all_image_analysis && projects[0].all_image_analysis.length > 0 && !currentSession?.isCrawling && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {currentSession?.showImageAnalysis ? 'Click to hide' : 'Click to view details'}
+                    </p>
+                  )}
+                  {currentSession?.isCrawling && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Available after crawling completes
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Total Links */}
+              <div 
+                className="flex items-center gap-3 p-3 rounded-lg border bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950 dark:to-amber-950 hover:shadow-md transition-all cursor-pointer group"
+                onClick={() => {
+                  if (currentSession?.isCrawling) return; // Disable during crawling
+                  if (projects[0].all_links_analysis && projects[0].all_links_analysis.length > 0) {
+                    dispatch(toggleLinksAnalysis({ projectId: projects[0].id, show: !currentSession?.showLinksAnalysis }));
+                    dispatch(toggleImageAnalysis({ projectId: projects[0].id, show: false })); // Hide image analysis when showing links
+                  }
+                }}
+              >
+                <div className="flex-shrink-0">
+                  <ExternalLink className="h-6 w-6 text-orange-500 group-hover:text-orange-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-muted-foreground">Total Links</p>
+                  <div className="flex items-baseline gap-1 mb-1">
+                    <p className="font-semibold text-lg text-orange-600 dark:text-orange-400">
+                      {currentSession?.isCrawling ? currentSession.liveLinkCount : (projects[0].all_links_analysis ? projects[0].all_links_analysis.length : 0)}
+                    </p>
+                    <span className="text-xs text-muted-foreground">
+                      found
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Internal:</span>
+                      <span className="font-semibold text-sm text-orange-600 dark:text-orange-400">
+                        {currentSession?.isCrawling ? currentSession.liveInternalLinks : (projects[0].all_links_analysis ? 
+                          projects[0].all_links_analysis.filter(link => link.type === 'internal').length : 0)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">External:</span>
+                      <span className="font-semibold text-sm text-orange-600 dark:text-orange-400">
+                        {currentSession?.isCrawling ? currentSession.liveExternalLinks : (projects[0].all_links_analysis ? 
+                          projects[0].all_links_analysis.filter(link => link.type === 'external').length : 0)}
+                      </span>
+                    </div>
+                  </div>
+                  {projects[0].all_links_analysis && projects[0].all_links_analysis.length > 0 && !currentSession?.isCrawling && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {currentSession?.showLinksAnalysis ? 'Click to hide' : 'Click to view details'}
+                    </p>
+                  )}
+                  {currentSession?.isCrawling && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Available after crawling completes
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </CardContent>
@@ -911,224 +1245,18 @@ export function AuditMain() {
         </CardContent>
       </Card>
     )}
-   {projects[0].all_image_analysis && Array.isArray(projects[0].all_image_analysis) && projects[0].all_image_analysis.length > 0 &&  (
-  <Card className="mb-6">
-    <CardHeader>
-      <div className="flex items-center justify-between">
-        <div>
-          <CardTitle>All Image Analysis</CardTitle>
-          <CardDescription>Summary of all images found during the crawl</CardDescription>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowAllImageAnalysis(prev => !prev)}
-        >
-          {showAllImageAnalysis ? 'Close' : 'Open'}
-        </Button>
-      </div>
-      <div className="mt-2 text-sm text-muted-foreground">
-        {/* Show unique image count by src */}
-        {(() => {
-          const seen = new Set();
-          const uniqueCount = projects[0].all_image_analysis.filter(img => {
-            if (seen.has(img.src)) return false;
-            seen.add(img.src);
-            return true;
-          }).length;
-          return `${uniqueCount} unique images found`;
-        })()}
-      </div>
-    </CardHeader>
-    {showAllImageAnalysis && (
-      <CardContent>
-        <div className="overflow-x-auto">
-          <table className="min-w-full border text-xs">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="p-2 border text-center">#</th>
-                <th className="p-2 border">Preview</th>
-                <th className="p-2 border">Alt</th>
-                <th className="p-2 border">Src 
-                  <button
-                    type="button"
-                    className="ml-2 inline-flex items-center px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-600 dark:text-blue-300 text-xs font-medium border border-blue-200 dark:border-blue-800 transition"
-                    title="Copy all image URLs"
-                    onClick={() => {
-                      const allImages = projects[0]?.all_image_analysis?.map(img => img.src) || [];
-                      // Remove duplicates
-                      const uniqueImages = Array.from(new Set(allImages));
-                      navigator.clipboard.writeText(uniqueImages.join('\n'));
-                      toast('Copied all images URLs!');
-                    }}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16h8M8 12h8m-7 8h6a2 2 0 002-2V6a2 2 0 00-2-2H8a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                    Copy All
-                  </button>
-                </th>
-                <th className="p-2 border">Size (KB)</th>
-                <th className="p-2 border text-center w-[10%]">Format</th>
-                <th className="p-2 border text-center w-20">Is Small?</th>
-                <th className="p-2 border">Page URL
-                  <button
-                    type="button"
-                    className="ml-2 inline-flex items-center px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-600 dark:text-blue-300 text-xs font-medium border border-blue-200 dark:border-blue-800 transition"
-                    title="Copy all page URLs"
-                    onClick={() => {
-                      const allPageUrls = projects[0]?.all_image_analysis?.map(img => img.page_url) || [];
-                      // Remove duplicates
-                      const uniquePageUrls = Array.from(new Set(allPageUrls));
-                      navigator.clipboard.writeText(uniquePageUrls.join('\n'));
-                      toast('Copied all page URLs!');
-                    }}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16h8M8 12h8m-7 8h6a2 2 0 002-2V6a2 2 0 00-2-2H8a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                    Copy All
-                  </button>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* Filter out duplicate images by src, sort by format, and add serial numbers */}
-              {(() => {
-                const seen = new Set();
-                const uniqueImages = projects[0].all_image_analysis.filter(img => {
-                  if (seen.has(img.src)) return false;
-                  seen.add(img.src);
-                  return true;
-                });
-                
-                // Sort by format: JPG, WebP, PNG, SVG, then others
-                const formatOrder = { 'jpg': 1, 'jpeg': 1, 'webp': 2, 'png': 3, 'svg': 4 };
-                const sortedImages = uniqueImages.sort((a, b) => {
-                  const aFormat = (a.format || '').toLowerCase();
-                  const bFormat = (b.format || '').toLowerCase();
-                  const aOrder = formatOrder[aFormat as keyof typeof formatOrder] || 5;
-                  const bOrder = formatOrder[bFormat as keyof typeof formatOrder] || 5;
-                  return aOrder - bOrder;
-                });
-                
-                return sortedImages.map((img, idx) => (
-                 <tr key={idx} className="border-b hover:bg-muted/20">
-                   <td className="p-2 border text-center">{idx + 1}</td>
-                   <td className="p-2 border text-center">
-                     <a href={img.src} target="_blank" rel="noopener noreferrer">
-                       <img
-                         src={img.src}
-                         alt={img.alt || 'image'}
-                         style={{ maxWidth: 48, maxHeight: 48, objectFit: 'contain', borderRadius: 4 }}
-                         loading="lazy"
-                       />
-                     </a>
-                   </td>
-                   <td className="p-2 border">{img.alt || <span className="text-muted-foreground">(none)</span>}</td>
-                   <td className="p-2 border max-w-xs truncate">
-                     <a href={img.src} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">{img.src}</a>
-                   </td>
-                   <td className="p-2 border text-center">{img.size ? (img.size / 1024).toFixed(1) : '—'}</td>
-                   <td className="p-2 border text-center text-xs font-mono w-[10%]">{img.format || '—'}</td>
-                   <td className="p-2 border text-center text-xs">{img.is_small ? 'Yes' : 'No'}</td>
-                   <td className="p-2 border max-w-xs truncate">
-                     <a href={img.page_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">{img.page_url}</a>
-                   </td>
-                 </tr>
-               ));
-              })()}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    )}
-  </Card>
-)}
+   {/* Image Analysis Section - Only show when clicked */}
+   {currentSession?.showImageAnalysis && projects[0].all_image_analysis && Array.isArray(projects[0].all_image_analysis) && projects[0].all_image_analysis.length > 0 && (
+     <div id="image-analysis-table" className="animate-in slide-in-from-top-2 duration-300">
+       <ImageAnalysisTable images={projects[0].all_image_analysis} />
+     </div>
+   )}
 
-  {/* All Links Analysis Section */}
-  {projects[0].all_links_analysis && Array.isArray(projects[0].all_links_analysis) && projects[0].all_links_analysis.length > 0 &&  (
-    <Card className="mb-6">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>All Links Analysis</CardTitle>
-            <CardDescription>Summary of all internal and external links found during the crawl</CardDescription>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowAllLinksAnalysis(prev => !prev)}
-          >
-            {showAllLinksAnalysis ? 'Close' : 'Open'}
-          </Button>
-        </div>
-        <div className="mt-2 text-sm text-muted-foreground">
-          {/* Show unique link count by href */}
-          {(() => {
-            const seen = new Set();
-            const uniqueCount = projects[0].all_links_analysis.filter(link => {
-              if (seen.has(link.href)) return false;
-              seen.add(link.href);
-              return true;
-            }).length;
-            return `${uniqueCount} unique links found`;
-          })()}
-        </div>
-      </CardHeader>
-      {showAllLinksAnalysis && (
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="min-w-full border text-xs">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="p-2 border text-center">#</th>
-                  <th className="p-2 border">Href</th>
-                  <th className="p-2 border">Type</th>
-                  <th className="p-2 border">Anchor Text</th>
-                  <th className="p-2 border">Page URL
-                    <button
-                      type="button"
-                      className="ml-2 inline-flex items-center px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-600 dark:text-blue-300 text-xs font-medium border border-blue-200 dark:border-blue-800 transition"
-                      title="Copy all page URLs"
-                      onClick={() => {
-                        const allPageUrls = projects[0]?.all_links_analysis?.map(link => link.page_url) || [];
-                        // Remove duplicates
-                        const uniquePageUrls = Array.from(new Set(allPageUrls));
-                        navigator.clipboard.writeText(uniquePageUrls.join('\n'));
-                        toast('Copied all page URLs!');
-                      }}
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16h8M8 12h8m-7 8h6a2 2 0 002-2V6a2 2 0 00-2-2H8a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                      Copy All
-                    </button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {/* Filter out duplicate links by href and add serial numbers */}
-                {(() => {
-                  const seen = new Set();
-                  return projects[0].all_links_analysis.filter(link => {
-                    if (seen.has(link.href)) return false;
-                    seen.add(link.href);
-                    return true;
-                  }).map((link, idx) => (
-                    <tr key={idx} className="border-b hover:bg-muted/20">
-                      <td className="p-2 border text-center">{idx + 1}</td>
-                      <td className="p-2 border max-w-xs truncate">
-                        <a href={link.href} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">{link.href}</a>
-                      </td>
-                      <td className="p-2 border text-center">{link.type.charAt(0).toUpperCase() + link.type.slice(1)}</td>
-                      <td className="p-2 border">{link.text || <span className="text-muted-foreground">(none)</span>}</td>
-                      <td className="p-2 border max-w-xs truncate">
-                        <a href={link.page_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">{link.page_url}</a>
-                      </td>
-                    </tr>
-                  ));
-                })()}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      )}
-    </Card>
+  {/* Links Analysis Section - Only show when clicked */}
+  {currentSession?.showLinksAnalysis && projects[0].all_links_analysis && Array.isArray(projects[0].all_links_analysis) && projects[0].all_links_analysis.length > 0 && (
+    <div id="links-analysis-table" className="animate-in slide-in-from-top-2 duration-300">
+      <LinksAnalysisTable links={projects[0].all_links_analysis} />
+    </div>
   )}
       {/* Pages List */}
       <Card>
@@ -1136,7 +1264,15 @@ export function AuditMain() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Pages</CardTitle>
-              <CardDescription>Select pages to analyze</CardDescription>
+              <CardDescription>
+                {currentSession?.isCrawling ? "Pages are being crawled - analysis will be available when crawling completes" : "Select pages to analyze"}
+              </CardDescription>
+              {currentSession?.isCrawling && (
+                <div className="mt-2 flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span>Analysis buttons are disabled during crawling</span>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {/* Kill Switch for stopping all analysis */}
@@ -1188,7 +1324,8 @@ export function AuditMain() {
                         startAnalysis(projects[0].id, Array.from(selectedPages));
                       }
                     }}
-                    disabled={analyzing || deleting}
+                    disabled={analyzing || deleting || isAnalysisDisabled()}
+                    title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : ""}
                   >
                     {analyzing ? (
                       <>
@@ -1225,6 +1362,8 @@ export function AuditMain() {
                       .map(p => p.page.id);
                     setSelectedPages(new Set(selectablePageIds));
                   }}
+                  disabled={isAnalysisDisabled()}
+                  title={isAnalysisDisabled() ? "Selection disabled while crawling is in progress" : ""}
                 >
                   Select All ({filteredAndSortedPages.filter(p => !isPageAnalyzing(p)).length})
                   </Button>
@@ -1240,7 +1379,8 @@ export function AuditMain() {
                           startAnalysis(projects[0].id, unanalyzedPageIds);
                         }
                       }}
-                      disabled={analyzing || deleting}
+                      disabled={analyzing || deleting || isAnalysisDisabled()}
+                      title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : ""}
                     >
                       <Zap className="h-4 w-4 mr-2" />
                       Analyze All Unanalyzed ({filteredAndSortedPages.filter(p => p.resultCount === 0 && !isPageAnalyzing(p)).length})
@@ -1300,9 +1440,9 @@ export function AuditMain() {
                     <Label className="text-sm font-medium">Analysis Status</Label>
                     <div className="mt-2 space-y-2">
                       {[
-                        { id: 'analyzed', label: 'Analyzed', count: analyzedPages.filter(p => getAnalysisStatus(p) === 'analyzed').length },
-                        { id: 'not-analyzed', label: 'Not Analyzed', count: analyzedPages.filter(p => getAnalysisStatus(p) === 'not-analyzed').length },
-                        { id: 'analyzing', label: 'Analyzing', count: analyzedPages.filter(p => getAnalysisStatus(p) === 'analyzing').length }
+                        { id: 'analyzed', label: 'Analyzed', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => getAnalysisStatus(p) === 'analyzed').length },
+                        { id: 'not-analyzed', label: 'Not Analyzed', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => getAnalysisStatus(p) === 'not-analyzed').length },
+                        { id: 'analyzing', label: 'Analyzing', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => getAnalysisStatus(p) === 'analyzing').length }
                       ].map(item => (
                         <div key={item.id} className="flex items-center space-x-2">
                           <Checkbox
@@ -1323,9 +1463,9 @@ export function AuditMain() {
                     <Label className="text-sm font-medium">Overall Status</Label>
                     <div className="mt-2 space-y-2">
                       {[
-                                { id: 'pass', label: 'Pass', color: 'text-emerald-600 dark:text-emerald-400', count: analyzedPages.filter(p => p.overallStatus === 'pass').length },
-        { id: 'warning', label: 'Warning', color: 'text-amber-600 dark:text-amber-400', count: analyzedPages.filter(p => p.overallStatus === 'warning').length },
-        { id: 'fail', label: 'Fail', color: 'text-red-600 dark:text-red-400', count: analyzedPages.filter(p => p.overallStatus === 'fail').length }
+                                { id: 'pass', label: 'Pass', color: 'text-emerald-600 dark:text-emerald-400', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => p.overallStatus === 'pass').length },
+        { id: 'warning', label: 'Warning', color: 'text-amber-600 dark:text-amber-400', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => p.overallStatus === 'warning').length },
+        { id: 'fail', label: 'Fail', color: 'text-red-600 dark:text-red-400', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => p.overallStatus === 'fail').length }
                       ].map(item => (
                         <div key={item.id} className="flex items-center space-x-2">
                           <Checkbox
@@ -1379,7 +1519,11 @@ export function AuditMain() {
           {/* Results Counter */}
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              Showing {filteredAndSortedPages.length} of {analyzedPages.length} pages
+              {currentSession?.isCrawling ? (
+                `Showing ${filteredAndSortedPages.length} of ${currentSession?.analyzedPages?.length || 0} crawled pages`
+              ) : (
+                `Showing ${filteredAndSortedPages.length} of ${currentSession?.analyzedPages?.length || 0} pages`
+              )}
               {hasActiveFilters() && <span> (filtered)</span>}
             </p>
             {filteredAndSortedPages.length > 0 && (
@@ -1517,6 +1661,11 @@ export function AuditMain() {
                           </Badge>
                         ) : analyzedPage.resultCount > 0 ? (
                           getStatusBadge(analyzedPage.overallStatus)
+                        ) : currentSession?.isCrawling ? (
+                          <Badge variant="outline" className="text-xs px-1.5 py-0.5 bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400">
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            Crawled
+                          </Badge>
                         ) : (
                           <Badge variant="outline" className="text-xs px-1.5 py-0.5">
                             Pending
@@ -1562,7 +1711,8 @@ export function AuditMain() {
                               size="sm"
                               className="h-7 px-3 w-full"
                               onClick={() => analyzeSinglePage(analyzedPage.page.id)}
-                              disabled={analyzing || deleting}
+                              disabled={analyzing || deleting || isAnalysisDisabled()}
+                              title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : ""}
                             >
                               <RefreshCw className="h-3 w-3 mr-1" />
                               Re-Analyze
@@ -1573,7 +1723,8 @@ export function AuditMain() {
                               size="sm"
                               className="h-7 px-3 w-full"
                               onClick={() => analyzeSinglePage(analyzedPage.page.id)}
-                              disabled={analyzing || deleting}
+                              disabled={analyzing || deleting || isAnalysisDisabled()}
+                              title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : ""}
                             >
                               <BarChart3 className="h-3 w-3 mr-1" />
                               Analyze

@@ -1,10 +1,12 @@
 import { configureStore } from '@reduxjs/toolkit';
 import dashboardFormReducer from './dashboardFormSlice';
+import auditReducer from './auditSlice';
 
 // Add your reducers here as you create slices
 export const store = configureStore({
   reducer: {
     dashboardForm: dashboardFormReducer,
+    audit: auditReducer,
     // example: user: userReducer,
   },
 });

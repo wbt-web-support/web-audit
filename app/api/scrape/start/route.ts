@@ -177,21 +177,31 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get existing pages for this project to avoid duplicates
-    const { data: existingPages } = await supabase
+    // Clear existing pages for this project when recrawling
+    await supabase
       .from("scraped_pages")
-      .select("url")
+      .delete()
       .eq("audit_project_id", project_id);
 
-    // Normalize existing URLs to handle hash fragments
-    const existingUrls = new Set(
-      existingPages?.map((p) => normalizeUrl(p.url)) || []
-    );
+    // Clear existing audit results for this project (cascade delete should handle this)
+    // The audit_results will be automatically deleted when scraped_pages are deleted
 
-    // Update project status to crawling
+    // Start with empty set for fresh crawl
+    const existingUrls = new Set<string>();
+
+    // Update project status to crawling and reset all counters
     await supabase
       .from("audit_projects")
-      .update({ status: "crawling" })
+      .update({ 
+        status: "crawling",
+        pages_crawled: 0,
+        total_pages: 0,
+        all_image_analysis: [],
+        all_links_analysis: [],
+        custom_urls_analysis: [],
+        stripe_keys_analysis: [],
+        updated_at: new Date().toISOString()
+      })
       .eq("id", project_id);
 
     // Configure scraper based on crawl type
@@ -374,15 +384,28 @@ async function crawlWebsite(
     let pagesUpdated = 0;
     let newPages = 0;
 
+    let shouldStop = false;
+    
     await scraper.crawl(async (pageData) => {
-      // Check if project should stop crawling
-      const { data: currentProject } = await supabase
+      // Check if project should stop crawling - check more frequently
+      const { data: currentProject, error: statusError } = await supabase
         .from("audit_projects")
-        .select("status")
+        .select("status, error_message")
         .eq("id", projectId)
         .single();
 
+      if (statusError) {
+        console.error("Error checking project status:", statusError);
+      }
+
       if (currentProject?.status === "failed") {
+        console.log(`Crawling stopped for project ${projectId}: ${currentProject.error_message}`);
+        shouldStop = true;
+        throw new Error(`Crawling stopped by user: ${currentProject.error_message}`);
+      }
+
+      // Early return if we should stop
+      if (shouldStop) {
         throw new Error("Crawling stopped by user");
       }
       // console.log(`Crawling page: ${pageData.url}`);
@@ -442,13 +465,8 @@ async function crawlWebsite(
           existingUrls.add(normalizedUrl); // Add normalized URL to prevent duplicates in this project
         }
       }
-      // console.log(`Pages crawled: ${pagesCrawled}`);
-      // Update progress
-      await supabase
-        .from("audit_projects")
-        .update({ pages_crawled: pagesCrawled })
-        .eq("id", projectId);
-
+      console.log(`Pages crawled: ${pagesCrawled} - URL: ${normalizedUrl}`);
+      
       // Use shared utility for image and link extraction
       const allPageImages = extractImagesFromHtmlAndText(pageData.html, normalizedUrl);
       const allPageLinks = extractLinksFromHtmlAndText(pageData.html, normalizedUrl);
@@ -456,45 +474,71 @@ async function crawlWebsite(
       allLinks.push(...allPageLinks);
       console.log(`Image section completed - Found ${allPageImages.length} unique images`);
       console.log(`Link section completed - Found ${allPageLinks.length} unique links`);
+      
+      // Calculate current totals for this page
+      const currentImageCount = allImages.length;
+      const currentLinkCount = allLinks.length;
+      const currentInternalLinks = allLinks.filter(link => link.type === 'internal').length;
+      const currentExternalLinks = allLinks.filter(link => link.type === 'external').length;
+      
+      // Update project with incremental counts after each page
+      console.log(`Updating project ${projectId} - Page ${pagesCrawled}: ${currentImageCount} total images, ${currentLinkCount} total links`);
+      await supabase
+        .from("audit_projects")
+        .update({ 
+          pages_crawled: pagesCrawled,
+          all_image_analysis: allImages,
+          all_links_analysis: allLinks,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", projectId);
     });
 
-    // After crawling, store all image analysis in audit_projects
-    await supabase
-      .from("audit_projects")
-      .update({ all_image_analysis: allImages })
-      .eq("id", projectId);
+    // Image and link analysis are now updated in real-time during crawling
+    // No need to update again here as they're already current
 
-    // After crawling, store all links analysis in audit_projects
-    await supabase
-      .from("audit_projects")
-      .update({ all_links_analysis: allLinks })
-      .eq("id", projectId);
-
-    // Update project status to completed crawling (ready for analysis)
-    await supabase
-      .from("audit_projects")
-      .update({
-        status: "completed",
-        total_pages: pagesCrawled,
-      })
-      .eq("id", projectId);
-
-    // console.log(`Crawling completed (${crawlType || 'full'}): ${pagesCrawled} pages crawled`);
-  } catch (error: any) {
-    // Check if it was stopped by user
-    const { data: currentProject } = await supabase
+    // Check if crawling was stopped before marking as completed
+    const { data: finalProject } = await supabase
       .from("audit_projects")
       .select("status")
       .eq("id", projectId)
       .single();
 
-    if (currentProject?.status !== "failed") {
+    if (finalProject?.status !== "failed") {
+      // Update project status to completed crawling (ready for analysis)
+      await supabase
+        .from("audit_projects")
+        .update({
+          status: "completed",
+          total_pages: pagesCrawled,
+        })
+        .eq("id", projectId);
+
+      console.log(`Crawling completed (${crawlType || 'full'}): ${pagesCrawled} pages crawled`);
+    } else {
+      console.log(`Crawling was stopped by user: ${pagesCrawled} pages crawled before stopping`);
+    }
+  } catch (error: any) {
+    console.error(`Crawling error for project ${projectId}:`, error);
+    
+    // Check if it was stopped by user
+    const { data: currentProject } = await supabase
+      .from("audit_projects")
+      .select("status, error_message")
+      .eq("id", projectId)
+      .single();
+
+    if (currentProject?.status === "failed") {
+      console.log(`Crawling stopped by user for project ${projectId}: ${currentProject.error_message}`);
+    } else {
       // Update project status to failed only if not already set to failed (stopped)
+      console.log(`Crawling failed for project ${projectId}: ${error.message}`);
       await supabase
         .from("audit_projects")
         .update({
           status: "failed",
           error_message: error.message || "Crawling failed",
+          updated_at: new Date().toISOString()
         })
         .eq("id", projectId);
     }
