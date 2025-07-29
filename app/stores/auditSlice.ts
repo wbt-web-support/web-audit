@@ -93,6 +93,8 @@ export const auditSlice = createSlice({
       session.livePagesCount = 0;
       session.recentCrawledPages = [];
       session.analyzedPages = [];
+      session.showImageAnalysis = false;
+      session.showLinksAnalysis = false;
 
       state.activeProjectId = projectId;
       state.globalIsCrawling = true;

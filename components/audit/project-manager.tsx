@@ -36,7 +36,9 @@ import {
   MapPin,
   FileText,
   Search,
-  X
+  X,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ProjectManagerSkeleton } from '@/components/skeletons';
@@ -47,6 +49,7 @@ export function ProjectManager() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const router = useRouter();
 
   useEffect(() => {
@@ -212,6 +215,18 @@ export function ProjectManager() {
     router.push('/dashboard');
   };
 
+  const toggleExpanded = (projectId: string) => {
+    setExpandedProjects(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(projectId)) {
+        newSet.delete(projectId);
+      } else {
+        newSet.add(projectId);
+      }
+      return newSet;
+    });
+  };
+
   if (loading) {
     return <ProjectManagerSkeleton />;
   }
@@ -310,6 +325,7 @@ export function ProjectManager() {
                 const progress = project.pages_crawled && project.total_pages 
                   ? Math.round((project.pages_crawled / project.total_pages) * 100)
                   : 0;
+                const isExpanded = expandedProjects.has(project.id);
 
                 return (
                   <Card key={project.id} className="border-0 shadow-xl bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-300 group">
@@ -320,7 +336,7 @@ export function ProjectManager() {
                             <Globe className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                           </div>
                           <div className="space-y-2">
-                    <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3">
                               <h3 className="text-xl font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                                 {project.base_url}
                               </h3>
@@ -336,58 +352,68 @@ export function ProjectManager() {
                                 {new Date(project.updated_at).toLocaleDateString()}
                               </div>
                             </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => router.push(`/audit?project=${project.id}`)}
-                            className="border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/30"
-                      >
-                            <BarChart3 className="h-4 w-4 mr-2" />
-                        View Details
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => router.push(`/projects/edit/${project.id}`)}
-                        disabled={project.status === 'crawling' || project.status === 'analyzing'}
-                            className="border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700/30"
-                      >
-                            <Edit className="h-4 w-4 mr-2" />
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
                             variant="outline"
-                        onClick={() => deleteProject(project.id)}
+                            onClick={() => router.push(`/audit?project=${project.id}`)}
+                            className="border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/30"
+                          >
+                            <BarChart3 className="h-4 w-4 mr-2" />
+                            View Details
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => router.push(`/projects/edit/${project.id}`)}
+                            disabled={project.status === 'crawling' || project.status === 'analyzing'}
+                            className="border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700/30"
+                          >
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => deleteProject(project.id)}
                             className="border-red-200 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30"
-                      >
+                          >
                             <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => toggleExpanded(project.id)}
+                            className="text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                          >
+                            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
                     
                     <CardContent className="space-y-6">
-                      {/* Progress Bar */}
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-slate-600 dark:text-slate-400">Progress</span>
-                          <span className="font-medium">{project.pages_crawled || 0} / {project.total_pages || 0} pages</span>
-                        </div>
-                        <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                          <div 
-                            className={`h-2 rounded-full transition-all duration-500 ${
-                              progress > 80 ? 'bg-emerald-500' : 
-                              progress > 50 ? 'bg-blue-500' : 
-                              progress > 20 ? 'bg-amber-500' : 'bg-slate-400'
-                            }`}
-                            style={{ width: `${progress}%` }}
-                          />
-                        </div>
-                      </div>
+                      {isExpanded && (
+                        <>
+                          {/* Progress Bar */}
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-sm">
+                              <span className="text-slate-600 dark:text-slate-400">Progress</span>
+                              <span className="font-medium">{project.pages_crawled || 0} / {project.total_pages || 0} pages</span>
+                            </div>
+                            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                              <div 
+                                className={`h-2 rounded-full transition-all duration-500 ${
+                                  progress > 80 ? 'bg-emerald-500' : 
+                                  progress > 50 ? 'bg-blue-500' : 
+                                  progress > 20 ? 'bg-amber-500' : 'bg-slate-400'
+                                }`}
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                          </div>
 
                       {/* Metrics Grid */}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -564,52 +590,54 @@ export function ProjectManager() {
                       </div>
 
                       {/* Company Information */}
-                    {(project.company_name || project.phone_number || project.email || project.address || project.custom_info) && (
+                      {(project.company_name || project.phone_number || project.email || project.address || project.custom_info) && (
                         <div className="bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-800/50 dark:to-blue-900/20 rounded-lg p-4">
                           <h4 className="font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
                             <Target className="h-4 w-4 text-slate-600 dark:text-slate-400" />
                             Expected Company Information
                           </h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-                          {project.company_name && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                            {project.company_name && (
                               <div className="flex items-center gap-2">
                                 <Building className="h-4 w-4 text-slate-500" />
                                 <span className="text-slate-600 dark:text-slate-400">Company:</span>
                                 <span className="font-medium text-slate-900 dark:text-white">{project.company_name}</span>
-                            </div>
-                          )}
-                          {project.phone_number && (
+                              </div>
+                            )}
+                            {project.phone_number && (
                               <div className="flex items-center gap-2">
                                 <Phone className="h-4 w-4 text-slate-500" />
                                 <span className="text-slate-600 dark:text-slate-400">Phone:</span>
                                 <span className="font-medium text-slate-900 dark:text-white">{project.phone_number}</span>
-                            </div>
-                          )}
-                          {project.email && (
+                              </div>
+                            )}
+                            {project.email && (
                               <div className="flex items-center gap-2">
                                 <Mail className="h-4 w-4 text-slate-500" />
                                 <span className="text-slate-600 dark:text-slate-400">Email:</span>
                                 <span className="font-medium text-slate-900 dark:text-white">{project.email}</span>
-                            </div>
-                          )}
-                          {project.address && (
+                              </div>
+                            )}
+                            {project.address && (
                               <div className="flex items-center gap-2 md:col-span-2">
                                 <MapPin className="h-4 w-4 text-slate-500" />
                                 <span className="text-slate-600 dark:text-slate-400">Address:</span>
                                 <span className="font-medium text-slate-900 dark:text-white">{project.address}</span>
-                            </div>
-                          )}
-                          {project.custom_info && (
+                              </div>
+                            )}
+                            {project.custom_info && (
                               <div className="flex items-center gap-2 md:col-span-2 lg:col-span-3">
                                 <FileText className="h-4 w-4 text-slate-500" />
                                 <span className="text-slate-600 dark:text-slate-400">Additional Info:</span>
                                 <span className="font-medium text-slate-900 dark:text-white">{project.custom_info}</span>
-                            </div>
-                          )}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                </CardContent>
+                      )}
+                        </>
+                      )}
+                    </CardContent>
               </Card>
                 );
               })}

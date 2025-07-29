@@ -78,6 +78,20 @@ export function AuditMain() {
   const auditState = useSelector((state: RootState) => state.audit);
   const currentSession = selectedProjectId ? auditState.sessions[selectedProjectId] : null;
   
+  // Debug logging
+  useEffect(() => {
+    if (currentSession) {
+      console.log('Current session state:', {
+        projectId: currentSession.projectId,
+        isCrawling: currentSession.isCrawling,
+        liveImageCount: currentSession.liveImageCount,
+        liveLinkCount: currentSession.liveLinkCount,
+        livePagesCount: currentSession.livePagesCount,
+        analyzedPagesCount: currentSession.analyzedPages?.length || 0
+      });
+    }
+  }, [currentSession]);
+  
   // Local state (keeping UI-specific state local)
   const [projects, setProjects] = useState<AuditProject[]>([]);
   const [selectedPages, setSelectedPages] = useState<Set<string>>(new Set());
@@ -97,6 +111,20 @@ export function AuditMain() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const crawlingStartedRef = useRef(false);
 
+  // Debug logging for project state
+  useEffect(() => {
+    if (projects[0]) {
+      console.log('Project state:', {
+        id: projects[0].id,
+        status: projects[0].status,
+        pages_crawled: projects[0].pages_crawled,
+        total_pages: projects[0].total_pages,
+        image_analysis_length: projects[0].all_image_analysis?.length || 0,
+        links_analysis_length: projects[0].all_links_analysis?.length || 0
+      });
+    }
+  }, [projects]);
+
   useEffect(() => {
     fetchData();
     // Initialize Redux session when component mounts or project changes
@@ -104,6 +132,11 @@ export function AuditMain() {
       dispatch(initializeSession({ projectId: selectedProjectId }));
       dispatch(setActiveProject({ projectId: selectedProjectId }));
     }
+    
+    // Cleanup function to reset crawling ref when switching projects
+    return () => {
+      crawlingStartedRef.current = false;
+    };
   }, [selectedProjectId, dispatch]);
 
 
@@ -179,6 +212,23 @@ export function AuditMain() {
       
       if (projectResponse.ok) {
         setProjects([projectData.project]);
+        
+        // Initialize Redux session for this project
+        dispatch(initializeSession({ projectId: selectedProjectId }));
+        dispatch(setActiveProject({ projectId: selectedProjectId }));
+        
+        // If project is pending and we haven't started crawling yet, start it
+        if (projectData.project.status === "pending" && !crawlingStartedRef.current) {
+          crawlingStartedRef.current = true;
+          startCrawlingProcess(projectData.project.id);
+          return; // Exit early, let the crawling process handle data updates
+        }
+        
+        // Reset crawling ref if project is not pending
+        if (projectData.project.status !== "pending") {
+          crawlingStartedRef.current = false;
+        }
+        
         // Fetch analyzed pages from the selected project with timeout handling
         try {
           const controller = new AbortController();
@@ -191,11 +241,6 @@ export function AuditMain() {
           clearTimeout(timeoutId);
           const resultsData = await resultsResponse.json();
 
-          if(resultsData.project.status=="pending" && !crawlingStartedRef.current){
-            crawlingStartedRef.current = true;
-            startCrawlingProcess(projectData.project.id)
-          }
-          
           if (resultsResponse.ok && resultsData.pageResults) {
               
             const pages = resultsData.pageResults.map((pageResult: any) => {
@@ -315,13 +360,22 @@ export function AuditMain() {
 
   // Poll for crawl progress when crawling is active
   useEffect(() => {
-    if (!currentSession?.isCrawling || !projects[0]) return;
+    // Check if we should be polling - either Redux says crawling OR project status is crawling
+    const shouldPoll = currentSession?.isCrawling || (projects[0]?.status === 'crawling');
+    
+    if (!shouldPoll || !projects[0]) return;
+    
+    console.log('Starting polling for project:', projects[0].id, 'Redux crawling:', currentSession?.isCrawling, 'Project status:', projects[0].status);
+    
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/audit-projects/${projects[0].id}/crawl-status`);
         const data = await res.json();
         
+        console.log('Polling response:', data);
+        
         if (!data.is_crawling) {
+          console.log('Crawling completed, stopping polling');
           dispatch(completeCrawling({ projectId: projects[0].id }));
           clearInterval(interval);
           
@@ -329,8 +383,6 @@ export function AuditMain() {
           fetchData();
           return;
         }
-        
-        // Update project data
         
         // Update live counts from API response
         const newImageCount = data.project.total_images || 0;
@@ -344,7 +396,9 @@ export function AuditMain() {
           links: newLinkCount,
           internal: newInternalLinks,
           external: newExternalLinks,
-          pages: newPagesCount
+          pages: newPagesCount,
+          projectStatus: data.project.status,
+          isCrawling: data.is_crawling
         });
         
         // Update Redux state with live counts
@@ -357,20 +411,56 @@ export function AuditMain() {
           pagesCount: newPagesCount
         }));
         
-        // Update project data with live counts
-        if (projects[0]) {
-          setProjects(prev => prev.map(p => 
-            p.id === projects[0].id 
-              ? { 
-                  ...p, 
-                  pages_crawled: data.project.pages_crawled,
-                  total_pages: data.project.total_pages,
-                  all_image_analysis: data.project.total_images ? Array(data.project.total_images).fill({}) : [],
-                  all_links_analysis: data.project.total_links ? Array(data.project.total_links).fill({}) : []
-                }
-              : p
-          ));
+        // Debug: Log the updated Redux state
+        console.log('Redux state after update:', {
+          projectId: projects[0].id,
+          newImageCount,
+          newLinkCount,
+          newInternalLinks,
+          newExternalLinks,
+          newPagesCount
+        });
+        
+        // Also fetch the full project data to ensure we have the latest image and link data
+        try {
+          const projectRes = await fetch(`/api/audit-projects/${projects[0].id}`);
+          const projectData = await projectRes.json();
+          
+          if (projectRes.ok && projectData.project) {
+            console.log('Full project data fetched:', {
+              images: projectData.project.all_image_analysis?.length || 0,
+              links: projectData.project.all_links_analysis?.length || 0
+            });
+            
+            // Update project data with the full project data
+            setProjects(prev => prev.map(p => 
+              p.id === projects[0].id 
+                ? { 
+                    ...p, 
+                    pages_crawled: data.project.pages_crawled,
+                    total_pages: data.project.total_pages,
+                    all_image_analysis: projectData.project.all_image_analysis || [],
+                    all_links_analysis: projectData.project.all_links_analysis || []
+                  }
+                : p
+            ));
+          }
+        } catch (error) {
+          console.error('Error fetching full project data:', error);
         }
+        
+        // Update project data with live counts
+        setProjects(prev => prev.map(p => 
+          p.id === projects[0].id 
+            ? { 
+                ...p, 
+                pages_crawled: data.project.pages_crawled,
+                total_pages: data.project.total_pages
+                // Don't override all_image_analysis and all_links_analysis with placeholder arrays
+                // Let the backend data flow through naturally
+              }
+            : p
+        ));
         
         // Show recent page updates
         if (data.recent_pages && data.recent_pages.length > 0) {
@@ -415,8 +505,12 @@ export function AuditMain() {
         console.error('Crawl status polling error:', error);
       }
     }, 1000); // Poll every second for better real-time updates
-    return () => clearInterval(interval);
-  }, [currentSession?.isCrawling, projects, dispatch]);
+    
+    return () => {
+      console.log('Clearing polling interval for project:', projects[0]?.id);
+      clearInterval(interval);
+    };
+  }, [currentSession?.isCrawling, projects, dispatch, selectedProjectId]);
 
 
 
@@ -424,6 +518,26 @@ export function AuditMain() {
   const startCrawlingProcess = async (projectId: string) => {
     setCrawling(true);
     setError('');
+    
+    // Reset local state immediately for better UX
+    setProjects(prev => prev.map(p => 
+      p.id === projectId 
+        ? { 
+            ...p, 
+            pages_crawled: 0,
+            total_pages: 0,
+            all_image_analysis: [],
+            all_links_analysis: [],
+            custom_urls_analysis: [],
+            stripe_keys_analysis: [],
+            status: 'crawling'
+          }
+        : p
+    ));
+    
+    // Clear any existing analyzed pages for this project
+    dispatch(updateAnalyzedPages({ projectId, pages: [] }));
+    dispatch(updateCrawledPages({ projectId, pages: [] }));
     
     // Initialize Redux session and start crawling
     dispatch(initializeSession({ projectId }));
@@ -455,24 +569,6 @@ export function AuditMain() {
         toast.success('Crawling started!');
       }
       
-      // Reset project data for fresh start
-      if (projects[0]) {
-        setProjects(prev => prev.map(p => 
-          p.id === projectId 
-            ? { 
-                ...p, 
-                pages_crawled: 0,
-                total_pages: 0,
-                all_image_analysis: [],
-                all_links_analysis: [],
-                custom_urls_analysis: [],
-                stripe_keys_analysis: [],
-                status: 'crawling'
-              }
-            : p
-        ));
-      }
-      
       // Start polling immediately for real-time updates
       console.log('Crawling started - polling for live updates...');
       
@@ -484,6 +580,47 @@ export function AuditMain() {
       setCrawling(false);
     }
   };
+
+  // Additional effect to ensure polling starts when project status changes to crawling
+  useEffect(() => {
+    if (projects[0]?.status === 'crawling' && !currentSession?.isCrawling) {
+      console.log('Project status is crawling but Redux not updated, starting polling manually');
+      dispatch(startCrawling({ projectId: projects[0].id }));
+    }
+  }, [projects[0]?.status, currentSession?.isCrawling, dispatch]);
+
+  // Immediate polling start when project status changes to crawling
+  useEffect(() => {
+    if (projects[0]?.status === 'crawling') {
+      console.log('Project status changed to crawling, ensuring Redux state is initialized');
+      dispatch(initializeSession({ projectId: projects[0].id }));
+      if (!currentSession?.isCrawling) {
+        dispatch(startCrawling({ projectId: projects[0].id }));
+      }
+      
+      // Force an immediate poll to get current state
+      setTimeout(() => {
+        if (projects[0]?.id) {
+          fetch(`/api/audit-projects/${projects[0].id}/crawl-status`)
+            .then(res => res.json())
+            .then(data => {
+              console.log('Immediate poll response:', data);
+              if (data.project) {
+                dispatch(updateLiveCounts({
+                  projectId: projects[0].id,
+                  imageCount: data.project.total_images || 0,
+                  linkCount: data.project.total_links || 0,
+                  internalLinks: data.project.internal_links || 0,
+                  externalLinks: data.project.external_links || 0,
+                  pagesCount: data.project.pages_crawled || 0
+                }));
+              }
+            })
+            .catch(err => console.error('Immediate poll error:', err));
+        }
+      }, 100);
+    }
+  }, [projects[0]?.status, currentSession?.isCrawling, dispatch]);
 
   const startAnalysis = async (projectId: string, pageIds: string[]) => {
     setAnalyzing(true);
@@ -787,11 +924,11 @@ export function AuditMain() {
       case 'warning':
         return <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" />;
       case 'fail':
-        return <XCircle className="h-4  text-red-500 dark:text-red-400 w-full" />;
+        return <XCircle className="h-4 text-red-500 dark:text-red-400 w-full" />;
       case 'pending':
         return <Clock className="h-4 text-muted-foreground w-full" />;
       default:
-          return <AlertTriangle className="h-4  text-muted-foreground w-full" />;
+          return <AlertTriangle className="h-4 text-muted-foreground w-full" />;
     }
   };
 
@@ -803,9 +940,16 @@ export function AuditMain() {
       pending: 'bg-muted text-muted-foreground w-full text-center justify-center '
     };
 
+    const statusLabels = {
+      pass: 'GOOD',
+      warning: 'MODERATE',
+      fail: 'POOR',
+      pending: 'PENDING'
+    };
+
     return (
       <Badge className={variants[status as keyof typeof variants] || 'bg-muted text-muted-foreground'}>
-        {status.toUpperCase()}
+        {statusLabels[status as keyof typeof statusLabels] || status.toUpperCase()}
       </Badge>
     );
   };
@@ -896,7 +1040,7 @@ export function AuditMain() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-blue-600 dark:from-white dark:to-blue-400 bg-clip-text text-transparent">
-                Website Audit Dashboard
+                Dashboard
               </h1>
               <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mt-2">
                 Analyze website pages and view detailed audit results
@@ -1075,7 +1219,7 @@ export function AuditMain() {
               </div>
 
               {/* Pages Crawled */}
-              <div className="flex items-center gap-3 p-3 rounded-lg border bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 hover:shadow-md transition-all">
+              <div className={`flex items-center gap-3 p-3 rounded-lg border bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 hover:shadow-md transition-all ${projects[0].status === 'crawling' ? 'animate-pulse' : ''}`}>
                 <div className="flex-shrink-0">
                   {projects[0].status === 'crawling' ? (
                     <Loader2 className="h-6 w-6 text-green-500 animate-spin" />
@@ -1124,9 +1268,9 @@ export function AuditMain() {
 
               {/* Total Images */}
               <div 
-                className="flex items-center gap-3 p-3 rounded-lg border bg-gradient-to-r from-pink-50 to-rose-50 dark:from-pink-950 dark:to-rose-950 hover:shadow-md transition-all cursor-pointer group"
+                className={`flex items-center gap-3 p-3 rounded-lg border bg-gradient-to-r from-pink-50 to-rose-50 dark:from-pink-950 dark:to-rose-950 hover:shadow-md transition-all cursor-pointer group ${(currentSession?.isCrawling || projects[0].status === 'crawling') ? 'animate-pulse' : ''}`}
                 onClick={() => {
-                  if (currentSession?.isCrawling) return; // Disable during crawling
+                  if (currentSession?.isCrawling || projects[0].status === 'crawling') return; // Disable during crawling
                   if (projects[0].all_image_analysis && projects[0].all_image_analysis.length > 0) {
                     dispatch(toggleImageAnalysis({ projectId: projects[0].id, show: !currentSession?.showImageAnalysis }));
                     dispatch(toggleLinksAnalysis({ projectId: projects[0].id, show: false })); // Hide links analysis when showing images
@@ -1140,18 +1284,20 @@ export function AuditMain() {
                   <p className="text-sm text-muted-foreground">Total Images</p>
                   <div className="flex items-baseline gap-1">
                     <p className="font-semibold text-lg text-pink-600 dark:text-pink-400">
-                      {currentSession?.isCrawling ? currentSession.liveImageCount : (projects[0].all_image_analysis ? projects[0].all_image_analysis.length : 0)}
+                      {(currentSession?.isCrawling || projects[0].status === 'crawling') 
+                        ? (currentSession?.liveImageCount || projects[0].all_image_analysis?.length || 0)
+                        : (projects[0].all_image_analysis ? projects[0].all_image_analysis.length : 0)}
                     </p>
                     <span className="text-xs text-muted-foreground">
                       found
                     </span>
                   </div>
-                  {projects[0].all_image_analysis && projects[0].all_image_analysis.length > 0 && !currentSession?.isCrawling && (
+                  {projects[0].all_image_analysis && projects[0].all_image_analysis.length > 0 && !(currentSession?.isCrawling || projects[0].status === 'crawling') && (
                     <p className="text-xs text-muted-foreground mt-1">
                       {currentSession?.showImageAnalysis ? 'Click to hide' : 'Click to view details'}
                     </p>
                   )}
-                  {currentSession?.isCrawling && (
+                  {(currentSession?.isCrawling || projects[0].status === 'crawling') && (
                     <p className="text-xs text-muted-foreground mt-1">
                       Available after crawling completes
                     </p>
@@ -1161,9 +1307,9 @@ export function AuditMain() {
 
               {/* Total Links */}
               <div 
-                className="flex items-center gap-3 p-3 rounded-lg border bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950 dark:to-amber-950 hover:shadow-md transition-all cursor-pointer group"
+                className={`flex items-center gap-3 p-3 rounded-lg border bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950 dark:to-amber-950 hover:shadow-md transition-all cursor-pointer group ${(currentSession?.isCrawling || projects[0].status === 'crawling') ? 'animate-pulse' : ''}`}
                 onClick={() => {
-                  if (currentSession?.isCrawling) return; // Disable during crawling
+                  if (currentSession?.isCrawling || projects[0].status === 'crawling') return; // Disable during crawling
                   if (projects[0].all_links_analysis && projects[0].all_links_analysis.length > 0) {
                     dispatch(toggleLinksAnalysis({ projectId: projects[0].id, show: !currentSession?.showLinksAnalysis }));
                     dispatch(toggleImageAnalysis({ projectId: projects[0].id, show: false })); // Hide image analysis when showing links
@@ -1177,7 +1323,9 @@ export function AuditMain() {
                   <p className="text-sm text-muted-foreground">Total Links</p>
                   <div className="flex items-baseline gap-1 mb-1">
                     <p className="font-semibold text-lg text-orange-600 dark:text-orange-400">
-                      {currentSession?.isCrawling ? currentSession.liveLinkCount : (projects[0].all_links_analysis ? projects[0].all_links_analysis.length : 0)}
+                      {(currentSession?.isCrawling || projects[0].status === 'crawling') 
+                        ? (currentSession?.liveLinkCount || projects[0].all_links_analysis?.length || 0)
+                        : (projects[0].all_links_analysis ? projects[0].all_links_analysis.length : 0)}
                     </p>
                     <span className="text-xs text-muted-foreground">
                       found
@@ -1187,24 +1335,28 @@ export function AuditMain() {
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">Internal:</span>
                       <span className="font-semibold text-sm text-orange-600 dark:text-orange-400">
-                        {currentSession?.isCrawling ? currentSession.liveInternalLinks : (projects[0].all_links_analysis ? 
-                          projects[0].all_links_analysis.filter(link => link.type === 'internal').length : 0)}
+                        {(currentSession?.isCrawling || projects[0].status === 'crawling') 
+                          ? (currentSession?.liveInternalLinks || projects[0].all_links_analysis?.filter(link => link.type === 'internal').length || 0)
+                          : (projects[0].all_links_analysis ? 
+                            projects[0].all_links_analysis.filter(link => link.type === 'internal').length : 0)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">External:</span>
                       <span className="font-semibold text-sm text-orange-600 dark:text-orange-400">
-                        {currentSession?.isCrawling ? currentSession.liveExternalLinks : (projects[0].all_links_analysis ? 
-                          projects[0].all_links_analysis.filter(link => link.type === 'external').length : 0)}
+                        {(currentSession?.isCrawling || projects[0].status === 'crawling') 
+                          ? (currentSession?.liveExternalLinks || projects[0].all_links_analysis?.filter(link => link.type === 'external').length || 0)
+                          : (projects[0].all_links_analysis ? 
+                            projects[0].all_links_analysis.filter(link => link.type === 'external').length : 0)}
                       </span>
                     </div>
                   </div>
-                  {projects[0].all_links_analysis && projects[0].all_links_analysis.length > 0 && !currentSession?.isCrawling && (
+                  {projects[0].all_links_analysis && projects[0].all_links_analysis.length > 0 && !(currentSession?.isCrawling || projects[0].status === 'crawling') && (
                     <p className="text-xs text-muted-foreground mt-1">
                       {currentSession?.showLinksAnalysis ? 'Click to hide' : 'Click to view details'}
                     </p>
                   )}
-                  {currentSession?.isCrawling && (
+                  {(currentSession?.isCrawling || projects[0].status === 'crawling') && (
                     <p className="text-xs text-muted-foreground mt-1">
                       Available after crawling completes
                     </p>
@@ -1483,9 +1635,9 @@ export function AuditMain() {
                     <Label className="text-sm font-medium">Overall Status</Label>
                     <div className="mt-2 space-y-2">
                       {[
-                                { id: 'pass', label: 'Pass', color: 'text-emerald-600 dark:text-emerald-400', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => p.overallStatus === 'pass').length },
-        { id: 'warning', label: 'Warning', color: 'text-amber-600 dark:text-amber-400', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => p.overallStatus === 'warning').length },
-        { id: 'fail', label: 'Fail', color: 'text-red-600 dark:text-red-400', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => p.overallStatus === 'fail').length }
+                                { id: 'pass', label: 'Good', color: 'text-emerald-600 dark:text-emerald-400', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => p.overallStatus === 'pass').length },
+        { id: 'warning', label: 'Moderate', color: 'text-amber-600 dark:text-amber-400', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => p.overallStatus === 'warning').length },
+        { id: 'fail', label: 'Poor', color: 'text-red-600 dark:text-red-400', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => p.overallStatus === 'fail').length }
                       ].map(item => (
                         <div key={item.id} className="flex items-center space-x-2">
                           <Checkbox
@@ -1567,7 +1719,7 @@ export function AuditMain() {
               </p>
             </div>
           ) : (
-            <div className=" overflow-x-scroll">
+            <div className="overflow-x-scroll">
               <table className="w-full">
                 <thead className="bg-muted/50 border-b">
                   <tr className="text-left">
@@ -1616,7 +1768,7 @@ export function AuditMain() {
                 <tbody>
                   {filteredAndSortedPages.map((analyzedPage, index) => (
                     <tr
-                  key={`${analyzedPage.project.id}-${analyzedPage.page.id}`}
+                      key={`${analyzedPage.project.id}-${analyzedPage.page.id}`}
                       className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
                       onClick={(e) => {
                         // Don't trigger row selection if clicking on buttons or checkbox
@@ -1655,12 +1807,12 @@ export function AuditMain() {
                           <div className="flex items-center gap-2">
                             <Globe className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                             <p className="font-medium text-sm truncate">
-                          {analyzedPage.page.title || 'Untitled'}
-                        </p>
-                      </div>
+                              {analyzedPage.page.title || 'Untitled'}
+                            </p>
+                          </div>
                           <p className="text-xs text-muted-foreground truncate mt-0.5">
-                        {analyzedPage.page.url}
-                      </p>
+                            {analyzedPage.page.url}
+                          </p>
                           {isPageAnalyzing(analyzedPage) && (
                             <div className="flex items-center gap-1 mt-1">
                               <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
@@ -1671,7 +1823,7 @@ export function AuditMain() {
                               </span>
                             </div>
                           )}
-                  </div>
+                        </div>
                       </td>
                       <td className="p-2 text-center">
                         {isPageAnalyzing(analyzedPage) ? (
@@ -1717,26 +1869,24 @@ export function AuditMain() {
                             </Button>
                           ) : analyzedPage.resultCount > 0 ? (
                             <>
-                           
-                           
-                            <Button
-                              size="sm"
-                              className="h-7 px-3 w-full"
-                              onClick={() => router.push(`/audit/${analyzedPage.page.id}`)}
-                            >
-                              <Eye className="h-3 w-3 mr-1" />
-                              View
-                            </Button>
-                            <Button
-                              size="sm"
-                              className="h-7 px-3 w-full"
-                              onClick={() => analyzeSinglePage(analyzedPage.page.id)}
-                              disabled={analyzing || deleting || isAnalysisDisabled()}
-                              title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : ""}
-                            >
-                              <RefreshCw className="h-3 w-3 mr-1" />
-                              Re-Analyze
-                            </Button>
+                              <Button
+                                size="sm"
+                                className="h-7 px-3 w-full"
+                                onClick={() => router.push(`/audit/${analyzedPage.page.id}`)}
+                              >
+                                <Eye className="h-3 w-3 mr-1" />
+                                View
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="h-7 px-3 w-full"
+                                onClick={() => analyzeSinglePage(analyzedPage.page.id)}
+                                disabled={analyzing || deleting || isAnalysisDisabled()}
+                                title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : ""}
+                              >
+                                <RefreshCw className="h-3 w-3 mr-1" />
+                                Re-Analyze
+                              </Button>
                             </>
                           ) : (
                             <Button
@@ -1770,15 +1920,15 @@ export function AuditMain() {
                         </div>
                       </td>
                     </tr>
-              ))}
+                  ))}
                 </tbody>
               </table>
             </div>
           )}
         </CardContent>
       </Card>
-        </div>
-      </div>
     </div>
+  </div>
+</div>
   );
-} 
+}
