@@ -208,8 +208,8 @@ export function ProjectManager() {
     };
   };
 
-  const goToAudit = () => {
-    router.push('/audit');
+  const goToDashboard = () => {
+    router.push('/dashboard');
   };
 
   if (loading) {
@@ -280,9 +280,7 @@ export function ProjectManager() {
                     <div className="w-24 h-24 bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 rounded-full mx-auto flex items-center justify-center">
                       <Globe className="h-12 w-12 text-blue-600 dark:text-blue-400" />
                     </div>
-                    <div className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-r from-emerald-400 to-blue-500 rounded-full flex items-center justify-center">
-                      <Plus className="h-4 w-4 text-white" />
-                    </div>
+                  
                   </div>
                                      <div className="space-y-2">
                      <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
@@ -296,7 +294,7 @@ export function ProjectManager() {
                      </p>
                    </div>
                   <Button 
-                    onClick={goToAudit}
+                    onClick={goToDashboard}
                     className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg"
                   >
                     <Plus className="h-4 w-4 mr-2" />

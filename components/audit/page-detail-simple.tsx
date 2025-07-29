@@ -1046,111 +1046,110 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      {/* Header with refresh */}
-      <div className="flex items-center justify-between">
-        <div></div>
-
-        <div className="flex items-center gap-2">
-          {/* Analysis Status Indicator */}
-          {isAnalysisRunning && (
-            <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950">
-              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-              Analysis Running
-            </Badge>
-          )}
-
-          {/* Manual Refresh Button */}
-          <Button
-            onClick={fetchPageData}
-            disabled={grammarAnalyzing || seoAnalyzing}
-            variant="outline"
-            size="sm"
-          >
-            <RefreshCw
-              className={`h-4 w-4 mr-2 ${
-                grammarAnalyzing || seoAnalyzing ? "animate-spin" : ""
-              }`}
-            />
-            Refresh
-          </Button>
-          <Button
-            size="sm"
-            className="h-7 px-3 w-full"
-            onClick={startFullAnalysis}
-            disabled={grammarAnalyzing || seoAnalyzing || uiAnalyzing}
-          >
-            <RefreshCw className="h-3 w-3 mr-1" />
-            Re-Analyze
-          </Button>
-
-          {/* Start Analysis Button - show when no analysis is running and no results */}
-          {!isAnalysisRunning && (!grammarCached || !seoCached) && (
-            <Button onClick={startFullAnalysis} variant="default" size="sm">
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Start Analysis
-            </Button>
-          )}
-        </div>
-      </div>
-
       {error && (
         <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-lg p-4">
           {error}
         </div>
       )}
 
-      {/* Page Title and URL */}
+      {/* Page Header with Title, URL, and Action Buttons */}
       {page && (
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold">
-            {page.title || "Untitled Page"}
-          </h1>
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Globe className="h-4 w-4" />
-            <a
-              href={page.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:underline flex items-center gap-1"
-            >
-              {page.url}
-              <ExternalLink className="h-3 w-3" />
-            </a>
+        <div className="flex items-start justify-between gap-4">
+          {/* Page Title and URL */}
+          <div className="flex-1 space-y-2">
+            <h1 className="text-3xl font-bold">
+              {page.title || "Untitled Page"}
+            </h1>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Globe className="h-4 w-4" />
+              <a
+                href={page.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:underline flex items-center gap-1"
+              >
+                {page.url}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {page.analysis_status && (
+                <Badge
+                  variant={
+                    page.analysis_status === "completed"
+                      ? "default"
+                      : page.analysis_status === "analyzing"
+                      ? "secondary"
+                      : page.analysis_status === "failed"
+                      ? "destructive"
+                      : "outline"
+                  }
+                >
+                  Page Status: {page.analysis_status}
+                </Badge>
+              )}
+
+              {/* Content freshness indicator */}
+              <Badge variant="outline" className="text-xs">
+                <Calendar className="h-3 w-3 mr-1" />
+                Content: {new Date(page.scraped_at).toLocaleDateString()} at{" "}
+                {new Date(page.scraped_at).toLocaleTimeString()}
+              </Badge>
+
+              {/* Real-time analysis status */}
+              {isAnalysisRunning && (
+                <Badge
+                  variant="outline"
+                  className="bg-blue-50 dark:bg-blue-950 text-xs"
+                >
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Re-scraping & Analyzing...
+                </Badge>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {page.analysis_status && (
-              <Badge
-                variant={
-                  page.analysis_status === "completed"
-                    ? "default"
-                    : page.analysis_status === "analyzing"
-                    ? "secondary"
-                    : page.analysis_status === "failed"
-                    ? "destructive"
-                    : "outline"
-                }
-              >
-                Page Status: {page.analysis_status}
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Analysis Status Indicator */}
+            {isAnalysisRunning && (
+              <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950">
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                Analysis Running
               </Badge>
             )}
 
-            {/* Content freshness indicator */}
-            <Badge variant="outline" className="text-xs">
-              <Calendar className="h-3 w-3 mr-1" />
-              Content: {new Date(page.scraped_at).toLocaleDateString()} at{" "}
-              {new Date(page.scraped_at).toLocaleTimeString()}
-            </Badge>
+            {/* Manual Refresh Button */}
+            <Button
+              onClick={fetchPageData}
+              disabled={grammarAnalyzing || seoAnalyzing}
+              variant="outline"
+              size="sm"
+            >
+              <RefreshCw
+                className={`h-4 w-4 mr-2 ${
+                  grammarAnalyzing || seoAnalyzing ? "animate-spin" : ""
+                }`}
+              />
+              Refresh
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 px-3"
+              onClick={startFullAnalysis}
+              disabled={grammarAnalyzing || seoAnalyzing || uiAnalyzing}
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Re-Analyze
+            </Button>
 
-            {/* Real-time analysis status */}
-            {isAnalysisRunning && (
-              <Badge
-                variant="outline"
-                className="bg-blue-50 dark:bg-blue-950 text-xs"
-              >
-                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                Re-scraping & Analyzing...
-              </Badge>
+            {/* Start Analysis Button - show when no analysis is running and no results */}
+            {!isAnalysisRunning && (!grammarCached || !seoCached) && (
+              <Button onClick={startFullAnalysis} variant="default" size="sm">
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Start Analysis
+              </Button>
             )}
           </div>
         </div>
@@ -1158,115 +1157,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
       {/* Main Content - Side by Side Layout */}
       <div className="grid grid-cols-1  gap-6">
-        {/* Page Info - 1/4 width on large screens */}
-        {/* <div className="lg:col-span-1">
-          <Card className="h-fit">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-              <div>
-                  <CardTitle className="text-lg">{page.title || 'Untitled'}</CardTitle>
-                  <CardDescription className="break-all">{page.url}</CardDescription>
-                  </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  asChild
-                >
-                  <a href={page.url} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                </Button>
-                </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-              <div>
-                  <p className="text-sm text-muted-foreground">Status Code</p>
-                  <p className="font-medium">{page.status_code || 'Unknown'}</p>
-              </div>
-              <div>
-                  <p className="text-sm text-muted-foreground">Protocol</p>
-                  <p className="font-medium">{analysis.httpsCheck.isHttps ? 'HTTPS' : 'HTTP'}</p>
-              </div>
-              <div>
-                  <p className="text-sm text-muted-foreground">Indexable</p>
-                  <p className="font-medium">{analysis.robotsCheck.indexable ? 'Yes' : 'No'}</p>
-              </div>
-              <div>
-                  <p className="text-sm text-muted-foreground">Has Redirects</p>
-                  <p className="font-medium">{analysis.redirectCheck.hasRedirect ? 'Yes' : 'No'}</p>
-          </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Content Date</p>
-                  <p className="font-medium">{new Date(page.scraped_at).toLocaleDateString()} {new Date(page.scraped_at).toLocaleTimeString()}</p>
-              </div>
-              </div>
-
-       
-              <div className="pt-4 border-t">
-                <h4 className="font-medium mb-3">Quick Stats</h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Total Links</span>
-                    <span className="text-sm font-medium">{analysis.linksCheck.totalLinks}</span>
-              </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Headings</span>
-                    <span className="text-sm font-medium">{(analysis.headingStructure.allHeadings || []).length}</span>
-              </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">H1 Tags</span>
-                    <span className="text-sm font-medium">{analysis.headingStructure.h1Count}</span>
-            </div>
-                  {analysis.grammarCheck && (
-                    <>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">Word Count</span>
-                        <span className="text-sm font-medium">{analysis.grammarCheck.wordCount}</span>
-              </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">Reading Time</span>
-                        <span className="text-sm font-medium">{analysis.grammarCheck.estimatedReadingTime}m</span>
-              </div>
-                    </>
-                  )}
-              </div>
-            </div>
-
-       
-              <div className="pt-4 border-t">
-                <h4 className="font-medium mb-3">Overall Scores</h4>
-                <div className="space-y-2">
-                  {analysis.grammarCheck && (
-                    <div className="flex items-center justify-between p-2 border rounded">
-                      <span className="text-sm font-medium">Content Quality</span>
-                      <span className="text-lg font-bold text-primary">{analysis.grammarCheck.overallScore}</span>
-              </div>
-            )}
-                  {analysis.seoAnalysis && (
-                    <div className="flex items-center justify-between p-2 border rounded">
-                      <span className="text-sm font-medium">SEO Score</span>
-                      <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{analysis.seoAnalysis.overallScore}</span>
-              </div>
-            )}
-                  {analysis.grammarCheck?.companyInformation?.hasExpectedInfo && (
-                    <div className="flex items-center justify-between p-2 border rounded">
-                      <span className="text-sm font-medium">Company Info</span>
-                      <span className="text-lg font-bold text-blue-600 dark:text-blue-400">{analysis.grammarCheck.companyInformation.companyInfoScore}</span>
-              </div>
-            )}
-                  {(!analysis.grammarCheck || !analysis.seoAnalysis) && (
-                    <div className="text-center py-2">
-                      <p className="text-xs text-muted-foreground">Scores will appear as analysis completes</p>
-          </div>
-                  )}
-              </div>
-              </div>
-            </CardContent>
-          </Card>
-              </div> */}
-
-        {/* Analysis Tabs - 3/4 width on large screens */}
+      
         <div className="">
           <Card>
             <CardHeader>

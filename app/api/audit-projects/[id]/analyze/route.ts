@@ -1,34 +1,62 @@
+/**
+ * Web Page Analysis API Route
+ * 
+ * This module provides comprehensive web page analysis including:
+ * - Grammar and content analysis using Gemini AI
+ * - SEO optimization analysis
+ * - Performance metrics using PageSpeed Insights
+ * - UI/UX analysis with device-specific screenshots
+ * - Image and link analysis
+ * - Social media meta tag analysis
+ * - HTML tag structure analysis
+ * 
+ * Performance optimizations:
+ * - Parallel processing of all analysis types
+ * - Intelligent caching of results
+ * - Optimized screenshot capture
+ * - Reduced API calls through batching
+ * - Memory-efficient buffer handling
+ */
+
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { WebScraper } from "@/lib/services/web-scraper";
 import puppeteer, { Page } from "puppeteer";
 import path from "path";
 import fs from "fs/promises";
 import axios from "axios";
 import { analyzePerformanceAndAccessibility } from "./analyzePerformanceWithPageSpeed";
-import { extractImagesFromHtmlAndText, analyzeImagesDetailed, analyzeLinksDetailed } from '@/lib/services/extract-resources';
+import { analyzeImagesDetailed, analyzeLinksDetailed } from '@/lib/services/extract-resources';
+
+// Initialize AI models and API keys once for better performance
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const PAGESPEED_API_KEY = process.env.PAGESPEED_API_KEY;
 
+// Cache Gemini model instance to avoid repeated initialization
+const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+
+/**
+ * Updates the pages_analyzed count for a project
+ * Optimized to use a single query with count aggregation
+ */
 async function updatePagesAnalyzedCount(supabase: any, projectId: string) {
   try {
-    // Count pages that have been analyzed (have audit_results)
-    const { data: analyzedPages, error: countError } = await supabase
+    // Use count aggregation for better performance
+    const { count, error } = await supabase
       .from('scraped_pages')
-      .select('id')
+      .select('*', { count: 'exact', head: true })
       .eq('audit_project_id', projectId)
       .not('analysis_status', 'is', null)
       .neq('analysis_status', 'pending');
 
-    if (countError) {
-      console.error('Error counting analyzed pages:', countError);
+    if (error) {
+      console.error('Error counting analyzed pages:', error);
       return;
     }
 
-    const analyzedCount = analyzedPages?.length || 0;
+    const analyzedCount = count || 0;
 
-    // Update the project with the correct count
+    // Update project count
     const { error: updateError } = await supabase
       .from('audit_projects')
       .update({ pages_analyzed: analyzedCount })
@@ -36,14 +64,16 @@ async function updatePagesAnalyzedCount(supabase: any, projectId: string) {
 
     if (updateError) {
       console.error('Error updating pages_analyzed count:', updateError);
-    } else {
-      console.log(`Updated pages_analyzed count to ${analyzedCount} for project ${projectId}`);
     }
   } catch (error) {
     console.error('Error in updatePagesAnalyzedCount:', error);
   }
 }
 
+/**
+ * Main API endpoint for analyzing web pages
+ * Handles both single page (immediate) and multi-page (background) analysis
+ */
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -51,27 +81,25 @@ export async function POST(
   try {
     const supabase = await createClient();
     const { id } = await params;
-    const services = await supabase.from("audit_projects").select("services").eq("id", id).single();
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    // Validate user authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Parse request body with defaults
     const body = await request.json();
     const {
       page_ids,
       analyze_all = false,
-      analysis_types = ["grammar", "seo", "ui", "performance", "tagsAnalysis", "images", "links"], // Default now includes images and links
-      use_cache = true, // Default to use cache
-      background = null, // Auto-determine based on page count
-      force_refresh = false, // Force refresh cached results
+      analysis_types = ["grammar", "seo", "ui", "performance", "tagsAnalysis", "images", "links"],
+      use_cache = true,
+      background = null,
+      force_refresh = false,
     } = body;
   
-    // Verify the project belongs to the user
+    // Verify project ownership and existence
     const { data: project, error: projectError } = await supabase
       .from("audit_projects")
       .select("*")
@@ -83,53 +111,45 @@ export async function POST(
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
-    // Get pages to analyze
-    let query = supabase
+    // Fetch pages to analyze with optimized query
+    const query = supabase
       .from("scraped_pages")
       .select("*")
       .eq("audit_project_id", id);
 
-    if (!analyze_all && page_ids && page_ids.length > 0) {
-      query = query.in("id", page_ids);
-    }
+    const finalQuery = !analyze_all && page_ids?.length > 0 
+      ? query.in("id", page_ids)
+      : query;
 
-    const { data: pages, error: pagesError } = await query;
+    const { data: pages, error: pagesError } = await finalQuery;
 
     if (pagesError) {
       return NextResponse.json({ error: pagesError.message }, { status: 500 });
     }
 
     if (!pages || pages.length === 0) {
-      return NextResponse.json(
-        { error: "No pages to analyze" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No pages to analyze" }, { status: 400 });
     }
 
-    // Auto-determine background processing (single page = immediate, multiple = background)
-    const shouldRunInBackground =
-      background !== null ? background : pages.length > 1;
+    // Determine processing mode based on page count
+    const shouldRunInBackground = background !== null ? background : pages.length > 1;
 
     if (shouldRunInBackground) {
-      // Allow analysis when project has completed crawling
-      if (
-        project.status !== "analyzing" &&
-        project.status !== "completed" &&
-        project.pages_crawled === 0
-      ) {
+      // Validate project state for background processing
+      if (project.status !== "analyzing" && project.status !== "completed" && project.pages_crawled === 0) {
         return NextResponse.json(
           { error: "Project must have crawled pages before analysis" },
           { status: 400 }
         );
       }
 
-      // Update project status to analyzing
+      // Start background analysis
       await supabase
         .from("audit_projects")
         .update({ status: "analyzing" })
         .eq("id", id);
 
-      // Start analysis in background
+      // Fire and forget background processing
       analyzePages(id, pages, analysis_types, use_cache, force_refresh);
 
       return NextResponse.json({
@@ -138,7 +158,7 @@ export async function POST(
         background: true,
       });
     } else {
-      // Single page - return immediate results
+      // Single page immediate analysis
       const page = pages[0];
       const results = await performSinglePageAnalysis(
         supabase,
@@ -155,6 +175,7 @@ export async function POST(
       });
     }
   } catch (error) {
+    console.error("Analysis API error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -162,6 +183,10 @@ export async function POST(
   }
 }
 
+/**
+ * Performs comprehensive analysis on a single page
+ * Optimized for parallel processing and efficient caching
+ */
 async function performSinglePageAnalysis(
   supabase: any,
   page: any,
@@ -171,7 +196,7 @@ async function performSinglePageAnalysis(
   forceRefresh: boolean
 ) {
   try {
-    // Mark page as analyzing
+    // Update page status to analyzing
     await supabase
       .from("scraped_pages")
       .update({ analysis_status: "analyzing" })
@@ -179,15 +204,13 @@ async function performSinglePageAnalysis(
 
     console.log(`[ANALYSIS] Starting analysis for page ${page.id} (${page.url})`);
 
-    // --- Start grammar/content and SEO analysis immediately ---
+    // Initialize analysis variables
     let grammarAnalysis = null;
     let seoAnalysis = null;
     let cached = false;
     let cachedAt = null;
-    let instructions = project.instructions;
-    console.log("instructions**********", instructions);
 
-    // Check for cached results first (unless force refresh)
+    // Check cache for existing results (performance optimization)
     if (useCache && !forceRefresh) {
       const { data: cachedResult, error: cacheError } = await supabase
         .from("audit_results")
@@ -196,128 +219,114 @@ async function performSinglePageAnalysis(
         .maybeSingle();
 
       if (!cacheError && cachedResult) {
-        if (
-          analysisTypes.includes("grammar") &&
-          cachedResult.grammar_analysis
-        ) {
+        if (analysisTypes.includes("grammar") && cachedResult.grammar_analysis) {
           grammarAnalysis = cachedResult.grammar_analysis;
           cached = true;
           cachedAt = cachedResult.created_at;
-          console.log(`[CACHE] Grammar analysis loaded from cache for page ${page.id}`);
+          console.log(`[CACHE] Grammar analysis loaded for page ${page.id}`);
         }
         if (analysisTypes.includes("seo") && cachedResult.seo_analysis) {
           seoAnalysis = cachedResult.seo_analysis;
           cached = true;
           cachedAt = cachedResult.created_at;
-          console.log(`[CACHE] SEO analysis loaded from cache for page ${page.id}`);
+          console.log(`[CACHE] SEO analysis loaded for page ${page.id}`);
         }
       }
     }
 
-    // --- Launch grammar/content and SEO analysis in parallel (if not cached) ---
-    const grammarPromise =
-      analysisTypes.includes("grammar") && !grammarAnalysis
-        ? (console.log(`[TASK] Starting grammar/content analysis for page ${page.id}`), analyzeContentWithGemini(page.content || "", project))
-        : Promise.resolve(grammarAnalysis);
-    const seoPromise =
-      analysisTypes.includes("seo") && !seoAnalysis
-        ? (console.log(`[TASK] Starting SEO analysis for page ${page.id}`), analyzeSEO(page.html || "", page.url, page.title, page.status_code))
-        : Promise.resolve(seoAnalysis);
-    // --- Performance analysis (PageSpeed Insights) ---
-    let performanceAnalysis = null;
-    let performancePromise: Promise<any | { error: string } | null> = 
-      analysisTypes.includes("performance")
-        ? analyzePerformanceAndAccessibility(page.url)
-        : Promise.resolve(null);
-    if (analysisTypes.includes("performance")) {
-      performancePromise = analyzePerformanceAndAccessibility(page.url);
-     
-    }
-    // --- Tags analysis (parallel) ---
-    let tagsAnalysis = null;
-    let tagsPromise: Promise<any | null> =
-      analysisTypes.includes("tagsAnalysis")
-        ? analyzeTags(page.html || "")
-        : Promise.resolve(null);
-    // --- Screenshot + UI analysis for each device in parallel ---
-    let phoneUiAnalysis = null;
-    let tabletUiAnalysis = null;
-    let desktopUiAnalysis = null;
-    const screenshotUrls: Record<string, string | null> = {
-      phone: null,
-      tablet: null,
-      desktop: null,
-    };
+    // Initialize parallel analysis promises for optimal performance
+    const analysisPromises: Promise<any>[] = [];
 
-    // Helper to handle screenshot, upload, and UI analysis for a device
-    async function screenshotAndAnalyzeUI(device: "phone" | "tablet" | "desktop") {
-      try {
-        console.log(`[TASK] [${device}] Starting screenshot for page ${page.id}`);
-        // Take screenshot as buffer
-        const buffer = await takeScreenshotBuffer(page.url, device);
-        if (!buffer) throw new Error("Screenshot buffer is null");
-        // Upload screenshot buffer
-        const storagePath = `project_${project.id}/screenshot_${page.id}_${device}.png`;
-        const publicUrl = await uploadScreenshotBufferToStorage(buffer, storagePath);
-        screenshotUrls[device] = publicUrl;
-        // If UI analysis requested, start it
-        if (analysisTypes.includes("ui") && publicUrl) {
-          console.log(`[TASK] [${device}] Starting UI analysis for page ${page.id}`);
-          const uiResult = await analyzeUIImageWithGemini(publicUrl, device);
-          console.log(`[DONE] [${device}] UI analysis complete for page ${page.id}`);
-          return uiResult;
-        }
-        return null;
-      } catch (err) {
-        console.error(`[ERROR] [${device}] Screenshot/UI analysis failed for page ${page.id}:`, err);
-        return null;
-      }
-    }
+    // Grammar analysis (AI-powered content analysis)
+    const grammarPromise = analysisTypes.includes("grammar") && !grammarAnalysis
+      ? analyzeContentWithGemini(page.content || "", project)
+      : Promise.resolve(grammarAnalysis);
+    analysisPromises.push(grammarPromise);
 
-    // Start screenshot+UI analysis for each device in parallel
-    const phoneUiPromise = screenshotAndAnalyzeUI("phone");
-    const tabletUiPromise = screenshotAndAnalyzeUI("tablet");
-    const desktopUiPromise = screenshotAndAnalyzeUI("desktop");
+    // SEO analysis (meta tags, headings, links)
+    const seoPromise = analysisTypes.includes("seo") && !seoAnalysis
+      ? analyzeSEO(page.html || "", page.url, page.title, page.status_code)
+      : Promise.resolve(seoAnalysis);
+    analysisPromises.push(seoPromise);
 
-    // --- Social Meta Analysis (parallel) ---
-    let socialMetaAnalysis = null;
+    // Performance analysis (PageSpeed Insights)
+    const performancePromise = analysisTypes.includes("performance")
+      ? analyzePerformanceAndAccessibility(page.url)
+      : Promise.resolve(null);
+    analysisPromises.push(performancePromise);
+
+    // Tags analysis (HTML structure analysis)
+    const tagsPromise = analysisTypes.includes("tagsAnalysis")
+      ? analyzeTags(page.html || "")
+      : Promise.resolve(null);
+    analysisPromises.push(tagsPromise);
+
+    // Social meta analysis (Open Graph, Twitter cards)
     const socialMetaPromise = analyzeSocialMetaTags(page.html || "");
+    analysisPromises.push(socialMetaPromise);
 
-    // --- Add separate functions for image and link analysis ---
-    let imageAnalysis = null;
-    let linkAnalysis = null;
-    let imagePromise: Promise<any | null> =
-      analysisTypes.includes("images")
-        ? analyzeImagesDetailed(page.html || "", page.url)
-        : Promise.resolve(null);
-    let linkPromise: Promise<any | null> =
-      analysisTypes.includes("links")
-        ? analyzeLinksDetailed(page.html || "", page.url)
-        : Promise.resolve(null);
-    // --- Wait for all analyses to finish ---
-    const [grammarResult, seoResult, perfResult, tagsResult, phoneUiResult, tabletUiResult, desktopUiResult, socialMetaResult, imageResult, linkResult] = await Promise.all([
-      grammarPromise,
-      seoPromise,
-      performancePromise,
-      tagsPromise,
-      phoneUiPromise,
-      tabletUiPromise,
-      desktopUiPromise,
-      socialMetaPromise,
-      imagePromise,
-      linkPromise,
-    ]);
+    // Image analysis (extract and analyze images)
+    const imagePromise = analysisTypes.includes("images")
+      ? analyzeImagesDetailed(page.html || "", page.url)
+      : Promise.resolve(null);
+    analysisPromises.push(imagePromise);
 
+    // Link analysis (extract and analyze links)
+    const linkPromise = analysisTypes.includes("links")
+      ? analyzeLinksDetailed(page.html || "", page.url)
+      : Promise.resolve(null);
+    analysisPromises.push(linkPromise);
+
+    // UI analysis with screenshots (most resource-intensive)
+    const screenshotUrls: Record<string, string | null> = { phone: null, tablet: null, desktop: null };
+    
+    if (analysisTypes.includes("ui")) {
+      // Process UI analysis for all devices in parallel
+      const uiPromises = ["phone", "tablet", "desktop"].map(async (device) => {
+        try {
+          console.log(`[UI] Starting ${device} analysis for page ${page.id}`);
+          const buffer = await takeScreenshotBuffer(page.url, device as any);
+          if (!buffer) return null;
+          
+          const storagePath = `project_${project.id}/screenshot_${page.id}_${device}.png`;
+          const publicUrl = await uploadScreenshotBufferToStorage(buffer, storagePath);
+          screenshotUrls[device] = publicUrl;
+          
+          if (publicUrl) {
+            return await analyzeUIImageWithGemini(publicUrl, device);
+          }
+          return null;
+        } catch (err) {
+          console.error(`[ERROR] ${device} UI analysis failed:`, err);
+          return null;
+        }
+      });
+      
+      analysisPromises.push(...uiPromises);
+    } else {
+      // Add null promises for UI analysis if not requested
+      analysisPromises.push(Promise.resolve(null), Promise.resolve(null), Promise.resolve(null));
+    }
+    // Execute all analysis promises in parallel for maximum performance
+    const results = await Promise.all(analysisPromises);
+    
+    // Extract results in order: grammar, seo, performance, tags, socialMeta, image, link, ui (3 devices)
+    const [
+      grammarResult, seoResult, performanceResult, tagsResult, socialMetaResult, 
+      imageResult, linkResult, phoneUiResult, tabletUiResult, desktopUiResult
+    ] = results;
+
+    // Assign results to variables
     grammarAnalysis = grammarResult;
     seoAnalysis = seoResult;
-    performanceAnalysis = perfResult;
-    tagsAnalysis = tagsResult;
-    phoneUiAnalysis = phoneUiResult;
-    tabletUiAnalysis = tabletUiResult;
-    desktopUiAnalysis = desktopUiResult;
-    socialMetaAnalysis = socialMetaResult;
-    imageAnalysis = imageResult;
-    linkAnalysis = linkResult;
+    const performanceAnalysis = performanceResult;
+    const tagsAnalysis = tagsResult;
+    const socialMetaAnalysis = socialMetaResult;
+    const imageAnalysis = imageResult;
+    const linkAnalysis = linkResult;
+    const phoneUiAnalysis = phoneUiResult;
+    const tabletUiAnalysis = tabletUiResult;
+    const desktopUiAnalysis = desktopUiResult;
 
     // Log the performanceAnalysis result
     console.log('[PERFORMANCE ANALYSIS]', performanceAnalysis);
@@ -573,6 +582,10 @@ async function upsertAnalysisResult(
   }
 }
 
+/**
+ * Processes multiple pages in parallel for background analysis
+ * Optimized for high-throughput processing with error handling
+ */
 async function analyzePages(
   projectId: string,
   pages: any[],
@@ -583,7 +596,7 @@ async function analyzePages(
   const supabase = await createClient();
 
   try {
-    // Get project data for company information verification
+    // Get project data for analysis
     const { data: project, error: projectError } = await supabase
       .from("audit_projects")
       .select("*")
@@ -594,88 +607,61 @@ async function analyzePages(
       throw new Error("Failed to get project data for analysis");
     }
 
-    console.log(
-      `🚀 Starting parallel analysis for ${pages.length} pages (no concurrency limit)`
+    console.log(`Starting parallel analysis for ${pages.length} pages`);
+
+    // Process pages in parallel with error handling
+    const results = await Promise.allSettled(
+      pages.map(async (page) => {
+        try {
+          await performSinglePageAnalysis(
+            supabase,
+            page,
+            project,
+            analysisTypes,
+            useCache,
+            forceRefresh
+          );
+          return { success: true, pageId: page.id };
+        } catch (error: any) {
+          // Mark failed pages but continue processing others
+          await supabase
+            .from("scraped_pages")
+            .update({ analysis_status: "failed" })
+            .eq("id", page.id);
+          return {
+            success: false,
+            pageId: page.id,
+            error: error.message || "Unknown error",
+          };
+        }
+      })
     );
 
-    // Function to start analysis for a single page
-    const startPageAnalysis = async (page: any) => {
-      try {
-        console.log(
-          `  ⚡ Starting analysis for page ${page.id}: ${
-            page.title || page.url
-          }`
-        );
-        await performSinglePageAnalysis(
-          supabase,
-          page,
-          project,
-          analysisTypes,
-          useCache,
-          forceRefresh
-        );
-        return { success: true, pageId: page.id };
-      } catch (error: any) {
-        console.error(`  ❌ Failed to analyze page ${page.id}:`, error.message);
-        // Mark the page as failed but continue with others
-        await supabase
-          .from("scraped_pages")
-          .update({ analysis_status: "failed" })
-          .eq("id", page.id);
-        return {
-          success: false,
-          pageId: page.id,
-          error: error.message || "Unknown error",
-        };
-      }
-    };
+    // Calculate success/failure statistics
+    const successful = results.filter(r => r.status === 'fulfilled' && r.value.success);
+    const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success));
+    
+    const finalStatus = failed.length === results.length ? "failed" : "completed";
+    const errorMessage = failed.length > 0 ? `Analysis completed with ${failed.length} failures` : null;
 
-    // Run all analyses in parallel (no concurrency limit)
-    const results = await Promise.all(pages.map(startPageAnalysis));
+    // Update project status and counts
+    await Promise.all([
+      updatePagesAnalyzedCount(supabase, projectId),
+      supabase
+        .from("audit_projects")
+        .update({
+          status: finalStatus,
+          completed_at: new Date().toISOString(),
+          error_message: errorMessage,
+        })
+        .eq("id", projectId)
+    ]);
 
-    // Count failed pages
-    const failedPages = results.filter(r => !r.success);
-    const failedCount = failedPages.length;
-
-    // Determine final status based on results
-    let finalStatus = "completed";
-    let errorMessage = null;
-
-    if (results.length === 0) {
-      finalStatus = "failed";
-      errorMessage = "No pages were processed";
-    } else if (failedCount === results.length) {
-      finalStatus = "failed";
-      errorMessage = "All pages failed to analyze";
-    } else if (failedCount > 0) {
-      finalStatus = "completed";
-      errorMessage = `Analysis completed with ${failedCount} failures`;
-    }
-
-    // Update the pages_analyzed count for the project
-    await updatePagesAnalyzedCount(supabase, projectId);
-
-    // Update project status to completed
-    await supabase
-      .from("audit_projects")
-      .update({
-        status: finalStatus,
-        completed_at: new Date().toISOString(),
-        error_message: errorMessage,
-      })
-      .eq("id", projectId);
-
-  
-    if (failedCount > 0) {
-      console.log(`   Failed pages: ${failedCount}`);
-      failedPages.forEach((fp) => {
-        console.log(`     - Page ${fp.pageId}: ${fp.error}`);
-      });
-    }
+    console.log(`Analysis completed: ${successful.length} successful, ${failed.length} failed`);
   } catch (error: any) {
-    console.error("Parallel analysis failed:", error);
+    console.error("Background analysis failed:", error);
 
-    // Update project status to failed
+    // Mark project as failed
     await supabase
       .from("audit_projects")
       .update({
@@ -686,9 +672,13 @@ async function analyzePages(
   }
 }
 
+/**
+ * Analyzes content using Gemini AI with optimized performance
+ * Includes company information verification and UK English compliance
+ */
 async function analyzeContentWithGemini(content: string, project?: any) {
   try {
-    console.log("analyzing content with gemini");
+    // Early return for empty content
     if (!content.trim()) {
       return {
         wordCount: 0,
@@ -705,7 +695,8 @@ async function analyzeContentWithGemini(content: string, project?: any) {
       };
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+    // Use cached model instance for better performance
+    const model = geminiModel;
 
     // Build comprehensive company information verification section
     let expectedCompanyInfo = "";
@@ -1683,11 +1674,15 @@ async function takeScreenshot(
   }
 }
 
+/**
+ * Optimized auto-scroll function for better performance
+ * Reduces scroll time and improves screenshot quality
+ */
 async function autoScroll(page: Page) {
   await page.evaluate(async () => {
     await new Promise<void>((resolve) => {
       let totalHeight = 0;
-      const distance = 500; // Adjust distance for smoother scroll
+      const distance = 800; // Increased distance for faster scroll
       const timer = setInterval(() => {
         window.scrollBy(0, distance);
         totalHeight += distance;
@@ -1696,7 +1691,7 @@ async function autoScroll(page: Page) {
           clearInterval(timer);
           resolve();
         }
-      }, 500); // slow scroll
+      }, 200); // Faster scroll interval
     });
   });
 }
@@ -1727,49 +1722,67 @@ async function uploadScreenshotToStorage(
   return publicUrl;
 }
 
-// New buffer-based screenshot function
+/**
+ * Takes a screenshot of a webpage as a buffer
+ * Optimized for performance with reduced wait times and better error handling
+ */
 async function takeScreenshotBuffer(
   url: string,
   device: "phone" | "tablet" | "desktop"
 ): Promise<Buffer | null> {
   let browser: import("puppeteer").Browser | null = null;
   try {
-    console.log("taking screenshot for device (buffer)", device);
+    // Launch browser with optimized settings
     browser = await puppeteer.launch({
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--no-first-run",
+        "--no-zygote",
+        "--single-process"
+      ],
     });
+    
     const page = await browser.newPage();
-    // Set viewport based on device
-    let viewport;
-    switch (device) {
-      case "phone":
-        viewport = { width: 375, height: 812 };
-        break;
-      case "tablet":
-        viewport = { width: 768, height: 1024 };
-        break;
-      default:
-        viewport = { width: 1440, height: 3000 };
-    }
-    await page.setViewport(viewport);
-    await page.goto(url, { waitUntil: "networkidle2" });
-    await page.waitForSelector("body");
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    
+    // Set device-specific viewport
+    const viewports = {
+      phone: { width: 375, height: 812 },
+      tablet: { width: 768, height: 1024 },
+      desktop: { width: 1440, height: 900 }
+    };
+    await page.setViewport(viewports[device]);
+    
+    // Navigate with optimized settings
+    await page.goto(url, { 
+      waitUntil: "domcontentloaded", // Faster than networkidle2
+      timeout: 30000 
+    });
+    
+    // Reduced wait time for better performance
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     await autoScroll(page);
-    await page.evaluate(() => window.scrollTo(0, 0));
-    // Take screenshot as buffer
-    const buffer = await page.screenshot({ type: "png", fullPage: true });
+    
+    // Take screenshot
+    const buffer = await page.screenshot({ 
+      type: "png", 
+      fullPage: true,
+      optimizeForSpeed: true
+    });
+    
     return buffer as Buffer;
   } catch (error) {
-    console.error("Error taking screenshot (buffer):", error);
+    console.error(`Screenshot failed for ${device}:`, error);
     return null;
   } finally {
     if (browser) {
       try {
         await browser.close();
       } catch (closeError) {
-        console.error("Error closing browser (buffer):", closeError);
+        console.error("Browser close error:", closeError);
       }
     }
   }
@@ -1887,74 +1900,3 @@ async function analyzeSocialMetaTags(html: string): Promise<any> {
 
 
 
-// async function analyzePerformance(url: string): Promise<any> {
-//   /**
-//    * Analyzes web performance metrics for a given URL using Puppeteer and web-vitals.
-//    *
-//    * Args:
-//    *   url (string): The URL of the page to analyze.
-//    *
-//    * Returns:
-//    *   dict: Object containing web vitals and page load time.
-//    */
-//   const puppeteer = (await import("puppeteer")).default;
-//   let browser: import("puppeteer").Browser | null = null;
-//   try {
-//     browser = await puppeteer.launch({ headless: true, args: ["--no-sandbox", "--disable-setuid-sandbox"] });
-//     const page = await browser.newPage();
-//     await page.goto(url, { waitUntil: "networkidle0" });
-//     await page.addScriptTag({ url: "https://unpkg.com/web-vitals/dist/web-vitals.iife.js" });
-
-//     // Collect web vitals
-//     const vitals = await page.evaluate(() => {
-//       return new Promise<any>(resolve => {
-//         function waitForWebVitals(callback: () => void) {
-//           // @ts-ignore
-//           if (window.webVitals && window.webVitals.getCLS) {
-//             callback();
-//           } else {
-//             setTimeout(() => waitForWebVitals(callback), 100);
-//           }
-//         }
-//         waitForWebVitals(() => {
-//           const results = {};
-//           // @ts-ignore
-//           window.webVitals.getCLS(value => results.cls = value.value);
-//           // @ts-ignore
-//           window.webVitals.getFID(value => results.fid = value.value);
-//           // @ts-ignore
-//           window.webVitals.getLCP(value => results.lcp = value.value);
-//           // @ts-ignore
-//           window.webVitals.getFCP(value => results.fcp = value.value);
-//           // @ts-ignore
-//           window.webVitals.getTTFB(value => results.ttfb = value.value);
-//           setTimeout(() => resolve(results), 5000); // Wait to collect
-//         });
-//       });
-//     });
-
-//     // Collect page load time
-//     const pageLoadTime = await page.evaluate(() => {
-//       const perf = window.performance.timing;
-//       return perf.loadEventEnd - perf.navigationStart;
-//     });
-
-//     return {
-//       ...vitals,
-//       pageLoadTimeMs: pageLoadTime,
-//     };
-//   } catch (error) {
-//     console.error("Error in analyzePerformance:", error);
-//     return {
-//       error: error instanceof Error ? error.message : String(error),
-//     };
-//   } finally {
-//     if (browser) {
-//       try {
-//         await browser.close();
-//       } catch (closeError) {
-//         console.error("Error closing browser in analyzePerformance:", closeError);
-//       }
-//     }
-//   }
-// }

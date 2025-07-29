@@ -165,7 +165,7 @@ export function AuditMain() {
            scoreRange.max !== 100;
   };
 
-  const fetchData = async () => {
+  const fetchData = async (retryCount = 0) => {
     try {
       // If no project selected, redirect to projects page
       if (!selectedProjectId) {
@@ -175,24 +175,28 @@ export function AuditMain() {
 
       // Fetch the selected project
       const projectResponse = await fetch(`/api/audit-projects/${selectedProjectId}`);
-
-      
       const projectData = await projectResponse.json();
       
       if (projectResponse.ok) {
         setProjects([projectData.project]);
-        // Fetch analyzed pages from the selected project
+        // Fetch analyzed pages from the selected project with timeout handling
         try {
-          const resultsResponse = await fetch(`/api/audit-projects/${selectedProjectId}/results`);
-            const resultsData = await resultsResponse.json();
-            
-
-            if(resultsData.project.status=="pending" && !crawlingStartedRef.current){
-              crawlingStartedRef.current = true;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
           
-              startCrawlingProcess(projectData.project.id)
-            }
-            if (resultsResponse.ok && resultsData.pageResults) {
+          const resultsResponse = await fetch(`/api/audit-projects/${selectedProjectId}/results`, {
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          const resultsData = await resultsResponse.json();
+
+          if(resultsData.project.status=="pending" && !crawlingStartedRef.current){
+            crawlingStartedRef.current = true;
+            startCrawlingProcess(projectData.project.id)
+          }
+          
+          if (resultsResponse.ok && resultsData.pageResults) {
               
             const pages = resultsData.pageResults.map((pageResult: any) => {
               const results = pageResult.results;
@@ -241,8 +245,24 @@ export function AuditMain() {
               return newAnalyzing;
             });
           }
-        } catch {
-          // Project exists but no pages yet
+        } catch (error: any) {
+          console.error('Results fetch error:', error);
+          
+          // Handle timeout specifically
+          if (error?.name === 'AbortError') {
+            console.log('Results fetch timed out, showing empty state');
+            
+            // Retry up to 2 times for timeout errors
+            if (retryCount < 2) {
+              console.log(`Retrying results fetch (attempt ${retryCount + 1})`);
+              setTimeout(() => fetchData(retryCount + 1), 2000);
+              return;
+            } else {
+              toast.error('Results loading timed out. Please refresh the page.');
+            }
+          }
+          
+          // Project exists but no pages yet or error occurred
           if (selectedProjectId) {
             dispatch(updateAnalyzedPages({ projectId: selectedProjectId, pages: [] }));
           }
