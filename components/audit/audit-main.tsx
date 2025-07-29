@@ -40,6 +40,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'react-toastify';
 import { RootState } from '@/app/stores/store';
+import { AuditMainSkeleton } from '@/components/skeletons';
 import {
   initializeSession,
   startCrawling,
@@ -862,26 +863,25 @@ export function AuditMain() {
    
 
   if (loading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
-      </div>
-    );
+    return <AuditMainSkeleton />;
   }
 
 
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Website Audit Dashboard</h1>
-          <p className="text-muted-foreground">
-            Analyze website pages and view detailed audit results
-          </p>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800">
+      <div className="container mx-auto px-4 py-8 space-y-8">
+        {/* Header Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-blue-600 dark:from-white dark:to-blue-400 bg-clip-text text-transparent">
+                Website Audit Dashboard
+              </h1>
+              <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mt-2">
+                Analyze website pages and view detailed audit results
+              </p>
+            </div>
         <div className="flex items-center gap-2">
           {/* Start/Stop Crawl Buttons moved here */}
           {projects.length > 0 && projects[0] && (
@@ -1757,6 +1757,8 @@ export function AuditMain() {
           )}
         </CardContent>
       </Card>
+        </div>
+      </div>
     </div>
   );
 } 

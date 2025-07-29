@@ -39,6 +39,7 @@ import {
   X
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { ProjectManagerSkeleton } from '@/components/skeletons';
 
 export function ProjectManager() {
   const [projects, setProjects] = useState<AuditProject[]>([]);
@@ -212,18 +213,7 @@ export function ProjectManager() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />
-              <p className="text-slate-600 dark:text-slate-400">Loading your projects...</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <ProjectManagerSkeleton />;
   }
 
   return (

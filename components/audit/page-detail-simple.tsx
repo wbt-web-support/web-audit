@@ -13,7 +13,6 @@ import { Badge } from "@/components/ui/badge";
 import { AuditProject, ScrapedPage } from "@/lib/types/database";
 import {
   Loader2,
-  ArrowLeft,
   CheckCircle,
   XCircle,
   ExternalLink,
@@ -27,11 +26,11 @@ import {
   Image,
   Globe,
   Calendar,
-  Link2,
-  Clock,
 } from "lucide-react";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { PageDetailSkeleton } from "@/components/skeletons";
+import { ImageAnalysisTable } from "@/components/audit/image-analysis-table";
+import { LinksAnalysisTable } from "@/components/audit/links-analysis-table";
 
 interface PageAnalysis {
   metaTags: {
@@ -134,6 +133,7 @@ interface PageAnalysis {
     sizeKb: number | null;
     isLessThan500kb: boolean | null;
   }>;
+  link_analysis?: any;
   performance_analysis?: any;
 }
 
@@ -188,7 +188,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   const [performanceCached, setPerformanceCached] = useState(false);
   const [performanceCachedAt, setPerformanceCachedAt] = useState<string | null>(null);
   const [activeTechnicalTab, setActiveTechnicalTab] = useState("tags_analysis");
-  const [imageModal, setImageModal] = useState<{ open: boolean; src: string | null }>({ open: false, src: null });
 
   // Fetch results from audit_results table
   const fetchAnalysisResults = useCallback(async () => {
@@ -197,7 +196,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
       const data = await response.json();
 
       if (response.ok && data.results) {
-        console.log("📊 Fetched analysis results:", data.results);
 
         // Update analysis state with fresh results
         setAnalysis((prev) => {
@@ -227,6 +225,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
           }
           if (data.results.image_analysis) {
             newAnalysis.image_analysis = data.results.image_analysis;
+          }
+          if (data.results.link_analysis) {
+            newAnalysis.link_analysis = data.results.link_analysis;
           }
           if (data.results.performance_analysis) {
             newAnalysis.performance_analysis = data.results.performance_analysis;
@@ -285,27 +286,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     try {
       const response = await fetch(`/api/pages/${pageId}`);
       const data = await response.json();
-      console.log(
-        "Fetching page data for ID:",
-        typeof data.results.phone_ui_quality_analysis
-      );
-      console.log(
-        "Fetching page data for ID:",
-        typeof data.results.tablet_ui_quality_analysis
-      );
-      console.log(
-        "Fetching page data for ID:",
-        typeof data.results.desktop_ui_quality_analysis
-      );
       if (response.ok) {
-        console.log("🔍 Page data received:", {
-          pageId: data.page?.id,
-          analysis_status: data.page?.analysis_status,
-          has_results: !!data.results,
-          grammar_result: !!data.results?.grammar_analysis,
-          seo_result: !!data.results?.seo_analysis,
-        });
-        console.log("seoAnalysis**********", data.results.seo_analysis);
         setProject(data.project);
         setPage(data.page);
 
@@ -389,7 +370,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
           // Determine if we need to start analysis or show analyzing state
           if (isPageAnalyzing) {
-            console.log("🔥 Page is analyzing - showing analyzing states");
             // Page is being analyzed - show analyzing state for missing analyses
             if (!hasGrammarCache) {
               setGrammarAnalyzing(true);
@@ -407,7 +387,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             data.page.analysis_status === "pending" ||
             !data.page.analysis_status
           ) {
-            console.log("📝 Page needs analysis - starting fresh");
             // Page hasn't been analyzed yet - start fresh analysis for missing cached data
             if (!hasGrammarCache) {
               analyzeContentWithGemini();
@@ -452,7 +431,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             filter: `id=eq.${pageId}`,
           },
           async (payload) => {
-            console.log("🔄 Page status updated:", payload.new);
             const updatedPage = payload.new as any;
 
             // Update page state
@@ -460,19 +438,16 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
             // Handle status changes
             if (updatedPage.analysis_status === "analyzing") {
-              console.log("▶️ Analysis started");
               setIsAnalysisRunning(true);
               if (!grammarCached) setGrammarAnalyzing(true);
               if (!seoCached) setSeoAnalyzing(true);
               if (!uiQualityCached) setUiAnalyzing(true);
               if (!performanceCached) setPerformanceAnalyzing(true);
             } else if (updatedPage.analysis_status === "completed") {
-              console.log("✅ Analysis completed - fetching results");
               // Fetch the completed results
 
               await fetchAnalysisResults();
             } else if (updatedPage.analysis_status === "failed") {
-              console.log("❌ Analysis failed");
               setIsAnalysisRunning(false);
               setGrammarAnalyzing(false);
               setSeoAnalyzing(false);
@@ -497,7 +472,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             filter: `scraped_page_id=eq.${pageId}`,
           },
           async (payload) => {
-            console.log("📊 Results updated:", payload.eventType, payload.new);
 
             if (
               payload.eventType === "INSERT" ||
@@ -512,7 +486,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
       channels.push(resultsChannel);
 
-      console.log("🔌 Realtime subscriptions set up for page:", pageId);
     };
 
     setupRealtimeSubscriptions();
@@ -528,15 +501,11 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   // Add polling fallback when analysis is running
   useEffect(() => {
     if (isAnalysisRunning) {
-      console.log("🔄 Starting fallback polling for analysis status");
-
       const pollInterval = setInterval(async () => {
-        console.log("⏰ Polling for updates...");
         await fetchPageData();
       }, 5000); // Poll every 5 seconds
 
       return () => {
-        console.log("🛑 Stopping fallback polling");
         clearInterval(pollInterval);
       };
     }
@@ -570,7 +539,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
       );
 
       if (response.ok) {
-        console.log("✅ Full analysis started");
         // Results will come via realtime or polling
       }
     } catch (error) {
@@ -592,7 +560,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
         console.error("No project ID available for analysis");
         return;
       }
-      console.log("🚀 Starting grammar-only analysis...");
       const response = await fetch(
         `/api/audit-projects/${project.id}/analyze`,
         {
@@ -646,7 +613,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
         console.error("No project ID available for analysis");
         return;
       }
-      console.log(`🚀 Starting UI quality analysis for ${device}...`);
+
       const response = await fetch(
         `/api/audit-projects/${project.id}/analyze`,
         {
@@ -695,7 +662,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
         return;
       }
 
-      console.log("🚀 Starting grammar analysis...");
+
       const response = await fetch(
         `/api/audit-projects/${project.id}/analyze`,
         {
@@ -715,7 +682,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
       if (response.ok) {
         const grammarData = await response.json();
-        console.log("✅ Grammar analysis response:", grammarData);
+
 
         // Check if this is cached data
         setGrammarCached(grammarData.cached || false);
@@ -755,7 +722,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
         return;
       }
 
-      console.log("🚀 Starting SEO analysis...");
+
       const response = await fetch(
         `/api/audit-projects/${project.id}/analyze`,
         {
@@ -775,7 +742,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
       if (response.ok) {
         const seoData = await response.json();
-        console.log("✅ SEO analysis response:", seoData);
+
 
         // Check if this is cached data
         setSeoCached(seoData.cached || false);
@@ -1066,37 +1033,22 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    );
+    return <PageDetailSkeleton />;
   }
 
   if (!project || !page || !analysis) {
     return (
       <div className="text-center py-8">
         <p className="text-muted-foreground">Page not found</p>
-        <Link href={project ? `/audit?project=${project.id}` : "/audit"}>
-          <Button variant="outline" className="mt-4">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Audit
-          </Button>
-        </Link>
       </div>
     );
   }
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      {/* Header with back button and refresh */}
+      {/* Header with refresh */}
       <div className="flex items-center justify-between">
-        <Link href={project ? `/audit?project=${project.id}` : "/audit"}>
-          <Button variant="outline">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Audit
-          </Button>
-        </Link>
+        <div></div>
 
         <div className="flex items-center gap-2">
           {/* Analysis Status Indicator */}
@@ -2722,60 +2674,19 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           images = [];
                         }
                       }
-                      if (images.length > 0) {
-                        return (
-                          <div className="overflow-x-auto">
-                            <table className="min-w-full border text-xs">
-                              <thead>
-                                <tr className="bg-muted">
-                                  <th className="p-2 border">Preview</th>
-                                  <th className="p-2 border">Link</th>
-                                  <th className="p-2 border">Alt</th>
-                                  <th className="p-2 border">Format</th>
-                                  <th className="p-2 border">Size (KB)</th>
-                                  <th className="p-2 border">&lt;500KB?</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {images.map((img: any, idx: number) => (
-                                  <tr key={idx} className="hover:bg-primary/10">
-                                    <td className="p-2 border text-center">
-                                      {img.src ? (
-                                        <img
-                                          src={img.src}
-                                          alt={img.alt || "preview"}
-                                          className="w-12 h-12 object-contain cursor-pointer border rounded"
-                                          onClick={() => setImageModal({ open: true, src: img.src })}
-                                        />
-                                      ) : (
-                                        <span>-</span>
-                                      )}
-                                    </td>
-                                    <td className="p-2 border break-all max-w-xs">
-                                      {img.src ? (
-                                        <a href={img.src} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-                                          {img.src}
-                                        </a>
-                                      ) : (
-                                        <span>-</span>
-                                      )}
-                                    </td>
-                                    <td className="p-2 border">{img.alt || <span className="italic text-muted-foreground">(none)</span>}</td>
-                                    <td className="p-2 border">{img.format || "-"}</td>
-                                    <td className="p-2 border">{img.sizeKb !== null && img.sizeKb !== undefined ? img.sizeKb : "-"}</td>
-                                    <td className="p-2 border text-center">
-                                      {img.isLessThan500kb === null || img.isLessThan500kb === undefined ? "-" : img.isLessThan500kb ? (
-                                        <span className="text-emerald-600 font-bold">Yes</span>
-                                      ) : (
-                                        <span className="text-red-600 font-bold">No</span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        );
+                      
+                      // Transform the data to match ImageAnalysisTable interface
+                      const transformedImages = images.map((img: any) => ({
+                        src: img.src || '',
+                        alt: img.alt || '',
+                        size: img.sizeKb ? img.sizeKb * 1024 : null, // Convert KB to bytes
+                        format: img.format || '',
+                        is_small: img.isLessThan500kb,
+                        page_url: page?.url || ''
+                      }));
+                      
+                      if (transformedImages.length > 0) {
+                        return <ImageAnalysisTable images={transformedImages} />;
                       } else {
                         return (
                           <div className="text-center py-8">
@@ -2784,15 +2695,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                         );
                       }
                     })()}
-                    {/* Image Preview Modal */}
-                    {imageModal.open && imageModal.src && (
-                      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setImageModal({ open: false, src: null })}>
-                        <div className="bg-white dark:bg-zinc-900 rounded-lg p-4 max-w-lg w-full relative" onClick={e => e.stopPropagation()}>
-                          <button className="absolute top-2 right-2 text-xl" onClick={() => setImageModal({ open: false, src: null })}>&times;</button>
-                          <img src={imageModal.src} alt="Full preview" className="w-full h-auto max-h-[70vh] object-contain rounded" />
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
                 {activeAnalysisTab === "technical_fixes" && (
@@ -2803,6 +2705,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                         {[
                           { id: "tags_analysis", label: "Tags Analysis" },
                           { id: "social_share_preview", label: "Social Share Preview" },
+                          { id: "links_analysis", label: "Links Analysis" },
                         ].map((tab) => (
                           <button
                             key={tab.id}
@@ -2989,6 +2892,115 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                                   ))}
                                 </div>
                               )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+                    {activeTechnicalTab === "links_analysis" && (
+                      <div>
+                        {(() => {
+                          // Use the detailed link analysis if available
+                          if (analysis.link_analysis) {
+                            const linkData = analysis.link_analysis;
+                            
+                            // Transform links to match LinksAnalysisTable interface
+                            const transformedLinks = linkData.links.map((link: any) => ({
+                              href: link.href,
+                              type: link.type,
+                              text: link.text || '',
+                              page_url: link.page_url
+                            }));
+                            
+                            return (
+                              <div className="space-y-6">
+                                {/* Link Statistics Summary */}
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                  <Card>
+                                    <CardContent className="p-4">
+                                      <div className="text-2xl font-bold text-primary">{linkData.totalLinks}</div>
+                                      <div className="text-sm text-muted-foreground">Total Links</div>
+                                    </CardContent>
+                                  </Card>
+                                  <Card>
+                                    <CardContent className="p-4">
+                                      <div className="text-2xl font-bold text-green-600">{linkData.internalLinks}</div>
+                                      <div className="text-sm text-muted-foreground">Internal Links</div>
+                                    </CardContent>
+                                  </Card>
+                                  <Card>
+                                    <CardContent className="p-4">
+                                      <div className="text-2xl font-bold text-blue-600">{linkData.externalLinks}</div>
+                                      <div className="text-sm text-muted-foreground">External Links</div>
+                                    </CardContent>
+                                  </Card>
+                                  <Card>
+                                    <CardContent className="p-4">
+                                      <div className="text-2xl font-bold text-orange-600">{linkData.linksWithText}</div>
+                                      <div className="text-sm text-muted-foreground">Links with Text</div>
+                                    </CardContent>
+                                  </Card>
+                                </div>
+
+                                {/* Issues and Recommendations */}
+                                {(linkData.issues.length > 0 || linkData.recommendations.length > 0) && (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {linkData.issues.length > 0 && (
+                                      <Card>
+                                        <CardHeader>
+                                          <CardTitle className="text-destructive">Issues Found</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                          <ul className="space-y-2">
+                                            {linkData.issues.map((issue: string, idx: number) => (
+                                              <li key={idx} className="flex items-start gap-2">
+                                                <XCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                                                <span className="text-sm">{issue}</span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </CardContent>
+                                      </Card>
+                                    )}
+                                    {linkData.recommendations.length > 0 && (
+                                      <Card>
+                                        <CardHeader>
+                                          <CardTitle className="text-green-600">Recommendations</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                          <ul className="space-y-2">
+                                            {linkData.recommendations.map((rec: string, idx: number) => (
+                                              <li key={idx} className="flex items-start gap-2">
+                                                <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                                <span className="text-sm">{rec}</span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </CardContent>
+                                      </Card>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Links Table */}
+                                {transformedLinks.length > 0 && (
+                                  <div>
+                                    <h3 className="text-lg font-semibold mb-4">Detailed Link Analysis</h3>
+                                    <LinksAnalysisTable links={transformedLinks} />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                          
+                          // Fallback to basic link statistics
+                          return (
+                            <div className="text-center py-12">
+                              <p className="text-muted-foreground">No detailed link analysis data available.</p>
+                              <p className="text-sm text-muted-foreground mt-2">
+                                Basic link statistics: {analysis.linksCheck?.totalLinks || 0} total links 
+                                ({analysis.linksCheck?.internalLinks || 0} internal, {analysis.linksCheck?.externalLinks || 0} external)
+                              </p>
                             </div>
                           );
                         })()}

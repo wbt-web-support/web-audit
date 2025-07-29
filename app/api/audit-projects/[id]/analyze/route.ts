@@ -7,7 +7,7 @@ import path from "path";
 import fs from "fs/promises";
 import axios from "axios";
 import { analyzePerformanceAndAccessibility } from "./analyzePerformanceWithPageSpeed";
-import { extractImagesFromHtmlAndText } from '@/lib/services/extract-resources';
+import { extractImagesFromHtmlAndText, analyzeImagesDetailed, analyzeLinksDetailed } from '@/lib/services/extract-resources';
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const PAGESPEED_API_KEY = process.env.PAGESPEED_API_KEY;
 
@@ -65,7 +65,7 @@ export async function POST(
     const {
       page_ids,
       analyze_all = false,
-      analysis_types = ["grammar", "seo", "ui", "performance", "tagsAnalysis", "images"], // Default now includes images
+      analysis_types = ["grammar", "seo", "ui", "performance", "tagsAnalysis", "images", "links"], // Default now includes images and links
       use_cache = true, // Default to use cache
       background = null, // Auto-determine based on page count
       force_refresh = false, // Force refresh cached results
@@ -283,14 +283,19 @@ async function performSinglePageAnalysis(
     let socialMetaAnalysis = null;
     const socialMetaPromise = analyzeSocialMetaTags(page.html || "");
 
-    // --- Add this new function for image analysis ---
+    // --- Add separate functions for image and link analysis ---
     let imageAnalysis = null;
-    let imagePromise: Promise<any[] | null> =
+    let linkAnalysis = null;
+    let imagePromise: Promise<any | null> =
       analysisTypes.includes("images")
-        ? analyzeImages(page.html || "", page.url)
+        ? analyzeImagesDetailed(page.html || "", page.url)
+        : Promise.resolve(null);
+    let linkPromise: Promise<any | null> =
+      analysisTypes.includes("links")
+        ? analyzeLinksDetailed(page.html || "", page.url)
         : Promise.resolve(null);
     // --- Wait for all analyses to finish ---
-    const [grammarResult, seoResult, perfResult, tagsResult, phoneUiResult, tabletUiResult, desktopUiResult, socialMetaResult, imageResult] = await Promise.all([
+    const [grammarResult, seoResult, perfResult, tagsResult, phoneUiResult, tabletUiResult, desktopUiResult, socialMetaResult, imageResult, linkResult] = await Promise.all([
       grammarPromise,
       seoPromise,
       performancePromise,
@@ -300,6 +305,7 @@ async function performSinglePageAnalysis(
       desktopUiPromise,
       socialMetaPromise,
       imagePromise,
+      linkPromise,
     ]);
 
     grammarAnalysis = grammarResult;
@@ -311,6 +317,7 @@ async function performSinglePageAnalysis(
     desktopUiAnalysis = desktopUiResult;
     socialMetaAnalysis = socialMetaResult;
     imageAnalysis = imageResult;
+    linkAnalysis = linkResult;
 
     // Log the performanceAnalysis result
     console.log('[PERFORMANCE ANALYSIS]', performanceAnalysis);
@@ -370,7 +377,8 @@ async function performSinglePageAnalysis(
       overallScore,
       tagsAnalysis,
       socialMetaAnalysis,
-      imageAnalysis
+      imageAnalysis,
+      linkAnalysis
     );
     console.log(`[DB] Analysis results saved for page ${page.id}`);
 
@@ -455,6 +463,14 @@ async function performSinglePageAnalysis(
         freshly_scraped: true,
       };
     }
+    if (analysisTypes.includes("links")) {
+      return {
+        link_analysis: linkAnalysis,
+        cached,
+        cached_at: cachedAt,
+        freshly_scraped: true,
+      };
+    }
 
     return { error: "No valid analysis types specified" };
   } catch (error) {
@@ -485,7 +501,8 @@ async function upsertAnalysisResult(
   overallScore: number,
   tagsAnalysis: any = null,
   socialMetaAnalysis: any = null,
-  imageAnalysis: any = null
+  imageAnalysis: any = null,
+  linkAnalysis: any = null
 ) {
   const status =
     overallScore >= 80 ? "pass" : overallScore >= 60 ? "warning" : "fail";
@@ -537,6 +554,9 @@ async function upsertAnalysisResult(
   }
   if (imageAnalysis) {
     updateData.image_analysis = imageAnalysis;
+  }
+  if (linkAnalysis) {
+    updateData.link_analysis = linkAnalysis;
   }
 
   const { error } = await supabase.from("audit_results").upsert(updateData, {
@@ -1865,10 +1885,7 @@ async function analyzeSocialMetaTags(html: string): Promise<any> {
   return result;
 }
 
-// --- Add this new function for image analysis ---
-async function analyzeImages(html: string, baseUrl: string): Promise<any[]> {
-  return extractImagesFromHtmlAndText(html, baseUrl);
-}
+
 
 // async function analyzePerformance(url: string): Promise<any> {
 //   /**

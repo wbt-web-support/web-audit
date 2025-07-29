@@ -1,12 +1,13 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ProjectForm } from "@/components/audit/project-form";
+import { EditProjectPage } from "./edit-project-page";
 
-interface EditProjectPageProps {
+interface PageProps {
   params: Promise<{ id: string }>;
 }
 
-export default async function EditProjectPage({ params }: EditProjectPageProps) {
+export default async function Page({ params }: PageProps) {
   const supabase = await createClient();
   const { id } = await params;
 
@@ -27,5 +28,5 @@ export default async function EditProjectPage({ params }: EditProjectPageProps) 
     redirect("/projects?error=project-not-found");
   }
 
-  return <ProjectForm mode="edit" project={project} />;
+  return <EditProjectPage project={project} />;
 } 
