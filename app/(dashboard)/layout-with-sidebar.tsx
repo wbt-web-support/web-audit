@@ -27,8 +27,7 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Projects', href: '/projects', icon: Globe },
-    { name: 'Reports', href: '/reports', icon: BarChart3 },
-    { name: 'Settings', href: '/settings', icon: Settings },
+
   ];
 
   const isActive = (href: string) => {
