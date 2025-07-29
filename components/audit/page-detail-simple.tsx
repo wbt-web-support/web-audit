@@ -132,8 +132,37 @@ interface PageAnalysis {
     format: string | null;
     sizeKb: number | null;
     isLessThan500kb: boolean | null;
-  }>;
-  link_analysis?: any;
+  }> | {
+    totalImages: number;
+    imagesWithAlt: number;
+    imagesWithoutAlt: number;
+    images: Array<{
+      src: string;
+      alt: string | null;
+      format: string | null;
+      sizeKb: number | null;
+      isLessThan500kb: boolean | null;
+      hasAlt: boolean;
+      page_url: string;
+    }>;
+    issues: string[];
+    recommendations: string[];
+  };
+  link_analysis?: {
+    totalLinks: number;
+    internalLinks: number;
+    externalLinks: number;
+    linksWithText: number;
+    linksWithoutText: number;
+    links: Array<{
+      href: string;
+      type: string;
+      text: string;
+      page_url: string;
+    }>;
+    issues: string[];
+    recommendations: string[];
+  };
   performance_analysis?: any;
 }
 
@@ -227,6 +256,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             newAnalysis.image_analysis = data.results.image_analysis;
           }
           if (data.results.link_analysis) {
+            console.log("link_analysis", data.results.link_analysis);
             newAnalysis.link_analysis = data.results.link_analysis;
           }
           if (data.results.performance_analysis) {
@@ -266,6 +296,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
           if (data.results.image_analysis) {
             newAnalysis.image_analysis = data.results.image_analysis;
+          }
+          if (data.results.link_analysis) {
+            newAnalysis.link_analysis = data.results.link_analysis;
           }
           if (data.results.performance_analysis) {
             newAnalysis.performance_analysis = data.results.performance_analysis;
@@ -327,9 +360,12 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             if (data.results.social_meta_analysis) {
               basicAnalysis.social_meta_analysis = data.results.social_meta_analysis;
             }
-            if (data.results.image_analysis) {
-              basicAnalysis.image_analysis = data.results.image_analysis;
-            }
+              if (data.results.image_analysis) {
+                basicAnalysis.image_analysis = data.results.image_analysis;
+              }
+              if (data.results.link_analysis) {
+                basicAnalysis.link_analysis = data.results.link_analysis;
+              }
             if (data.results.performance_analysis) {
               basicAnalysis.performance_analysis = data.results.performance_analysis;
             }
@@ -2555,36 +2591,138 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       </Button>
                     </div>
                     {((): React.ReactNode => {
-                      let images: any[] = [];
-                      if (Array.isArray(analysis.image_analysis)) {
-                        images = analysis.image_analysis;
-                      } else if (typeof analysis.image_analysis === 'string') {
+                      // Handle the detailed image analysis data structure
+                      let imageAnalysis: any = analysis.image_analysis;
+                      
+                      // If it's a string, try to parse it
+                      if (typeof imageAnalysis === 'string') {
                         try {
-                          images = JSON.parse(analysis.image_analysis);
+                          imageAnalysis = JSON.parse(imageAnalysis);
                         } catch {
-                          images = [];
+                          imageAnalysis = undefined;
                         }
                       }
                       
-                      // Transform the data to match ImageAnalysisTable interface
-                      const transformedImages = images.map((img: any) => ({
-                        src: img.src || '',
-                        alt: img.alt || '',
-                        size: img.sizeKb ? img.sizeKb * 1024 : null, // Convert KB to bytes
-                        format: img.format || '',
-                        is_small: img.isLessThan500kb,
-                        page_url: page?.url || ''
-                      }));
-                      
-                      if (transformedImages.length > 0) {
-                        return <ImageAnalysisTable images={transformedImages} />;
-                      } else {
+                      if (!imageAnalysis) {
                         return (
                           <div className="text-center py-8">
-                            <p className="text-muted-foreground">No images found on this page.</p>
+                            <p className="text-muted-foreground">No image analysis data available.</p>
                           </div>
                         );
                       }
+                      
+                      // Handle the detailed analysis structure
+                      if (imageAnalysis && typeof imageAnalysis === 'object' && 'images' in imageAnalysis && Array.isArray(imageAnalysis.images)) {
+                        // Transform the data to match ImageAnalysisTable interface
+                        const transformedImages = imageAnalysis.images.map((img: any) => ({
+                          src: img.src || '',
+                          alt: img.alt || '',
+                          size: img.sizeKb ? img.sizeKb * 1024 : null, // Convert KB to bytes
+                          format: img.format || '',
+                          is_small: img.isLessThan500kb,
+                          page_url: page?.url || ''
+                        }));
+                        
+                        return (
+                          <div className="space-y-6">
+                            {/* Image Statistics Summary */}
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                              <Card>
+                                <CardContent className="p-4">
+                                  <div className="text-2xl font-bold text-primary">{imageAnalysis.totalImages}</div>
+                                  <div className="text-sm text-muted-foreground">Total Images</div>
+                                </CardContent>
+                              </Card>
+                              <Card>
+                                <CardContent className="p-4">
+                                  <div className="text-2xl font-bold text-green-600">{imageAnalysis.imagesWithAlt}</div>
+                                  <div className="text-sm text-muted-foreground">With Alt Text</div>
+                                </CardContent>
+                              </Card>
+                              <Card>
+                                <CardContent className="p-4">
+                                  <div className="text-2xl font-bold text-orange-600">{imageAnalysis.imagesWithoutAlt}</div>
+                                  <div className="text-sm text-muted-foreground">Missing Alt Text</div>
+                                </CardContent>
+                              </Card>
+                              <Card>
+                                <CardContent className="p-4">
+                                  <div className="text-2xl font-bold text-blue-600">{imageAnalysis.imagesWithAlt || 0}</div>
+                                  <div className="text-sm text-muted-foreground">With Alt Text</div>
+                                </CardContent>
+                              </Card>
+                            </div>
+
+                            {/* Issues and Recommendations */}
+                            {(imageAnalysis.issues?.length > 0 || imageAnalysis.recommendations?.length > 0) && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {imageAnalysis.issues?.length > 0 && (
+                                  <Card>
+                                    <CardHeader>
+                                      <CardTitle className="text-destructive">Issues Found</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                      <ul className="space-y-2">
+                                        {imageAnalysis.issues.map((issue: string, idx: number) => (
+                                          <li key={idx} className="flex items-start gap-2">
+                                            <XCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                                            <span className="text-sm">{issue}</span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </CardContent>
+                                  </Card>
+                                )}
+                                {imageAnalysis.recommendations?.length > 0 && (
+                                  <Card>
+                                    <CardHeader>
+                                      <CardTitle className="text-green-600">Recommendations</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                      <ul className="space-y-2">
+                                        {imageAnalysis.recommendations.map((rec: string, idx: number) => (
+                                          <li key={idx} className="flex items-start gap-2">
+                                            <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                            <span className="text-sm">{rec}</span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </CardContent>
+                                  </Card>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Images Table */}
+                            {transformedImages.length > 0 && (
+                              <div>
+                                <h3 className="text-lg font-semibold mb-4">Detailed Image Analysis</h3>
+                                <ImageAnalysisTable images={transformedImages} />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                      
+                      // Fallback for simple array structure
+                      if (Array.isArray(imageAnalysis)) {
+                        const transformedImages = imageAnalysis.map((img: any) => ({
+                          src: img.src || '',
+                          alt: img.alt || '',
+                          size: img.sizeKb ? img.sizeKb * 1024 : null,
+                          format: img.format || '',
+                          is_small: img.isLessThan500kb,
+                          page_url: page?.url || ''
+                        }));
+                        
+                        return <ImageAnalysisTable images={transformedImages} />;
+                      }
+                      
+                      return (
+                        <div className="text-center py-8">
+                          <p className="text-muted-foreground">No images found on this page.</p>
+                        </div>
+                      );
                     })()}
                   </div>
                 )}
@@ -2789,18 +2927,102 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       </div>
                     )}
                     {activeTechnicalTab === "links_analysis" && (
-                      <div>
+                      <div className="space-y-6">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Globe className="h-5 w-5" />
+                            <h3 className="text-lg font-semibold">Links Analysis</h3>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => startFullAnalysis()}
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            Refresh Analysis
+                          </Button>
+                        </div>
+
                         {(() => {
-                          // Use the detailed link analysis if available
-                          if (analysis.link_analysis) {
-                            const linkData = analysis.link_analysis;
+                          // Handle the detailed link analysis data structure
+                          let linkAnalysis: any = analysis.link_analysis;
+                          
+                          // Debug: Log the raw data
+                          console.log('🔍 Link Analysis Debug:', {
+                            rawLinkAnalysis: analysis.link_analysis,
+                            type: typeof analysis.link_analysis,
+                            hasLinks: analysis.link_analysis?.links,
+                            linksLength: analysis.link_analysis?.links?.length,
+                            isString: typeof analysis.link_analysis === 'string',
+                            parsed: typeof analysis.link_analysis === 'string' ? JSON.parse(analysis.link_analysis) : null
+                          });
+                          
+                          // If it's a string, try to parse it
+                          if (typeof linkAnalysis === 'string') {
+                            try {
+                              linkAnalysis = JSON.parse(linkAnalysis);
+                            } catch {
+                              linkAnalysis = undefined;
+                            }
+                          }
+                          
+                          // If no detailed analysis, try to create from basic link data
+                          if (!linkAnalysis && analysis.linksCheck) {
+                            linkAnalysis = {
+                              totalLinks: analysis.linksCheck.totalLinks,
+                              internalLinks: analysis.linksCheck.internalLinks,
+                              externalLinks: analysis.linksCheck.externalLinks,
+                              linksWithText: 0,
+                              linksWithoutText: 0,
+                              links: [],
+                              issues: [],
+                              recommendations: []
+                            };
                             
+                            // Generate basic issues and recommendations
+                            if (analysis.linksCheck.totalLinks === 0) {
+                              linkAnalysis.issues.push('No links found on the page');
+                              linkAnalysis.recommendations.push('Add relevant internal and external links to improve navigation and SEO');
+                            }
+                            
+                            if (analysis.linksCheck.internalLinks === 0 && analysis.linksCheck.externalLinks > 0) {
+                              linkAnalysis.issues.push('No internal links found - only external links present');
+                              linkAnalysis.recommendations.push('Add internal links to improve site navigation and SEO');
+                            }
+                            
+                            if (analysis.linksCheck.externalLinks === 0 && analysis.linksCheck.internalLinks > 0) {
+                              linkAnalysis.issues.push('No external links found');
+                              linkAnalysis.recommendations.push('Consider adding relevant external links for credibility and user value');
+                            }
+                          }
+                          
+                          
+                          if (!linkAnalysis) {
+                            return (
+                              <div className="text-center py-12">
+                                <div className="max-w-md mx-auto">
+                                  <Globe className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                                  <h3 className="text-lg font-semibold mb-2">No Link Analysis Data</h3>
+                                  <p className="text-muted-foreground mb-4">
+                                    No link analysis data is available for this page. Run a full analysis to get detailed link insights.
+                                  </p>
+                                  <Button onClick={() => startFullAnalysis()}>
+                                    <RefreshCw className="h-4 w-4 mr-2" />
+                                    Run Full Analysis
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          // Handle the detailed analysis structure
+                          if (linkAnalysis.links && Array.isArray(linkAnalysis.links)) {
                             // Transform links to match LinksAnalysisTable interface
-                            const transformedLinks = linkData.links.map((link: any) => ({
-                              href: link.href,
-                              type: link.type,
+                            const transformedLinks = linkAnalysis.links.map((link: any) => ({
+                              href: link.href || '',
+                              type: link.type || 'unknown',
                               text: link.text || '',
-                              page_url: link.page_url
+                              page_url: link.page_url || page?.url || ''
                             }));
                             
                             return (
@@ -2809,42 +3031,145 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                   <Card>
                                     <CardContent className="p-4">
-                                      <div className="text-2xl font-bold text-primary">{linkData.totalLinks}</div>
+                                      <div className="text-2xl font-bold text-primary">{linkAnalysis.totalLinks}</div>
                                       <div className="text-sm text-muted-foreground">Total Links</div>
                                     </CardContent>
                                   </Card>
                                   <Card>
                                     <CardContent className="p-4">
-                                      <div className="text-2xl font-bold text-green-600">{linkData.internalLinks}</div>
+                                      <div className="text-2xl font-bold text-green-600">{linkAnalysis.internalLinks}</div>
                                       <div className="text-sm text-muted-foreground">Internal Links</div>
                                     </CardContent>
                                   </Card>
                                   <Card>
                                     <CardContent className="p-4">
-                                      <div className="text-2xl font-bold text-blue-600">{linkData.externalLinks}</div>
+                                      <div className="text-2xl font-bold text-blue-600">{linkAnalysis.externalLinks}</div>
                                       <div className="text-sm text-muted-foreground">External Links</div>
                                     </CardContent>
                                   </Card>
                                   <Card>
                                     <CardContent className="p-4">
-                                      <div className="text-2xl font-bold text-orange-600">{linkData.linksWithText}</div>
+                                      <div className="text-2xl font-bold text-orange-600">{linkAnalysis.linksWithText}</div>
                                       <div className="text-sm text-muted-foreground">Links with Text</div>
                                     </CardContent>
                                   </Card>
                                 </div>
 
+                                {/* Additional Statistics */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                  <Card>
+                                    <CardHeader className="pb-2">
+                                      <CardTitle className="text-sm">Link Distribution</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                      <div className="space-y-2">
+                                        <div className="flex justify-between text-sm">
+                                          <span>Internal Links</span>
+                                          <span className="font-medium">{linkAnalysis.internalLinks}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                          <span>External Links</span>
+                                          <span className="font-medium">{linkAnalysis.externalLinks}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                          <span>With Text</span>
+                                          <span className="font-medium">{linkAnalysis.linksWithText}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                          <span>Without Text</span>
+                                          <span className="font-medium">{linkAnalysis.linksWithoutText || 0}</span>
+                                        </div>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                  
+                                  <Card>
+                                    <CardHeader className="pb-2">
+                                      <CardTitle className="text-sm">Link Quality</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                      <div className="space-y-2">
+                                        <div className="flex justify-between text-sm">
+                                          <span>Internal Ratio</span>
+                                          <span className="font-medium">
+                                            {linkAnalysis.totalLinks > 0 
+                                              ? `${((linkAnalysis.internalLinks / linkAnalysis.totalLinks) * 100).toFixed(1)}%`
+                                              : '0%'
+                                            }
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                          <span>External Ratio</span>
+                                          <span className="font-medium">
+                                            {linkAnalysis.totalLinks > 0 
+                                              ? `${((linkAnalysis.externalLinks / linkAnalysis.totalLinks) * 100).toFixed(1)}%`
+                                              : '0%'
+                                            }
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                          <span>Text Coverage</span>
+                                          <span className="font-medium">
+                                            {linkAnalysis.totalLinks > 0 
+                                              ? `${((linkAnalysis.linksWithText / linkAnalysis.totalLinks) * 100).toFixed(1)}%`
+                                              : '0%'
+                                            }
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                  
+                                  <Card>
+                                    <CardHeader className="pb-2">
+                                      <CardTitle className="text-sm">SEO Impact</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                      <div className="space-y-2">
+                                        <div className="flex items-center gap-2 text-sm">
+                                          {linkAnalysis.internalLinks > 0 ? (
+                                            <CheckCircle className="h-4 w-4 text-green-600" />
+                                          ) : (
+                                            <XCircle className="h-4 w-4 text-red-600" />
+                                          )}
+                                          <span>Internal Links</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-sm">
+                                          {linkAnalysis.externalLinks > 0 ? (
+                                            <CheckCircle className="h-4 w-4 text-green-600" />
+                                          ) : (
+                                            <XCircle className="h-4 w-4 text-red-600" />
+                                          )}
+                                          <span>External Links</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-sm">
+                                          {linkAnalysis.linksWithText > 0 ? (
+                                            <CheckCircle className="h-4 w-4 text-green-600" />
+                                          ) : (
+                                            <XCircle className="h-4 w-4 text-red-600" />
+                                          )}
+                                          <span>Descriptive Text</span>
+                                        </div>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                </div>
+
                                 {/* Issues and Recommendations */}
-                                {(linkData.issues.length > 0 || linkData.recommendations.length > 0) && (
+                                {(linkAnalysis.issues?.length > 0 || linkAnalysis.recommendations?.length > 0) && (
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {linkData.issues.length > 0 && (
+                                    {linkAnalysis.issues?.length > 0 && (
                                       <Card>
                                         <CardHeader>
-                                          <CardTitle className="text-destructive">Issues Found</CardTitle>
+                                          <CardTitle className="text-destructive flex items-center gap-2">
+                                            <XCircle className="h-5 w-5" />
+                                            Issues Found ({linkAnalysis.issues.length})
+                                          </CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                          <ul className="space-y-2">
-                                            {linkData.issues.map((issue: string, idx: number) => (
-                                              <li key={idx} className="flex items-start gap-2">
+                                          <ul className="space-y-3">
+                                            {linkAnalysis.issues.map((issue: string, idx: number) => (
+                                              <li key={idx} className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800">
                                                 <XCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
                                                 <span className="text-sm">{issue}</span>
                                               </li>
@@ -2853,15 +3178,18 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                                         </CardContent>
                                       </Card>
                                     )}
-                                    {linkData.recommendations.length > 0 && (
+                                    {linkAnalysis.recommendations?.length > 0 && (
                                       <Card>
                                         <CardHeader>
-                                          <CardTitle className="text-green-600">Recommendations</CardTitle>
+                                          <CardTitle className="text-green-600 flex items-center gap-2">
+                                            <CheckCircle className="h-5 w-5" />
+                                            Recommendations ({linkAnalysis.recommendations.length})
+                                          </CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                          <ul className="space-y-2">
-                                            {linkData.recommendations.map((rec: string, idx: number) => (
-                                              <li key={idx} className="flex items-start gap-2">
+                                          <ul className="space-y-3">
+                                            {linkAnalysis.recommendations.map((rec: string, idx: number) => (
+                                              <li key={idx} className="flex items-start gap-3 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
                                                 <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
                                                 <span className="text-sm">{rec}</span>
                                               </li>
@@ -2876,9 +3204,38 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                                 {/* Links Table */}
                                 {transformedLinks.length > 0 && (
                                   <div>
-                                    <h3 className="text-lg font-semibold mb-4">Detailed Link Analysis</h3>
+                                    <div className="flex items-center justify-between mb-4">
+                                      <h3 className="text-lg font-semibold">Detailed Link Analysis</h3>
+                                      <Badge variant="outline">
+                                        {transformedLinks.length} links found
+                                      </Badge>
+                                    </div>
+                                    <div className="mb-4 p-4 bg-muted/10 rounded-lg">
+                                      <p className="text-sm text-muted-foreground">
+                                        <strong>Debug Info:</strong> Found {transformedLinks.length} links in analysis data
+                                      </p>
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        Sample: {transformedLinks.slice(0, 2).map((link: any) => `${link.href} (${link.type})`).join(', ')}
+                                      </p>
+                                    </div>
                                     <LinksAnalysisTable links={transformedLinks} />
                                   </div>
+                                )}
+
+                                {/* No Links Found */}
+                                {transformedLinks.length === 0 && (
+                                  <Card>
+                                    <CardContent className="text-center py-8">
+                                      <Globe className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                                      <p className="text-muted-foreground">No links found in the detailed analysis.</p>
+                                      <p className="text-sm text-muted-foreground mt-1">
+                                        This could mean the page has no links or the analysis didn't capture them properly.
+                                      </p>
+                                      <div className="mt-4 p-3 bg-muted/10 rounded text-xs">
+                                        <p><strong>Debug:</strong> linkAnalysis.links = {JSON.stringify(linkAnalysis.links?.slice(0, 2))}</p>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
                                 )}
                               </div>
                             );
@@ -2886,12 +3243,41 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           
                           // Fallback to basic link statistics
                           return (
-                            <div className="text-center py-12">
-                              <p className="text-muted-foreground">No detailed link analysis data available.</p>
-                              <p className="text-sm text-muted-foreground mt-2">
-                                Basic link statistics: {analysis.linksCheck?.totalLinks || 0} total links 
-                                ({analysis.linksCheck?.internalLinks || 0} internal, {analysis.linksCheck?.externalLinks || 0} external)
-                              </p>
+                            <div className="space-y-6">
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <Card>
+                                  <CardContent className="p-4">
+                                    <div className="text-2xl font-bold text-primary">{linkAnalysis.totalLinks || 0}</div>
+                                    <div className="text-sm text-muted-foreground">Total Links</div>
+                                  </CardContent>
+                                </Card>
+                                <Card>
+                                  <CardContent className="p-4">
+                                    <div className="text-2xl font-bold text-green-600">{linkAnalysis.internalLinks || 0}</div>
+                                    <div className="text-sm text-muted-foreground">Internal Links</div>
+                                  </CardContent>
+                                </Card>
+                                <Card>
+                                  <CardContent className="p-4">
+                                    <div className="text-2xl font-bold text-blue-600">{linkAnalysis.externalLinks || 0}</div>
+                                    <div className="text-sm text-muted-foreground">External Links</div>
+                                  </CardContent>
+                                </Card>
+                              </div>
+                              
+                              <Card>
+                                <CardContent className="text-center py-8">
+                                  <Globe className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                                  <p className="text-muted-foreground">Basic link statistics available</p>
+                                  <p className="text-sm text-muted-foreground mt-1">
+                                    Run a full analysis to get detailed link insights and recommendations.
+                                  </p>
+                                  <Button className="mt-4" onClick={() => startFullAnalysis()}>
+                                    <RefreshCw className="h-4 w-4 mr-2" />
+                                    Run Full Analysis
+                                  </Button>
+                                </CardContent>
+                              </Card>
                             </div>
                           );
                         })()}
@@ -2908,3 +3294,4 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     </div>
   );
 }
+

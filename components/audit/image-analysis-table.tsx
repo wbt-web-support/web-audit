@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, XCircle, ExternalLink, CodeSquare, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CheckCircle, XCircle, ExternalLink, CodeSquare, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 interface ImageAnalysis {
@@ -19,6 +19,158 @@ interface ImageAnalysisTableProps {
   images: ImageAnalysis[];
 }
 
+// Image Preview Modal Component
+interface ImagePreviewModalProps {
+  image: ImageAnalysis | null;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+function ImagePreviewModal({ image, isOpen, onClose }: ImagePreviewModalProps) {
+  if (!isOpen || !image) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-lg max-w-6xl w-full max-h-[95vh] overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-lg font-semibold">Image Preview</h3>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            className="h-8 w-8 p-0"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        
+        {/* Content */}
+        <div className="p-6 overflow-y-auto max-h-[calc(95vh-120px)]">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Image Preview */}
+            <div className="space-y-4">
+              <h4 className="font-medium text-sm text-gray-600 dark:text-gray-400">Image Preview</h4>
+              <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-800">
+                <img
+                  src={image.src}
+                  alt={image.alt || 'Image preview'}
+                  className="max-w-full h-auto max-h-[500px] object-contain mx-auto"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'text-center text-red-500 p-4';
+                    errorDiv.textContent = 'Failed to load image';
+                    target.parentNode?.appendChild(errorDiv);
+                  }}
+                />
+              </div>
+            </div>
+            
+            {/* Image Details */}
+            <div className="space-y-4">
+              <h4 className="font-medium text-sm text-gray-600 dark:text-gray-400">Image Details</h4>
+              <div className="space-y-3">
+                {/* Alt Text */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Alt Text
+                  </label>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded border text-sm">
+                    {image.alt ? (
+                      <span className="text-gray-900 dark:text-gray-100">{image.alt}</span>
+                    ) : (
+                      <span className="text-red-500 italic">Missing alt text</span>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Image URL */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Image URL
+                  </label>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded border">
+                    <a 
+                      href={image.src} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-600 dark:text-blue-400 hover:underline break-all text-sm"
+                    >
+                      {image.src}
+                    </a>
+                  </div>
+                </div>
+                
+                {/* Page URL */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Page URL
+                  </label>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded border">
+                    <a 
+                      href={image.page_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-600 dark:text-blue-400 hover:underline break-all text-sm"
+                    >
+                      {image.page_url}
+                    </a>
+                  </div>
+                </div>
+                
+                {/* Image Size */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    File Size
+                  </label>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded border text-sm">
+                    {image.size ? (
+                      <span className="text-gray-900 dark:text-gray-100">
+                        {(image.size / 1024).toFixed(1)} KB
+                      </span>
+                    ) : (
+                      <span className="text-gray-500 italic">Unknown</span>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Image Format */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Format
+                  </label>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded border text-sm">
+                    <span className="text-gray-900 dark:text-gray-100 font-mono">
+                      {image.format || 'Unknown'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-200 dark:border-gray-700">
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+          <Button 
+            onClick={() => {
+              navigator.clipboard.writeText(image.src);
+              toast('Image URL copied to clipboard!');
+            }}
+          >
+            Copy URL
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const ITEMS_PER_PAGE = 50; // Show only 50 items per page for better performance
 
 export function ImageAnalysisTable({ images }: ImageAnalysisTableProps) {
@@ -26,6 +178,8 @@ export function ImageAnalysisTable({ images }: ImageAnalysisTableProps) {
   const [imageFilterMode, setImageFilterMode] = useState<'filtered' | 'all'>('filtered');
   const [imageFormatFilter, setImageFormatFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedImage, setSelectedImage] = useState<ImageAnalysis | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Helper function for normalized duplicate detection
   const getNormalizedUrl = (url: string) => {
@@ -355,14 +509,22 @@ export function ImageAnalysisTable({ images }: ImageAnalysisTableProps) {
                     <tr key={`${startIndex + idx}-${img.src}`} className="border-b hover:bg-muted/20">
                       <td className="p-2 border text-center">{startIndex + idx + 1}</td>
                       <td className="p-2 border text-center">
-                        <a href={img.src} target="_blank" rel="noopener noreferrer">
+                        <div
+                          className="inline-block cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => {
+                            setSelectedImage(img);
+                            setIsModalOpen(true);
+                          }}
+                          title="Click to preview image"
+                        >
                           <img
                             src={img.src}
                             alt={img.alt || 'image'}
                             style={{ maxWidth: 48, maxHeight: 48, objectFit: 'contain', borderRadius: 4 }}
                             loading="lazy"
+                            className="border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600"
                           />
-                        </a>
+                        </div>
                       </td>
                       <td className="p-2 border">{img.alt || <span className="text-muted-foreground">(none)</span>}</td>
                       <td className="p-2 border max-w-xs truncate">
@@ -414,6 +576,11 @@ export function ImageAnalysisTable({ images }: ImageAnalysisTableProps) {
           </div>
         </CardContent>
       )}
+      <ImagePreviewModal
+        image={selectedImage}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
     </Card>
   );
 } 
