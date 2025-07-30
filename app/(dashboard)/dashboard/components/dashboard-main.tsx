@@ -10,6 +10,7 @@ import { DashboardSkeleton } from '@/components/skeletons';
 import type { AuditProject } from '@/lib/types/database';
 import { createClient } from '@/lib/supabase/client';
 import type { UserProfile } from '@/lib/types/database';
+import { BackButton } from '@/components/ui/back-button';
 
 export interface DashboardStats {
   totalProjects: number;
@@ -70,13 +71,16 @@ export function DashboardMain() {
       <div className="container mx-auto px-4 py-8 space-y-8">
         {/* Header Section */}
         <div className="space-y-4">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
-              <BarChart3 className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
+                <BarChart3 className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+              </div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-blue-600 dark:from-white dark:to-blue-400 bg-clip-text text-transparent">
+                Web Audit Dashboard
+              </h1>
             </div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-blue-600 dark:from-white dark:to-blue-400 bg-clip-text text-transparent">
-              Web Audit Dashboard
-            </h1>
+            
           </div>
           <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl">
             We audit your web pages for SEO, accessibility, performance, and content quality. Get actionable insights and detailed reports to help you improve your website. Start a new audit project or review your recent results below.

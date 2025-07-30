@@ -31,6 +31,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageDetailSkeleton } from "@/components/skeletons";
 import { ImageAnalysisTable } from "@/components/audit/image-analysis-table";
 import { LinksAnalysisTable } from "@/components/audit/links-analysis-table";
+import { BackButton } from "@/components/ui/back-button";
 
 interface PageAnalysis {
   metaTags: {
@@ -1082,6 +1083,13 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
+      {/* Back Button - Top Left */}
+      <div className="mb-4">
+        <BackButton href="/audit">
+          Back to Audit
+        </BackButton>
+      </div>
+      
       {error && (
         <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-lg p-4">
           {error}
@@ -1093,9 +1101,11 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
         <div className="flex items-start justify-between gap-4">
           {/* Page Title and URL */}
           <div className="flex-1 space-y-2">
-            <h1 className="text-3xl font-bold">
-              {page.title || "Untitled Page"}
-            </h1>
+            <div className="flex items-center justify-between">
+              <h1 className="text-3xl font-bold">
+                {page.title || "Untitled Page"}
+              </h1>
+            </div>
             <div className="flex items-center gap-2 text-muted-foreground">
               <Globe className="h-4 w-4" />
               <a

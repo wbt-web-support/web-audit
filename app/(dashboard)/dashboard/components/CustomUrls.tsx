@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/app/stores/store';
 import { setUrls } from '@/app/stores/dashboardFormSlice';
@@ -14,6 +14,13 @@ interface CustomUrlsProps {
 export default function CustomUrls({ crawlType }: CustomUrlsProps) {
   const urls = useSelector((state: RootState) => state.dashboardForm.urls);
   const dispatch = useDispatch();
+
+  // Initialize with one empty URL if the array is empty
+  useEffect(() => {
+    if (urls.length === 0) {
+      dispatch(setUrls(['']));
+    }
+  }, [urls.length, dispatch]);
 
   const handleUrlChange = (idx: number, value: string) => {
     const updated = urls.map((url, i) => (i === idx ? value : url));

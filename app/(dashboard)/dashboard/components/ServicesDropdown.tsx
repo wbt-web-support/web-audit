@@ -9,9 +9,9 @@ import { toast } from 'react-toastify';
 
 const SERVICES = [
     { label: "Brand Consistency", value: "contact_details_consistency" },
-    { label: "Hidden URL", value: "check_custom_urls" },
+    { label: "Hidden Urls", value: "check_custom_urls" },
     { label: "Stripe Keys Check", value: "check_stripe_keys" },
-    { label: "Add custom instructions", value: "custom_instructions" },
+    { label: "Add Custom Instructions", value: "custom_instructions" },
 ];
 
 /**

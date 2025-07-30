@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ProjectManagerSkeleton } from '@/components/skeletons';
+import { BackButton } from '@/components/ui/back-button';
 
 export function ProjectManager() {
   const [projects, setProjects] = useState<AuditProject[]>([]);
@@ -238,15 +239,24 @@ export function ProjectManager() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800">
       <div className="container mx-auto px-4 py-8 space-y-6">
+        {/* Back Button - Top Left */}
+        <div className="mb-4">
+          <BackButton href="/dashboard">
+            Back to Dashboard
+          </BackButton>
+        </div>
+        
         {/* Header Section */}
         <div className="space-y-3">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
-              <Globe className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
+                <Globe className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+              </div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-blue-600 dark:from-white dark:to-blue-400 bg-clip-text text-transparent">
+                Project Dashboard
+              </h1>
             </div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-blue-600 dark:from-white dark:to-blue-400 bg-clip-text text-transparent">
-              Project Dashboard
-            </h1>
           </div>
           <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl">
             Monitor and manage your website audit projects with comprehensive analytics and insights
@@ -328,7 +338,7 @@ export function ProjectManager() {
                 const isExpanded = expandedProjects.has(project.id);
 
                 return (
-                  <Card key={project.id} className="border-0 shadow-xl bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-300 group">
+                  <Card key={project.id} className="border-0 shadow-md bg-white/80 dark:bg-slate-800/80  hover:shadow-2xl transition-all duration-300 group">
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
                         <div className="flex items-start gap-4">

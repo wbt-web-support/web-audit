@@ -41,6 +41,7 @@ import Link from 'next/link';
 import { toast } from 'react-toastify';
 import { RootState } from '@/app/stores/store';
 import { AuditMainSkeleton } from '@/components/skeletons';
+import { BackButton } from '@/components/ui/back-button';
 import {
   initializeSession,
   startCrawling,
@@ -1035,6 +1036,13 @@ export function AuditMain() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800">
       <div className="container mx-auto px-4 py-8 space-y-8">
+        {/* Back Button - Top Left */}
+        <div className="mb-4">
+          <BackButton href="/projects">
+            Back to Projects
+          </BackButton>
+        </div>
+        
         {/* Header Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -1046,7 +1054,7 @@ export function AuditMain() {
                 Analyze website pages and view detailed audit results
               </p>
             </div>
-        <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
           {/* Start/Stop Crawl Buttons moved here */}
           {projects.length > 0 && projects[0] && (
             <>
@@ -1902,7 +1910,7 @@ export function AuditMain() {
                           )}
                           
                           {/* Delete button */}
-                          {deletingPages.has(analyzedPage.page.id) ? (
+                          {/* {deletingPages.has(analyzedPage.page.id) ? (
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled>
                               <Loader2 className="h-3 w-3 animate-spin" />
                             </Button>
@@ -1916,7 +1924,7 @@ export function AuditMain() {
                             >
                               <Trash2 className="h-3 w-3" />
                             </Button>
-                          )}
+                          )} */}
                         </div>
                       </td>
                     </tr>
