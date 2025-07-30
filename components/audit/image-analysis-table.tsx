@@ -3,7 +3,8 @@
 import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, XCircle, ExternalLink, CodeSquare, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { CheckCircle, XCircle, ExternalLink, CodeSquare, ChevronLeft, ChevronRight, X, Search } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 interface ImageAnalysis {
@@ -175,11 +176,12 @@ const ITEMS_PER_PAGE = 50; // Show only 50 items per page for better performance
 
 export function ImageAnalysisTable({ images }: ImageAnalysisTableProps) {
   const [showAllImageAnalysis, setShowAllImageAnalysis] = useState(true);
-  const [imageFilterMode, setImageFilterMode] = useState<'filtered' | 'all'>('filtered');
+  const [imageFilterMode, setImageFilterMode] = useState<'filtered' | 'all' | 'duplicates'>('filtered');
   const [imageFormatFilter, setImageFormatFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedImage, setSelectedImage] = useState<ImageAnalysis | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Helper function for normalized duplicate detection
   const getNormalizedUrl = (url: string) => {
@@ -311,8 +313,74 @@ export function ImageAnalysisTable({ images }: ImageAnalysisTableProps) {
         return detectedFormat === imageFormatFilter.toLowerCase();
       });
     }
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filteredImages = filteredImages.filter(img => {
+        return (
+          img.src.toLowerCase().includes(query) ||
+          (img.alt && img.alt.toLowerCase().includes(query)) ||
+          img.page_url.toLowerCase().includes(query)
+        );
+      });
+      
+      // Sort search results with priority for exact page URL matches
+      return filteredImages.sort((a, b) => {
+        const aPageUrl = a.page_url.toLowerCase();
+        const bPageUrl = b.page_url.toLowerCase();
+        const aSrc = a.src.toLowerCase();
+        const bSrc = b.src.toLowerCase();
+        const aAlt = (a.alt || '').toLowerCase();
+        const bAlt = (b.alt || '').toLowerCase();
+        
+        // Priority 1: Exact page URL matches (highest priority)
+        const aExactPageMatch = aPageUrl === query;
+        const bExactPageMatch = bPageUrl === query;
+        if (aExactPageMatch && !bExactPageMatch) return -1;
+        if (!aExactPageMatch && bExactPageMatch) return 1;
+        
+        // Priority 2: Page URL starts with query
+        const aPageStartsWith = aPageUrl.startsWith(query);
+        const bPageStartsWith = bPageUrl.startsWith(query);
+        if (aPageStartsWith && !bPageStartsWith) return -1;
+        if (!aPageStartsWith && bPageStartsWith) return 1;
+        
+        // Priority 3: Page URL contains query
+        const aPageContains = aPageUrl.includes(query);
+        const bPageContains = bPageUrl.includes(query);
+        if (aPageContains && !bPageContains) return -1;
+        if (!aPageContains && bPageContains) return 1;
+        
+        // Priority 4: Exact image URL matches
+        const aExactSrcMatch = aSrc === query;
+        const bExactSrcMatch = bSrc === query;
+        if (aExactSrcMatch && !bExactSrcMatch) return -1;
+        if (!aExactSrcMatch && bExactSrcMatch) return 1;
+        
+        // Priority 5: Image URL starts with query
+        const aSrcStartsWith = aSrc.startsWith(query);
+        const bSrcStartsWith = bSrc.startsWith(query);
+        if (aSrcStartsWith && !bSrcStartsWith) return -1;
+        if (!aSrcStartsWith && bSrcStartsWith) return 1;
+        
+        // Priority 6: Alt text contains query
+        const aAltContains = aAlt.includes(query);
+        const bAltContains = bAlt.includes(query);
+        if (aAltContains && !bAltContains) return -1;
+        if (!aAltContains && bAltContains) return 1;
+        
+        // Priority 7: Default format-based sorting
+        const formatOrder = { 'jpg': 1, 'jpeg': 1, 'webp': 2, 'png': 3, 'svg': 4 };
+        const aFormat = detectImageFormat(a);
+        const bFormat = detectImageFormat(b);
+        const aOrder = formatOrder[aFormat as keyof typeof formatOrder] || 5;
+        const bOrder = formatOrder[bFormat as keyof typeof formatOrder] || 5;
+        return aOrder - bOrder;
+      });
+    }
     
-    // Sort by format: JPG, WebP, PNG, SVG, then others
+    // Sort by format: JPG, WebP, PNG, SVG, then others (when no search query)
     const formatOrder = { 'jpg': 1, 'jpeg': 1, 'webp': 2, 'png': 3, 'svg': 4 };
     return filteredImages.sort((a, b) => {
       const aFormat = detectImageFormat(a);
@@ -321,7 +389,7 @@ export function ImageAnalysisTable({ images }: ImageAnalysisTableProps) {
       const bOrder = formatOrder[bFormat as keyof typeof formatOrder] || 5;
       return aOrder - bOrder;
     });
-  }, [images, imageFilterMode, imageFormatFilter]);
+  }, [images, imageFilterMode, imageFormatFilter, searchQuery]);
 
   // Pagination logic
   const totalPages = Math.ceil(processedImages.length / ITEMS_PER_PAGE);
@@ -337,6 +405,11 @@ export function ImageAnalysisTable({ images }: ImageAnalysisTableProps) {
 
   const handleFilterModeChange = (newMode: 'filtered' | 'all') => {
     setImageFilterMode(newMode);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
     setCurrentPage(1);
   };
 
@@ -463,6 +536,40 @@ export function ImageAnalysisTable({ images }: ImageAnalysisTableProps) {
       </CardHeader>
       {showAllImageAnalysis && (
         <CardContent>
+          {/* Search Input */}
+          <div className="mb-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search by image URL, alt text, or page URL..."
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-10"
+              />
+              {searchQuery && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleSearchChange('')}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            {searchQuery && (
+              <div className="mt-2 text-sm text-muted-foreground">
+                Found {processedImages.length} images matching "{searchQuery}"
+                {processedImages.length > 0 && (
+                  <span className="ml-2 text-xs">
+                    (searches image URLs, alt text, and page URLs)
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          
           <div className="overflow-x-auto">
             <div className="h-[600px] overflow-y-scroll border rounded-lg">
               <table className="min-w-full border text-xs">
@@ -471,35 +578,37 @@ export function ImageAnalysisTable({ images }: ImageAnalysisTableProps) {
                     <th className="p-2 border text-center">#</th>
                     <th className="p-2 border">Preview</th>
                     <th className="p-2 border">Alt</th>
-                    <th className="p-2 border">
-                      Src 
-                      <button
-                        type="button"
-                        className="ml-2 inline-flex items-center px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-600 dark:text-blue-300 text-xs font-medium border border-blue-200 dark:border-blue-800 transition"
-                        title="Copy all image URLs"
-                        onClick={copyAllImageUrls}
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16h8M8 12h8m-7 8h6a2 2 0 002-2V6a2 2 0 00-2-2H8a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        Copy All
-                      </button>
-                    </th>
+                                         <th className="p-2 border">
+                       <div className="flex items-center justify-center">
+                         <span>Source</span>
+                         <button
+                           type="button"
+                           className="ml-2 inline-flex items-center justify-center px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-medium transition"
+                           title="Copy all image URLs"
+                           onClick={copyAllImageUrls}
+                         >
+                           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16h8M8 12h8m-7 8h6a2 2 0 002-2V6a2 2 0 00-2-2H8a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                           </svg>
+                         </button>
+                       </div>
+                     </th>
                   
-                    <th className="p-2 border">
-                      Page URL
-                      <button
-                        type="button"
-                        className="ml-2 inline-flex items-center px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-600 dark:text-blue-300 text-xs font-medium border border-blue-200 dark:border-blue-800 transition"
-                        title="Copy all page URLs"
-                        onClick={copyAllPageUrls}
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16h8M8 12h8m-7 8h6a2 2 0 002-2V6a2 2 0 00-2-2H8a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        Copy All
-                      </button>
-                    </th>
+                                         <th className="p-2 border">
+                       <div className="flex items-center justify-center">
+                         <span>Page URL</span>
+                         <button
+                           type="button"
+                           className="ml-2 inline-flex items-center justify-center px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-medium transition"
+                           title="Copy all page URLs"
+                           onClick={copyAllPageUrls}
+                         >
+                           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16h8M8 12h8m-7 8h6a2 2 0 002-2V6a2 2 0 00-2-2H8a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                           </svg>
+                         </button>
+                       </div>
+                     </th>
                     <th className="p-2 border">Size (KB)</th>
                     <th className="p-2 border text-center w-[10%]">Format</th>
                   </tr>

@@ -1183,7 +1183,7 @@ export function AuditMain() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {/* Status */}
-              <div className="flex items-center gap-3 p-3 rounded-lg border bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 hover:shadow-md transition-all cursor-pointer group">
+              <div className="flex items-center gap-3 p-3 rounded-lg border bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 hover:shadow-md transition-all  group">
                 <div className="flex-shrink-0">
                   {projects[0].status === 'completed' ? (
                     <CheckCircle className="h-6 w-6 text-emerald-500" />

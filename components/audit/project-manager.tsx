@@ -162,7 +162,12 @@ export function ProjectManager() {
     const internalLinks = project.all_links_analysis?.filter(link => link.type === 'internal').length || 0;
     const externalLinks = project.all_links_analysis?.filter(link => link.type === 'external').length || 0;
     const totalImages = project.all_image_analysis?.length || 0;
-    const smallImages = project.all_image_analysis?.filter(img => img.is_small).length || 0;
+    
+    // Categorize images by size (small < 500kb)
+    const smallImages = project.all_image_analysis?.filter(img => {
+      const sizeInBytes = img.size || 0;
+      return sizeInBytes < 500 * 1024; // Less than 500KB
+    }).length || 0;
     const largeImages = totalImages - smallImages;
 
     // Calculate image format breakdowns
@@ -194,10 +199,10 @@ export function ProjectManager() {
       return acc;
     }, {} as Record<string, number>) || {};
 
-    // Get top formats (limit to 5 most common)
+    // Get top formats (limit to 3 most common)
     const topFormats = Object.entries(imageFormats)
       .sort(([,a], [,b]) => b - a)
-      .slice(0, 5);
+      .slice(0, 3);
 
     return {
       totalLinks,
@@ -206,7 +211,6 @@ export function ProjectManager() {
       totalImages,
       smallImages,
       largeImages,
-      imageFormats,
       topFormats
     };
   };
@@ -233,18 +237,18 @@ export function ProjectManager() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800">
-      <div className="container mx-auto px-4 py-8 space-y-8">
-                {/* Header Section */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-3 mb-6">
+      <div className="container mx-auto px-4 py-8 space-y-6">
+        {/* Header Section */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 mb-4">
             <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
               <Globe className="h-8 w-8 text-blue-600 dark:text-blue-400" />
             </div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-blue-600 dark:from-white dark:to-blue-400 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-blue-600 dark:from-white dark:to-blue-400 bg-clip-text text-transparent">
               Project Dashboard
             </h1>
           </div>
-                    <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl">
+          <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl">
             Monitor and manage your website audit projects with comprehensive analytics and insights
           </p>
         </div>
@@ -280,13 +284,13 @@ export function ProjectManager() {
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
             <div className="flex items-center gap-3 text-red-700 dark:text-red-400">
               <AlertTriangle className="h-5 w-5" />
-            <span>{error}</span>
+              <span>{error}</span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-                {/* Projects Grid */}
-        <div className="space-y-6">
+        {/* Projects Grid */}
+        <div className="space-y-4">
           {filteredProjects.length === 0 ? (
             <Card className="border-0 shadow-xl bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
               <CardContent className="pt-12 pb-12">
@@ -295,19 +299,18 @@ export function ProjectManager() {
                     <div className="w-24 h-24 bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 rounded-full mx-auto flex items-center justify-center">
                       <Globe className="h-12 w-12 text-blue-600 dark:text-blue-400" />
                     </div>
-                  
                   </div>
-                                     <div className="space-y-2">
-                     <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
-                       {projects.length === 0 ? 'No projects yet' : 'No matching projects'}
-                     </h3>
-                     <p className="text-slate-600 dark:text-slate-400">
-                       {projects.length === 0 
-                         ? 'Create your first project to start analyzing websites'
-                         : `No projects match "${searchQuery}". Try adjusting your search terms.`
-                       }
-                     </p>
-                   </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
+                      {projects.length === 0 ? 'No projects yet' : 'No matching projects'}
+                    </h3>
+                    <p className="text-slate-600 dark:text-slate-400">
+                      {projects.length === 0 
+                        ? 'Create your first project to start analyzing websites'
+                        : `No projects match "${searchQuery}". Try adjusting your search terms.`
+                      }
+                    </p>
+                  </div>
                   <Button 
                     onClick={goToDashboard}
                     className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg"
@@ -315,21 +318,18 @@ export function ProjectManager() {
                     <Plus className="h-4 w-4 mr-2" />
                     Create New Project
                   </Button>
-              </div>
-            </CardContent>
-          </Card>
-                    ) : (
-              <div className="grid gap-6">
-                {filteredProjects.map((project) => {
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
+              {filteredProjects.map((project) => {
                 const metrics = calculateMetrics(project);
-                const progress = project.pages_crawled && project.total_pages 
-                  ? Math.round((project.pages_crawled / project.total_pages) * 100)
-                  : 0;
                 const isExpanded = expandedProjects.has(project.id);
 
                 return (
                   <Card key={project.id} className="border-0 shadow-xl bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-300 group">
-                    <CardHeader className="pb-4">
+                    <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
                         <div className="flex items-start gap-4">
                           <div className="p-3 bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 rounded-xl">
@@ -394,255 +394,129 @@ export function ProjectManager() {
                       </div>
                     </CardHeader>
                     
-                    <CardContent className="space-y-6">
-                      {isExpanded && (
-                        <>
-                          {/* Progress Bar */}
-                          <div className="space-y-2">
-                            <div className="flex justify-between text-sm">
-                              <span className="text-slate-600 dark:text-slate-400">Progress</span>
-                              <span className="font-medium">{project.pages_crawled || 0} / {project.total_pages || 0} pages</span>
+                    {isExpanded && (
+                      <CardContent className="pt-0 space-y-4">
+                        {/* Compact Metrics Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">Pages</span>
                             </div>
-                            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                              <div 
-                                className={`h-2 rounded-full transition-all duration-500 ${
-                                  progress > 80 ? 'bg-emerald-500' : 
-                                  progress > 50 ? 'bg-blue-500' : 
-                                  progress > 20 ? 'bg-amber-500' : 'bg-slate-400'
-                                }`}
-                                style={{ width: `${progress}%` }}
-                              />
-                            </div>
-                          </div>
-
-                      {/* Metrics Grid */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg p-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                            <span className="text-sm text-slate-600 dark:text-slate-400">Pages</span>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                            <p className="text-xl font-bold text-slate-900 dark:text-white">
                               {project.pages_crawled || 0}
                             </p>
                             <p className="text-xs text-slate-500 dark:text-slate-500">Crawled</p>
                           </div>
-                        </div>
 
-                        <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-lg p-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <BarChart3 className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                            <span className="text-sm text-slate-600 dark:text-slate-400">Analysis</span>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <BarChart3 className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">Analysis</span>
+                            </div>
+                            <p className="text-xl font-bold text-slate-900 dark:text-white">
                               {project.pages_analyzed || 0}
                             </p>
                             <p className="text-xs text-slate-500 dark:text-slate-500">Completed</p>
                           </div>
-                      </div>
 
-                        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 rounded-lg p-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Link className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                            <span className="text-sm text-slate-600 dark:text-slate-400">Links</span>
-                      </div>
-                          <div className="space-y-1">
-                            <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Link className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">Links</span>
+                            </div>
+                            <p className="text-xl font-bold text-slate-900 dark:text-white">
                               {metrics.totalLinks}
                             </p>
                             <p className="text-xs text-slate-500 dark:text-slate-500">
                               {metrics.internalLinks} internal, {metrics.externalLinks} external
-                        </p>
-                      </div>
-                    </div>
-                    
-                                                 <div className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/20 dark:to-amber-800/20 rounded-lg p-4">
-                           <div className="flex items-center gap-2 mb-2">
-                             <Image className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                             <span className="text-sm text-slate-600 dark:text-slate-400">Images</span>
-                           </div>
-                           <div className="space-y-1">
-                             <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                               {metrics.totalImages}
-                             </p>
-                             <p className="text-xs text-slate-500 dark:text-slate-500">
-                               {metrics.largeImages} large, {metrics.smallImages} small
-                             </p>
-                             {metrics.topFormats.length > 0 && (
-                               <div className="flex flex-wrap gap-1 mt-2">
-                                 {metrics.topFormats.map(([format, count]) => (
-                                   <span key={format} className="px-2 py-1 bg-amber-200 dark:bg-amber-800/40 text-amber-800 dark:text-amber-200 text-xs rounded-full">
-                                     {format.toUpperCase()}: {count}
-                                   </span>
-                                 ))}
-                               </div>
-                             )}
-                           </div>
-                         </div>
-                      </div>
-
-                      {/* Detailed Metrics */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Links Breakdown */}
-                        <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4">
-                          <h4 className="font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
-                            <Link className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                            Link Analysis
-                          </h4>
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-slate-600 dark:text-slate-400">Internal Links</span>
-                              <div className="flex items-center gap-2">
-                                <div className="w-16 bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                                  <div 
-                                    className="h-2 bg-blue-500 rounded-full"
-                                    style={{ width: `${metrics.totalLinks ? (metrics.internalLinks / metrics.totalLinks) * 100 : 0}%` }}
-                                  />
-                                </div>
-                                <span className="text-sm font-medium">{metrics.internalLinks}</span>
-                              </div>
+                            </p>
+                          </div>
+                          
+                          <div className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/20 dark:to-amber-800/20 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Image className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                              <span className="text-xs text-slate-600 dark:text-slate-400">Images</span>
                             </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-slate-600 dark:text-slate-400">External Links</span>
-                              <div className="flex items-center gap-2">
-                                <div className="w-16 bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                                  <div 
-                                    className="h-2 bg-emerald-500 rounded-full"
-                                    style={{ width: `${metrics.totalLinks ? (metrics.externalLinks / metrics.totalLinks) * 100 : 0}%` }}
-                                  />
-                                </div>
-                                <span className="text-sm font-medium">{metrics.externalLinks}</span>
-                              </div>
-                            </div>
+                            <p className="text-xl font-bold text-slate-900 dark:text-white">
+                              {metrics.totalImages}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-500">
+                              {metrics.smallImages} small (&lt;500KB), {metrics.largeImages} large
+                            </p>
                           </div>
                         </div>
 
-                                                 {/* Images Breakdown */}
-                         <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4">
-                           <h4 className="font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
-                             <Image className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                             Image Analysis
-                           </h4>
-                           <div className="space-y-3">
-                             <div className="flex justify-between items-center">
-                               <span className="text-sm text-slate-600 dark:text-slate-400">Large Images</span>
-                               <div className="flex items-center gap-2">
-                                 <div className="w-16 bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                                   <div 
-                                     className="h-2 bg-amber-500 rounded-full"
-                                     style={{ width: `${metrics.totalImages ? (metrics.largeImages / metrics.totalImages) * 100 : 0}%` }}
-                                   />
-                                 </div>
-                                 <span className="text-sm font-medium">{metrics.largeImages}</span>
-                               </div>
-                             </div>
-                             <div className="flex justify-between items-center">
-                               <span className="text-sm text-slate-600 dark:text-slate-400">Small Images</span>
-                               <div className="flex items-center gap-2">
-                                 <div className="w-16 bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                                   <div 
-                                     className="h-2 bg-purple-500 rounded-full"
-                                     style={{ width: `${metrics.totalImages ? (metrics.smallImages / metrics.totalImages) * 100 : 0}%` }}
-                                   />
-                                 </div>
-                                 <span className="text-sm font-medium">{metrics.smallImages}</span>
-                               </div>
-                             </div>
-                             
-                             {/* Image Formats Breakdown */}
-                             {metrics.topFormats.length > 0 && (
-                               <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
-                                 <h5 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Format Breakdown</h5>
-                                 <div className="space-y-2">
-                                   {metrics.topFormats.map(([format, count]) => (
-                                     <div key={format} className="flex justify-between items-center">
-                                       <span className="text-sm text-slate-600 dark:text-slate-400 capitalize">
-                                         {format.toUpperCase()}
-                                       </span>
-                                       <div className="flex items-center gap-2">
-                                         <div className="w-16 bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                                           <div 
-                                             className="h-2 rounded-full"
-                                             style={{ 
-                                               width: `${metrics.totalImages ? (count / metrics.totalImages) * 100 : 0}%`,
-                                               backgroundColor: format === 'jpg' || format === 'jpeg' ? '#f59e0b' :
-                                                             format === 'png' ? '#3b82f6' :
-                                                             format === 'svg' ? '#10b981' :
-                                                             format === 'webp' ? '#8b5cf6' :
-                                                             format === 'gif' ? '#ec4899' :
-                                                             format === 'bmp' ? '#ef4444' :
-                                                             format === 'tiff' ? '#f97316' :
-                                                             format === 'data-url' ? '#6366f1' : '#6b7280'
-                                             }}
-                                           />
-                                         </div>
-                                         <span className="text-sm font-medium">{count}</span>
-                                       </div>
-                                     </div>
-                                   ))}
-                                 </div>
-                               </div>
-                             )}
-                           </div>
-                         </div>
-                      </div>
-
-                      {/* Company Information */}
-                      {(project.company_name || project.phone_number || project.email || project.address || project.custom_info) && (
-                        <div className="bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-800/50 dark:to-blue-900/20 rounded-lg p-4">
-                          <h4 className="font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
-                            <Target className="h-4 w-4 text-slate-600 dark:text-slate-400" />
-                            Expected Company Information
-                          </h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-                            {project.company_name && (
-                              <div className="flex items-center gap-2">
-                                <Building className="h-4 w-4 text-slate-500" />
-                                <span className="text-slate-600 dark:text-slate-400">Company:</span>
-                                <span className="font-medium text-slate-900 dark:text-white">{project.company_name}</span>
-                              </div>
-                            )}
-                            {project.phone_number && (
-                              <div className="flex items-center gap-2">
-                                <Phone className="h-4 w-4 text-slate-500" />
-                                <span className="text-slate-600 dark:text-slate-400">Phone:</span>
-                                <span className="font-medium text-slate-900 dark:text-white">{project.phone_number}</span>
-                              </div>
-                            )}
-                            {project.email && (
-                              <div className="flex items-center gap-2">
-                                <Mail className="h-4 w-4 text-slate-500" />
-                                <span className="text-slate-600 dark:text-slate-400">Email:</span>
-                                <span className="font-medium text-slate-900 dark:text-white">{project.email}</span>
-                              </div>
-                            )}
-                            {project.address && (
-                              <div className="flex items-center gap-2 md:col-span-2">
-                                <MapPin className="h-4 w-4 text-slate-500" />
-                                <span className="text-slate-600 dark:text-slate-400">Address:</span>
-                                <span className="font-medium text-slate-900 dark:text-white">{project.address}</span>
-                              </div>
-                            )}
-                            {project.custom_info && (
-                              <div className="flex items-center gap-2 md:col-span-2 lg:col-span-3">
-                                <FileText className="h-4 w-4 text-slate-500" />
-                                <span className="text-slate-600 dark:text-slate-400">Additional Info:</span>
-                                <span className="font-medium text-slate-900 dark:text-white">{project.custom_info}</span>
-                              </div>
-                            )}
+                        {/* Image Formats Summary */}
+                        {metrics.topFormats.length > 0 && (
+                          <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3">
+                            <h4 className="font-semibold text-slate-900 dark:text-white mb-2 flex items-center gap-2 text-sm">
+                              <Image className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                              Top Image Formats
+                            </h4>
+                            <div className="flex flex-wrap gap-2">
+                              {metrics.topFormats.map(([format, count]) => (
+                                <span key={format} className="px-2 py-1 bg-purple-200 dark:bg-purple-800/40 text-purple-800 dark:text-purple-200 text-xs rounded-full">
+                                  {format.toUpperCase()}: {count}
+                                </span>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
-                        </>
-                      )}
-                    </CardContent>
-              </Card>
+                        )}
+
+                        {/* Company Information */}
+                        {(project.company_name || project.phone_number || project.email || project.address || project.custom_info) && (
+                          <div className="bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-800/50 dark:to-blue-900/20 rounded-lg p-3">
+                            <h4 className="font-semibold text-slate-900 dark:text-white mb-2 flex items-center gap-2 text-sm">
+                              <Target className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+                              Expected Company Information
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm">
+                              {project.company_name && (
+                                <div className="flex items-center gap-2">
+                                  <Building className="h-4 w-4 text-slate-500" />
+                                  <span className="text-slate-600 dark:text-slate-400">Company:</span>
+                                  <span className="font-medium text-slate-900 dark:text-white">{project.company_name}</span>
+                                </div>
+                              )}
+                              {project.phone_number && (
+                                <div className="flex items-center gap-2">
+                                  <Phone className="h-4 w-4 text-slate-500" />
+                                  <span className="text-slate-600 dark:text-slate-400">Phone:</span>
+                                  <span className="font-medium text-slate-900 dark:text-white">{project.phone_number}</span>
+                                </div>
+                              )}
+                              {project.email && (
+                                <div className="flex items-center gap-2">
+                                  <Mail className="h-4 w-4 text-slate-500" />
+                                  <span className="text-slate-600 dark:text-slate-400">Email:</span>
+                                  <span className="font-medium text-slate-900 dark:text-white">{project.email}</span>
+                                </div>
+                              )}
+                              {project.address && (
+                                <div className="flex items-center gap-2 md:col-span-2">
+                                  <MapPin className="h-4 w-4 text-slate-500" />
+                                  <span className="text-slate-600 dark:text-slate-400">Address:</span>
+                                  <span className="font-medium text-slate-900 dark:text-white">{project.address}</span>
+                                </div>
+                              )}
+                              {project.custom_info && (
+                                <div className="flex items-center gap-2 md:col-span-2 lg:col-span-3">
+                                  <FileText className="h-4 w-4 text-slate-500" />
+                                  <span className="text-slate-600 dark:text-slate-400">Additional Info:</span>
+                                  <span className="font-medium text-slate-900 dark:text-white">{project.custom_info}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    )}
+                  </Card>
                 );
               })}
-          </div>
-        )}
+            </div>
+          )}
         </div>
       </div>
     </div>

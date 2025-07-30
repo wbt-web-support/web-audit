@@ -467,9 +467,11 @@ async function crawlWebsite(
       }
       console.log(`Pages crawled: ${pagesCrawled} - URL: ${normalizedUrl}`);
       
-      // Use shared utility for image and link extraction
-      const allPageImages = extractImagesFromHtmlAndText(pageData.html, normalizedUrl);
-      const allPageLinks = extractLinksFromHtmlAndText(pageData.html, normalizedUrl);
+      // Use shared utility for image and link extraction - run concurrently
+      const [allPageImages, allPageLinks] = await Promise.all([
+        extractImagesFromHtmlAndText(pageData.html, normalizedUrl),
+        Promise.resolve(extractLinksFromHtmlAndText(pageData.html, normalizedUrl))
+      ]);
       allImages.push(...allPageImages);
       allLinks.push(...allPageLinks);
       console.log(`Image section completed - Found ${allPageImages.length} unique images`);
