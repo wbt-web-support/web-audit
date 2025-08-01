@@ -111,6 +111,15 @@ export function AuditMain() {
   const [sortField, setSortField] = useState<'title' | 'status' | 'score'>('title');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const crawlingStartedRef = useRef(false);
+  const [batchProgress, setBatchProgress] = useState<{ 
+    total: number; 
+    current: number; 
+    status: string; 
+    message?: string;
+    failed?: number;
+    analyzing?: number;
+    timeout?: number;
+  } | null>(null);
 
   // Debug logging for project state
   useEffect(() => {
@@ -292,7 +301,7 @@ export function AuditMain() {
             });
           }
         } catch (error: any) {
-          console.error('Results fetch error:', error);
+          // console.error('Results fetch error:', error);
           
           // Handle timeout specifically
           if (error?.name === 'AbortError') {
@@ -304,7 +313,7 @@ export function AuditMain() {
               setTimeout(() => fetchData(retryCount + 1), 2000);
               return;
             } else {
-              toast.error('Results loading timed out. Please refresh the page.');
+              // toast.error('Results loading timed out. Please refresh the page.');
             }
           }
           
@@ -628,6 +637,21 @@ export function AuditMain() {
     const isBatchAnalysis = pageIds.length > 1;
     setError('');
     
+    // Enhanced batch analysis handling
+    if (isBatchAnalysis) {
+      // Show batch analysis notification
+      toast.info(`Starting batch analysis for ${pageIds.length} pages. This may take several minutes.`, {
+        autoClose: 5000
+      });
+      
+      // Add batch progress tracking
+      setBatchProgress({
+        total: pageIds.length,
+        current: 0,
+        status: 'starting'
+      });
+    }
+    
     // Mark pages as analyzing
     setAnalyzingPages(new Set(pageIds));
 
@@ -637,7 +661,11 @@ export function AuditMain() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ page_ids: pageIds }),
+        body: JSON.stringify({ 
+          page_ids: pageIds,
+          background: isBatchAnalysis, // Force background processing for batches
+          analysis_types: ["grammar", "seo", "ui", "performance", "tagsAnalysis", "images", "links"]
+        }),
       });
 
       const data = await response.json();
@@ -645,15 +673,111 @@ export function AuditMain() {
       if (!response.ok) {
         setError(data.error || 'Failed to start analysis');
         setAnalyzingPages(new Set()); // Clear analyzing state on error
+        setBatchProgress(null);
       } else {
-        // Keep analyzing state until next data fetch shows completion
+        if (isBatchAnalysis) {
+          // Update batch progress status
+          setBatchProgress(prev => prev ? {
+            ...prev,
+            status: 'processing',
+            message: `Analysis started for ${pageIds.length} pages`
+          } : null);
+          
+          // Enhanced polling for batch analysis
+          startBatchProgressPolling(projectId, pageIds);
+        }
       }
     } catch (error) {
       setError('Failed to start analysis');
       setAnalyzingPages(new Set()); // Clear analyzing state on error
+      setBatchProgress(null);
     } finally {
       setAnalyzing(false);
     }
+  };
+
+  // Enhanced batch progress polling with timeout handling
+  const startBatchProgressPolling = (projectId: string, pageIds: string[]) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        // Check individual page statuses with timeout
+        const statusPromises = pageIds.map(async (pageId) => {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+            
+            const response = await fetch(`/api/pages/${pageId}`, {
+              signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (response.ok) {
+              const pageData = await response.json();
+              return {
+                pageId,
+                status: pageData.analysis_status,
+                hasResults: pageData.results && Object.keys(pageData.results).length > 0,
+                error: pageData.error_message || null
+              };
+            }
+            return { pageId, status: 'unknown', hasResults: false, error: 'Failed to fetch page status' };
+          } catch (error: any) {
+            if (error.name === 'AbortError') {
+              return { pageId, status: 'timeout', hasResults: false, error: 'Status check timeout' };
+            }
+            return { pageId, status: 'error', hasResults: false, error: error.message || 'Unknown error' };
+          }
+        });
+
+        const pageStatuses = await Promise.all(statusPromises);
+        
+        // Calculate progress
+        const completed = pageStatuses.filter(p => p.status === 'completed' || p.hasResults).length;
+        const failed = pageStatuses.filter(p => p.status === 'failed' || p.status === 'error').length;
+        const analyzing = pageStatuses.filter(p => p.status === 'analyzing').length;
+        const timeout = pageStatuses.filter(p => p.status === 'timeout').length;
+        
+        // Update batch progress
+        setBatchProgress(prev => prev ? {
+          ...prev,
+          current: completed,
+          failed,
+          analyzing,
+          timeout,
+          status: analyzing > 0 ? 'processing' : 'completed'
+        } : null);
+        
+        // Update analyzing pages state
+        setAnalyzingPages(new Set(
+          pageStatuses
+            .filter(p => p.status === 'analyzing')
+            .map(p => p.pageId)
+        ));
+        
+        // Stop polling if all pages are done
+        if (completed + failed + timeout === pageIds.length) {
+          clearInterval(pollInterval);
+          
+          // Show completion message with detailed information
+          if (failed === 0 && timeout === 0) {
+            toast.success(`Successfully analyzed ${completed} pages!`);
+          } else if (completed > 0) {
+            const message = `Analysis completed: ${completed} successful, ${failed} failed${timeout > 0 ? `, ${timeout} timeout` : ''}`;
+            toast.warning(message);
+          } else {
+            // toast.error(`Analysis failed for all ${pageIds.length} pages.`);
+          }
+          
+          setBatchProgress(null);
+        }
+      } catch (error) {
+        console.error('Batch progress polling error:', error);
+      }
+    }, 5000); // Poll every 5 seconds for batch analysis to reduce load
+    
+    // Cleanup function
+    return () => clearInterval(pollInterval);
   };
 
   const stopProcess = async (projectId: string) => {
@@ -893,11 +1017,15 @@ export function AuditMain() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ page_ids: [pageId] }),
+        body: JSON.stringify({ 
+          page_ids: [pageId],
+          background: false, // Single page analysis runs immediately
+          analysis_types: ["grammar", "seo", "ui", "performance", "tagsAnalysis", "images", "links"]
+        }),
       });
 
       const data = await response.json();
-     console.log("data **********",data)
+      console.log("data **********",data)
   
       if (!response.ok) {
         setError(data.error || 'Failed to start analysis');
@@ -916,6 +1044,44 @@ export function AuditMain() {
         return newAnalyzing;
       });
     }
+  };
+
+  // Smart batch analysis with different strategies
+  const startSmartBatchAnalysis = async (projectId: string, pageIds: string[]) => {
+    const totalPages = pageIds.length;
+    
+    // Determine batch strategy based on page count
+    let batchStrategy = 'parallel';
+    let batchSize = 5;
+    let concurrency = 3;
+    
+    if (totalPages <= 3) {
+      batchStrategy = 'sequential';
+      batchSize = 1;
+      concurrency = 1;
+    } else if (totalPages <= 10) {
+      batchStrategy = 'small_batch';
+      batchSize = 3;
+      concurrency = 2;
+    } else if (totalPages <= 50) {
+      batchStrategy = 'medium_batch';
+      batchSize = 5;
+      concurrency = 3;
+    } else {
+      batchStrategy = 'large_batch';
+      batchSize = 10;
+      concurrency = 5;
+    }
+    
+    console.log(`Using ${batchStrategy} strategy for ${totalPages} pages`);
+    
+    // Show strategy notification
+    toast.info(`Using ${batchStrategy} analysis strategy for ${totalPages} pages`, {
+      autoClose: 3000
+    });
+    
+    // Start the analysis with the determined strategy
+    return await startAnalysis(projectId, pageIds);
   };
 
   const getStatusIcon = (status: string) => {
@@ -1129,6 +1295,7 @@ export function AuditMain() {
         </div>
       )}
 
+      {/* Process Status Cards */}
       {(currentSession?.currentAction || currentSession?.isCrawling) && (
         <Card>
           <CardContent className="pt-6">
@@ -1168,6 +1335,40 @@ export function AuditMain() {
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Batch Analysis Progress */}
+      {batchProgress && (
+        <Card className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3 text-blue-600">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <div className="flex-1">
+                <p className="font-medium">Batch Analysis Progress</p>
+                <p className="text-sm text-muted-foreground">
+                  {batchProgress.message || `Processing ${batchProgress.current} of ${batchProgress.total} pages`}
+                </p>
+                
+                {/* Progress Bar */}
+                <div className="mt-3 w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+                  />
+                </div>
+                
+                {/* Progress Details */}
+                <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{batchProgress.current} completed</span>
+                  <span>{batchProgress.failed || 0} failed</span>
+                  <span>{batchProgress.timeout || 0} timeout</span>
+                  <span>{batchProgress.analyzing || 0} analyzing</span>
+                  <span>{batchProgress.total - batchProgress.current - (batchProgress.failed || 0) - (batchProgress.timeout || 0)} remaining</span>
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -1479,7 +1680,7 @@ export function AuditMain() {
                   >
                     Clear Selection
                   </Button>
-                  <Button
+                  {/* <Button
                     size="sm"
                     variant="destructive"
                     onClick={deleteSelectedPages}
@@ -1496,12 +1697,16 @@ export function AuditMain() {
                         Delete {selectedPages.size} Pages
                       </>
                     )}
-                  </Button>
+                  </Button> */}
                   <Button
                     size="sm"
                     onClick={() => {
                       if (projects[0]) {
-                        startAnalysis(projects[0].id, Array.from(selectedPages));
+                        if (selectedPages.size > 1) {
+                          startSmartBatchAnalysis(projects[0].id, Array.from(selectedPages));
+                        } else {
+                          startAnalysis(projects[0].id, Array.from(selectedPages));
+                        }
                       }
                     }}
                     disabled={analyzing || deleting || isAnalysisDisabled()}
@@ -1517,7 +1722,7 @@ export function AuditMain() {
                         {selectedPages.size > 1 ? (
                           <>
                             <Zap className="h-4 w-4 mr-2" />
-                            Batch Analyze {selectedPages.size} Pages
+                            Smart Batch Analyze {selectedPages.size} Pages
                       </>
                     ) : (
                       <>
@@ -1556,14 +1761,18 @@ export function AuditMain() {
                           .filter(p => p.resultCount === 0 && !isPageAnalyzing(p))
                           .map(p => p.page.id);
                         if (unanalyzedPageIds.length > 0) {
-                          startAnalysis(projects[0].id, unanalyzedPageIds);
+                          if (unanalyzedPageIds.length > 1) {
+                            startSmartBatchAnalysis(projects[0].id, unanalyzedPageIds);
+                          } else {
+                            startAnalysis(projects[0].id, unanalyzedPageIds);
+                          }
                         }
                       }}
                       disabled={analyzing || deleting || isAnalysisDisabled()}
                       title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : ""}
                     >
                       <Zap className="h-4 w-4 mr-2" />
-                      Analyze All Unanalyzed ({filteredAndSortedPages.filter(p => p.resultCount === 0 && !isPageAnalyzing(p)).length})
+                      Smart Analyze All Unanalyzed ({filteredAndSortedPages.filter(p => p.resultCount === 0 && !isPageAnalyzing(p)).length})
                 </Button>
                   )}
                 </>
@@ -1718,13 +1927,27 @@ export function AuditMain() {
           {/* Pages Table */}
           {filteredAndSortedPages.length === 0 ? (
             <div className="text-center py-8">
-              <Globe className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No pages found</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                {projects[0]?.pages_crawled === 0 ? 
-                  'Start crawling to discover pages' : 
-                  'Pages will appear here after crawling'}
-              </p>
+              {(analyzing || batchProgress?.status === 'starting' || analyzingPages.size > 0) ? (
+                <>
+                  <Loader2 className="h-12 w-12 text-muted-foreground mx-auto mb-4 animate-spin" />
+                  <p className="text-muted-foreground">Analysis in progress...</p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    {batchProgress ? 
+                      `Starting analysis for ${batchProgress.total} pages` : 
+                      'Preparing analysis for pages'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Globe className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">No pages found</p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    {projects[0]?.pages_crawled === 0 ? 
+                      'Start crawling to discover pages' : 
+                      'Pages will appear here after crawling'}
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <div className="overflow-x-scroll">

@@ -583,8 +583,8 @@ async function upsertAnalysisResult(
 }
 
 /**
- * Processes multiple pages in parallel for background analysis
- * Optimized for high-throughput processing with error handling
+ * Processes multiple pages in controlled batches to prevent API overload
+ * Optimized for high-throughput processing with error handling and timeout management
  */
 async function analyzePages(
   projectId: string,
@@ -607,13 +607,33 @@ async function analyzePages(
       throw new Error("Failed to get project data for analysis");
     }
 
-    console.log(`Starting parallel analysis for ${pages.length} pages`);
+    console.log(`Starting dynamic concurrency queue analysis for ${pages.length} pages`);
 
-    // Process pages in parallel with error handling
-    const results = await Promise.allSettled(
-      pages.map(async (page) => {
+    // Configuration for dynamic concurrency queue
+    const MAX_CONCURRENT = 5; // Maximum concurrent page analyses
+    const TIMEOUT_MS = 300000; // 5 minutes timeout per page
+    const MAX_RETRIES = 2; // Maximum retries per page
+
+    let successfulCount = 0;
+    let failedCount = 0;
+    const failedPages: Array<{pageId: string, error: string}> = [];
+    const pageQueue = [...pages]; // Copy pages to queue
+    const activePromises = new Map<string, Promise<any>>(); // Track active analyses
+    const completedPages = new Set<string>(); // Track completed pages
+
+    // Function to process a single page with retry logic
+    const processPage = async (page: any): Promise<any> => {
+      let retries = 0;
+      
+      while (retries <= MAX_RETRIES) {
         try {
-          await performSinglePageAnalysis(
+          // Create timeout promise
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Analysis timeout')), TIMEOUT_MS);
+          });
+
+          // Create analysis promise
+          const analysisPromise = performSinglePageAnalysis(
             supabase,
             page,
             project,
@@ -621,28 +641,114 @@ async function analyzePages(
             useCache,
             forceRefresh
           );
+
+          // Race between analysis and timeout
+          await Promise.race([analysisPromise, timeoutPromise]);
+          
+          console.log(`Successfully analyzed page ${page.id}`);
           return { success: true, pageId: page.id };
         } catch (error: any) {
-          // Mark failed pages but continue processing others
-          await supabase
-            .from("scraped_pages")
-            .update({ analysis_status: "failed" })
-            .eq("id", page.id);
-          return {
-            success: false,
-            pageId: page.id,
-            error: error.message || "Unknown error",
-          };
+          retries++;
+          console.error(`Attempt ${retries} failed for page ${page.id}:`, error.message);
+          
+          if (retries > MAX_RETRIES) {
+            // Mark page as failed after all retries
+            await supabase
+              .from("scraped_pages")
+              .update({ 
+                analysis_status: "failed",
+                error_message: error.message || "Analysis failed after retries"
+              })
+              .eq("id", page.id);
+            
+            return {
+              success: false,
+              pageId: page.id,
+              error: error.message || "Analysis failed after retries",
+            };
+          }
+          
+          // Wait before retry (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, 1000 * retries));
         }
-      })
-    );
+      }
+    };
 
-    // Calculate success/failure statistics
-    const successful = results.filter(r => r.status === 'fulfilled' && r.value.success);
-    const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success));
+    // Function to start processing a page and add to active promises
+    const startPageAnalysis = (page: any) => {
+      if (completedPages.has(page.id)) return; // Skip if already completed
+      
+      const promise = processPage(page).then((result) => {
+        // Remove from active promises when done
+        activePromises.delete(page.id);
+        
+        // Handle result
+        if (result.success) {
+          successfulCount++;
+        } else {
+          failedCount++;
+          failedPages.push({
+            pageId: result.pageId,
+            error: result.error
+          });
+        }
+        
+        completedPages.add(page.id);
+        console.log(`Page ${page.id} completed. Active: ${activePromises.size}, Queue: ${pageQueue.length}, Completed: ${successfulCount + failedCount}/${pages.length}`);
+        
+        // Try to start next page from queue
+        if (pageQueue.length > 0) {
+          const nextPage = pageQueue.shift();
+          if (nextPage) {
+            startPageAnalysis(nextPage);
+          }
+        }
+        
+        return result;
+      }).catch((error) => {
+        // Handle unexpected errors
+        activePromises.delete(page.id);
+        failedCount++;
+        failedPages.push({
+          pageId: page.id,
+          error: error.message || 'Unexpected error'
+        });
+        completedPages.add(page.id);
+        console.error(`Unexpected error for page ${page.id}:`, error);
+        
+        // Try to start next page from queue
+        if (pageQueue.length > 0) {
+          const nextPage = pageQueue.shift();
+          if (nextPage) {
+            startPageAnalysis(nextPage);
+          }
+        }
+      });
+      
+      activePromises.set(page.id, promise);
+    };
+
+    // Start initial batch of concurrent analyses
+    const initialBatch = Math.min(MAX_CONCURRENT, pages.length);
+    console.log(`Starting initial batch of ${initialBatch} concurrent analyses`);
     
-    const finalStatus = failed.length === results.length ? "failed" : "completed";
-    const errorMessage = failed.length > 0 ? `Analysis completed with ${failed.length} failures` : null;
+    for (let i = 0; i < initialBatch; i++) {
+      const page = pageQueue.shift();
+      if (page) {
+        startPageAnalysis(page);
+      }
+    }
+
+    // Wait for all pages to complete
+    while (activePromises.size > 0 || pageQueue.length > 0) {
+      console.log(`Waiting... Active: ${activePromises.size}, Queue: ${pageQueue.length}, Completed: ${successfulCount + failedCount}/${pages.length}`);
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Check every second
+    }
+
+    // Calculate final statistics
+    const finalStatus = failedCount === pages.length ? "failed" : "completed";
+    const errorMessage = failedCount > 0 ? 
+      `Analysis completed with ${failedCount} failures out of ${pages.length} pages` : null;
 
     // Update project status and counts
     await Promise.all([
@@ -657,9 +763,14 @@ async function analyzePages(
         .eq("id", projectId)
     ]);
 
-    console.log(`Analysis completed: ${successful.length} successful, ${failed.length} failed`);
+    console.log(`Dynamic concurrency queue analysis completed: ${successfulCount} successful, ${failedCount} failed`);
+    
+    // Log detailed failure information
+    if (failedPages.length > 0) {
+      console.error('Failed pages details:', failedPages);
+    }
   } catch (error: any) {
-    console.error("Background analysis failed:", error);
+    console.error("Dynamic concurrency queue analysis failed:", error);
 
     // Mark project as failed
     await supabase
@@ -915,7 +1026,16 @@ ${
 
 Focus on being helpful and educational. Each error should teach the user something about proper UK English and good writing practices. Company information accuracy is crucial for business credibility and local SEO.`;
 
-    const result = await model.generateContent(prompt);
+    // Add timeout handling for Gemini API calls
+    const GEMINI_TIMEOUT = 120000; // 2 minutes timeout for Gemini API
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Gemini API timeout')), GEMINI_TIMEOUT);
+    });
+    
+    const geminiPromise = model.generateContent(prompt);
+    
+    const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
     const response = await result.response;
     const text = response.text();
 
@@ -1494,7 +1614,16 @@ Provide the analysis strictly in the following JSON format, without any extra te
 
     let result;
     try {
-      result = await model.generateContent({ contents });
+      // Add timeout handling for Gemini Vision API
+      const GEMINI_VISION_TIMEOUT = 180000; // 3 minutes for vision API
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Gemini Vision API timeout')), GEMINI_VISION_TIMEOUT);
+      });
+      
+      const geminiPromise = model.generateContent({ contents });
+      
+      result = await Promise.race([geminiPromise, timeoutPromise]) as any;
       
     } catch (err) {
       console.error("[Gemini UI] Gemini Vision API error (inner):", err);
@@ -1570,7 +1699,16 @@ async function analyzeCustomInstructions(
     const contents = [{ role: "user", parts }];
     let result;
     try {
-      result = await model.generateContent({ contents });
+      // Add timeout handling for Gemini Custom Instructions API
+      const GEMINI_CUSTOM_TIMEOUT = 180000; // 3 minutes for custom instructions
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Gemini Custom Instructions API timeout')), GEMINI_CUSTOM_TIMEOUT);
+      });
+      
+      const geminiPromise = model.generateContent({ contents });
+      
+      result = await Promise.race([geminiPromise, timeoutPromise]) as any;
     } catch (err) {
       console.error("[Gemini Custom Instructions] Gemini API error:", err);
       return { error: "Gemini API error" };
