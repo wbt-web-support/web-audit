@@ -620,6 +620,7 @@ async function analyzePages(
     const pageQueue = [...pages]; // Copy pages to queue
     const activePromises = new Map<string, Promise<any>>(); // Track active analyses
     const completedPages = new Set<string>(); // Track completed pages
+    const processingPages = new Set<string>(); // Track pages currently being processed
 
     // Function to process a single page with retry logic
     const processPage = async (page: any): Promise<any> => {
@@ -676,11 +677,14 @@ async function analyzePages(
 
     // Function to start processing a page and add to active promises
     const startPageAnalysis = (page: any) => {
-      if (completedPages.has(page.id)) return; // Skip if already completed
+      if (completedPages.has(page.id) || processingPages.has(page.id)) return; // Skip if already completed or processing
+      
+      processingPages.add(page.id); // Mark as processing
       
       const promise = processPage(page).then((result) => {
         // Remove from active promises when done
         activePromises.delete(page.id);
+        processingPages.delete(page.id); // Remove from processing set
         
         // Handle result
         if (result.success) {
@@ -696,10 +700,11 @@ async function analyzePages(
         completedPages.add(page.id);
         console.log(`Page ${page.id} completed. Active: ${activePromises.size}, Queue: ${pageQueue.length}, Completed: ${successfulCount + failedCount}/${pages.length}`);
         
-        // Try to start next page from queue
-        if (pageQueue.length > 0) {
+        // Continue processing queue - start as many pages as possible up to MAX_CONCURRENT
+        while (pageQueue.length > 0 && activePromises.size < MAX_CONCURRENT) {
           const nextPage = pageQueue.shift();
-          if (nextPage) {
+          if (nextPage && !completedPages.has(nextPage.id) && !processingPages.has(nextPage.id)) {
+            console.log(`Starting next page from queue: ${nextPage.id}. Active: ${activePromises.size + 1}, Queue remaining: ${pageQueue.length}`);
             startPageAnalysis(nextPage);
           }
         }
@@ -708,6 +713,7 @@ async function analyzePages(
       }).catch((error) => {
         // Handle unexpected errors
         activePromises.delete(page.id);
+        processingPages.delete(page.id); // Remove from processing set
         failedCount++;
         failedPages.push({
           pageId: page.id,
@@ -716,10 +722,11 @@ async function analyzePages(
         completedPages.add(page.id);
         console.error(`Unexpected error for page ${page.id}:`, error);
         
-        // Try to start next page from queue
-        if (pageQueue.length > 0) {
+        // Continue processing queue - start as many pages as possible up to MAX_CONCURRENT
+        while (pageQueue.length > 0 && activePromises.size < MAX_CONCURRENT) {
           const nextPage = pageQueue.shift();
-          if (nextPage) {
+          if (nextPage && !completedPages.has(nextPage.id) && !processingPages.has(nextPage.id)) {
+            console.log(`Starting next page from queue after error: ${nextPage.id}. Active: ${activePromises.size + 1}, Queue remaining: ${pageQueue.length}`);
             startPageAnalysis(nextPage);
           }
         }
@@ -734,15 +741,37 @@ async function analyzePages(
     
     for (let i = 0; i < initialBatch; i++) {
       const page = pageQueue.shift();
-      if (page) {
+      if (page && !completedPages.has(page.id) && !processingPages.has(page.id)) {
+        console.log(`Starting initial page ${i + 1}/${initialBatch}: ${page.id}`);
         startPageAnalysis(page);
       }
     }
 
     // Wait for all pages to complete
+    let waitCount = 0;
     while (activePromises.size > 0 || pageQueue.length > 0) {
       console.log(`Waiting... Active: ${activePromises.size}, Queue: ${pageQueue.length}, Completed: ${successfulCount + failedCount}/${pages.length}`);
       await new Promise(resolve => setTimeout(resolve, 1000)); // Check every second
+      
+      // Periodic check to ensure queue processing is working
+      if (waitCount % 30 === 0 && pageQueue.length > 0 && activePromises.size < MAX_CONCURRENT) {
+        console.log(`Periodic check: ${pageQueue.length} pages in queue, ${activePromises.size} active. Attempting to start more pages...`);
+        // Try to start more pages from queue
+        while (pageQueue.length > 0 && activePromises.size < MAX_CONCURRENT) {
+          const nextPage = pageQueue.shift();
+          if (nextPage && !completedPages.has(nextPage.id) && !processingPages.has(nextPage.id)) {
+            console.log(`Periodic restart: Starting page ${nextPage.id}`);
+            startPageAnalysis(nextPage);
+          }
+        }
+      }
+      
+      // Safety check - if we've been waiting too long, break
+      waitCount++;
+      if (waitCount > 3600) { // 1 hour timeout
+        console.error('Analysis timeout - forcing completion');
+        break;
+      }
     }
 
     // Calculate final statistics
