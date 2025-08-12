@@ -241,7 +241,7 @@ export function ProjectManager() {
       <div className="container mx-auto px-4 py-8 space-y-6">
         {/* Back Button - Top Left */}
         <div className="mb-4">
-          <BackButton href="/dashboard">
+          <BackButton href="/dashboard" id="project-manager-back">
             Back to Dashboard
           </BackButton>
         </div>

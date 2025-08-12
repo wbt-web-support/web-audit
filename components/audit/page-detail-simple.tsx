@@ -1083,12 +1083,12 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      {/* Back Button - Top Left */}
-      <div className="mb-4">
-        <BackButton href="/audit">
-          Back to Audit
-        </BackButton>
-      </div>
+              {/* Back Button - Top Left */}
+        <div className="mb-4">
+          <BackButton href={project ? `/audit?project=${project.id}` : "/audit"} id={`page-detail-${pageId || 'default'}`}>
+            Back to Audit
+          </BackButton>
+        </div>
       
       {error && (
         <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-lg p-4">

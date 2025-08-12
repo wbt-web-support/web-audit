@@ -711,7 +711,7 @@ async function analyzePages(
         
         return result;
       }).catch((error) => {
-        // Handle unexpected errors
+        // Handle unexpected errors with error
         activePromises.delete(page.id);
         processingPages.delete(page.id); // Remove from processing set
         failedCount++;

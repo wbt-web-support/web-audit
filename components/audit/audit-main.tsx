@@ -1012,6 +1012,16 @@ export function AuditMain() {
     setError('');
 
     try {
+      if (!projects[0]) {
+        setError('No project selected');
+        setAnalyzingPages(prev => {
+          const newAnalyzing = new Set(prev);
+          newAnalyzing.delete(pageId);
+          return newAnalyzing;
+        });
+        return;
+      }
+
       const response = await fetch(`/api/audit-projects/${projects[0].id}/analyze`, {
         method: 'POST',
         headers: {
@@ -1204,7 +1214,7 @@ export function AuditMain() {
       <div className="container mx-auto px-4 py-8 space-y-8">
         {/* Back Button - Top Left */}
         <div className="mb-4">
-          <BackButton href="/projects">
+          <BackButton href="/projects" id={`audit-session-${selectedProjectId || 'default'}`}>
             Back to Projects
           </BackButton>
         </div>
@@ -1577,7 +1587,7 @@ export function AuditMain() {
         </Card>
       )}
 
-   {projects[0].custom_urls_analysis && Array.isArray(projects[0].custom_urls_analysis) && projects[0].custom_urls_analysis.length > 0 &&  (
+   {projects[0] && projects[0].custom_urls_analysis && Array.isArray(projects[0].custom_urls_analysis) && projects[0].custom_urls_analysis.length > 0 &&  (
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Custom URLs</CardTitle>
@@ -1627,14 +1637,14 @@ export function AuditMain() {
       </Card>
     )}
    {/* Image Analysis Section - Only show when clicked */}
-   {currentSession?.showImageAnalysis && projects[0].all_image_analysis && Array.isArray(projects[0].all_image_analysis) && projects[0].all_image_analysis.length > 0 && (
+   {currentSession?.showImageAnalysis && projects[0] && projects[0].all_image_analysis && Array.isArray(projects[0].all_image_analysis) && projects[0].all_image_analysis.length > 0 && (
      <div id="image-analysis-table" className="animate-in slide-in-from-top-2 duration-300">
        <ImageAnalysisTable images={projects[0].all_image_analysis} />
      </div>
    )}
 
   {/* Links Analysis Section - Only show when clicked */}
-  {currentSession?.showLinksAnalysis && projects[0].all_links_analysis && Array.isArray(projects[0].all_links_analysis) && projects[0].all_links_analysis.length > 0 && (
+  {currentSession?.showLinksAnalysis && projects[0] && projects[0].all_links_analysis && Array.isArray(projects[0].all_links_analysis) && projects[0].all_links_analysis.length > 0 && (
     <div id="links-analysis-table" className="animate-in slide-in-from-top-2 duration-300">
       <LinksAnalysisTable links={projects[0].all_links_analysis} />
     </div>

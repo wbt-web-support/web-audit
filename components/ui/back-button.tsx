@@ -8,9 +8,10 @@ interface BackButtonProps {
   href?: string;
   className?: string;
   children?: React.ReactNode;
+  id?: string;
 }
 
-export function BackButton({ href, className = "", children }: BackButtonProps) {
+export function BackButton({ href, className = "", children, id }: BackButtonProps) {
   const router = useRouter();
 
   const handleClick = () => {
@@ -27,6 +28,7 @@ export function BackButton({ href, className = "", children }: BackButtonProps) 
       size="sm"
       onClick={handleClick}
       className={`flex items-center gap-2 ${className}`}
+      id={id}
     >
       <ArrowLeft className="h-4 w-4" />
       {children || "Back"}
