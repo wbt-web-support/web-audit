@@ -80,15 +80,7 @@ interface AnalyzedPage {
   overallStatus: string;
 }
 
-interface BatchProgress {
-  total: number;
-  current: number;
-  status: string;
-  message?: string;
-  failed?: number;
-  analyzing?: number;
-  timeout?: number;
-}
+
 
 interface PageStatus {
   pageId: string;
@@ -98,14 +90,7 @@ interface PageStatus {
   lastChecked?: number;
 }
 
-interface BatchPollingConfig {
-  initialInterval: number;
-  maxInterval: number;
-  backoffMultiplier: number;
-  maxPolls: number;
-  requestTimeout: number;
-  batchSize: number;
-}
+
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -151,194 +136,9 @@ const getStatusBadge = (status: string) => {
   );
 };
 
-/**
- * Calculate adaptive polling interval based on progress
- */
-const calculatePollInterval = (
-  completed: number, 
-  total: number, 
-  config: BatchPollingConfig
-): number => {
-  const progress = completed / total;
-  
-  if (progress === 0) return config.initialInterval; // Fast at start
-  if (progress > 0.8) return config.maxInterval; // Slower near end
-  if (progress > 0.5) return config.initialInterval * config.backoffMultiplier; // Medium
-  
-  return config.initialInterval;
-};
 
-/**
- * Batch fetch page statuses to reduce API calls
- */
-const fetchBatchPageStatuses = async (
-  pageIds: string[], 
-  config: BatchPollingConfig
-): Promise<PageStatus[]> => {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), config.requestTimeout);
-    
-    // Use batch endpoint if available, otherwise fallback to individual calls
-    const response = await fetch('/api/pages/batch-status', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pageIds }),
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-    
-    if (response.ok) {
-      return await response.json();
-    }
-    
-    // Fallback to individual requests if batch endpoint fails
-    return await fetchIndividualPageStatuses(pageIds, config);
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      return pageIds.map(pageId => ({
-        pageId,
-        status: 'timeout' as const,
-        hasResults: false,
-        error: 'Batch status check timeout'
-      }));
-    }
-    
-    // Fallback to individual requests on error
-    return await fetchIndividualPageStatuses(pageIds, config);
-  }
-};
 
-/**
- * Fallback: Fetch individual page statuses
- */
-const fetchIndividualPageStatuses = async (
-  pageIds: string[], 
-  config: BatchPollingConfig
-): Promise<PageStatus[]> => {
-  const batchSize = config.batchSize;
-  const results: PageStatus[] = [];
-  
-  // Process in batches to avoid overwhelming the server
-  for (let i = 0; i < pageIds.length; i += batchSize) {
-    const batch = pageIds.slice(i, i + batchSize);
-    
-    const batchPromises = batch.map(async (pageId) => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), config.requestTimeout);
-        
-        const response = await fetch(`/api/pages/${pageId}`, {
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-          const pageData = await response.json();
-          return {
-            pageId,
-            status: pageData.analysis_status || 'pending',
-            hasResults: pageData.results && Object.keys(pageData.results).length > 0,
-            error: pageData.error_message || undefined,
-            lastChecked: Date.now()
-          };
-        }
-        
-        return {
-          pageId,
-          status: 'error' as const,
-          hasResults: false,
-          error: 'Failed to fetch page status',
-          lastChecked: Date.now()
-        };
-      } catch (error: any) {
-        if (error.name === 'AbortError') {
-          return {
-            pageId,
-            status: 'timeout' as const,
-            hasResults: false,
-            error: 'Status check timeout',
-            lastChecked: Date.now()
-          };
-        }
-        
-        return {
-          pageId,
-          status: 'error' as const,
-          hasResults: false,
-          error: error.message || 'Unknown error',
-          lastChecked: Date.now()
-        };
-      }
-    });
-    
-    const batchResults = await Promise.all(batchPromises);
-    results.push(...batchResults);
-    
-    // Small delay between batches to be respectful to the server
-    if (i + batchSize < pageIds.length) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-  }
-  
-  return results;
-};
 
-/**
- * Process page statuses and update progress
- */
-const processPageStatuses = (
-  pageStatuses: PageStatus[],
-  setBatchProgress: (progress: BatchProgress | null) => void,
-  setAnalyzingPages: (pages: Set<string>) => void
-): { isComplete: boolean; shouldContinue: boolean } => {
-  const completed = pageStatuses.filter(p => p.status === 'completed' || p.hasResults).length;
-  const failed = pageStatuses.filter(p => p.status === 'failed' || p.status === 'error').length;
-  const analyzing = pageStatuses.filter(p => p.status === 'analyzing').length;
-  const timeout = pageStatuses.filter(p => p.status === 'timeout').length;
-  const total = pageStatuses.length;
-  
-  setBatchProgress({
-    total,
-    current: completed,
-    failed,
-    analyzing,
-    timeout,
-    status: analyzing > 0 ? 'processing' : 'completed'
-  });
-  
-  setAnalyzingPages(new Set(
-    pageStatuses
-      .filter(p => p.status === 'analyzing')
-      .map(p => p.pageId)
-  ));
-  
-  const isComplete = completed + failed + timeout === total;
-  const shouldContinue = analyzing > 0;
-  
-  return { isComplete, shouldContinue };
-};
-
-/**
- * Show appropriate completion messages
- */
-const showCompletionMessage = (
-  completed: number,
-  failed: number,
-  timeout: number,
-  total: number
-): void => {
-  if (failed === 0 && timeout === 0) {
-    toast.success(`Successfully analyzed ${completed} pages!`);
-  } else if (completed > 0) {
-    const message = `Analysis completed: ${completed} successful, ${failed} failed${timeout > 0 ? `, ${timeout} timeout` : ''}`;
-    toast.warning(message);
-  } else {
-    toast.error(`Analysis failed: ${failed} failed${timeout > 0 ? `, ${timeout} timeout` : ''}`);
-  }
-};
 
 // ============================================================================
 // MAIN COMPONENT
@@ -371,20 +171,8 @@ export function AuditMain() {
   const [scoreRange, setScoreRange] = useState({ min: 0, max: 100 });
   const [sortField, setSortField] = useState<'title' | 'status' | 'score'>('title');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
-  const [isPollingPaused, setIsPollingPaused] = useState(false);
-  
   // Refs
   const crawlingStartedRef = useRef(false);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const pollingConfigRef = useRef<BatchPollingConfig>({
-    initialInterval: 3000, // 3 seconds
-    maxInterval: 10000,    // 10 seconds
-    backoffMultiplier: 2,
-    maxPolls: 200,         // ~16 minutes max
-    requestTimeout: 8000,  // 8 seconds
-    batchSize: 5           // Process 5 pages at a time
-  });
 
   // ============================================================================
   // EFFECTS
@@ -401,10 +189,6 @@ export function AuditMain() {
     
     return () => {
       crawlingStartedRef.current = false;
-      // Cleanup polling on unmount
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
     };
   }, [selectedProjectId, dispatch]);
 
@@ -421,75 +205,7 @@ export function AuditMain() {
     return () => clearInterval(interval);
   }, [currentSession?.isCrawling, currentSession?.backgroundCrawling, projects, dispatch, selectedProjectId]);
 
-  // Poll for analysis updates
-  useEffect(() => {
-    if (analyzingPages.size === 0) {
-      // Stop any existing polling when no pages are analyzing
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-      return;
-    }
 
-    // Start batch progress polling for any analyzing pages
-    const pageIds = Array.from(analyzingPages);
-    if (projects[0] && pageIds.length > 0) {
-      // Call the polling function directly since it's defined later
-      const config = pollingConfigRef.current;
-      let pollCount = 0;
-      
-      // Clear any existing polling
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
-      
-      const pollInterval = setInterval(async () => {
-        pollCount++;
-        
-        // Stop polling if we've exceeded the maximum time
-        if (pollCount >= config.maxPolls) {
-          console.warn('Batch progress polling timeout reached');
-          clearInterval(pollInterval);
-          setBatchProgress(null);
-          setAnalyzingPages(new Set());
-          toast.error('Analysis polling timeout - please check the analysis status manually');
-          return;
-        }
-
-        // Pause polling if requested
-        if (isPollingPaused) {
-          console.log('Polling paused by user.');
-          return;
-        }
-
-        try {
-          // Use batch fetching for better performance
-          const pageStatuses = await fetchBatchPageStatuses(pageIds, config);
-          
-          const { isComplete, shouldContinue } = processPageStatuses(pageStatuses, setBatchProgress, setAnalyzingPages);
-          
-          if (isComplete) {
-            clearInterval(pollInterval);
-            const completed = pageStatuses.filter(p => p.status === 'completed' || p.hasResults).length;
-            const failed = pageStatuses.filter(p => p.status === 'failed' || p.status === 'error').length;
-            const timeout = pageStatuses.filter(p => p.status === 'timeout').length;
-            showCompletionMessage(completed, failed, timeout, pageStatuses.length);
-            setBatchProgress(null);
-            setAnalyzingPages(new Set());
-          }
-        } catch (error) {
-          console.error('Batch progress polling error:', error);
-        }
-      }, config.initialInterval);
-      
-      pollingIntervalRef.current = pollInterval;
-    }
-
-    return () => {
-      // Cleanup will be handled by startBatchProgressPolling
-    };
-  }, [analyzingPages.size, projects, isPollingPaused]);
 
   // ============================================================================
   // DATA FETCHING
@@ -785,154 +501,12 @@ export function AuditMain() {
   // ANALYSIS OPERATIONS
   // ============================================================================
 
-  /**
-   * Start analysis for selected pages
-   */
-  const startAnalysis = async (projectId: string, pageIds: string[]) => {
-    setAnalyzing(true);
-    const isBatchAnalysis = pageIds.length > 1;
-    setError('');
-    
-    if (isBatchAnalysis) {
-      toast.info(`Starting batch analysis for ${pageIds.length} pages. This may take several minutes.`, {
-        autoClose: 5000
-      });
-      
-      setBatchProgress({
-        total: pageIds.length,
-        current: 0,
-        status: 'starting'
-      });
-    }
-    
-    setAnalyzingPages(new Set(pageIds));
 
-    try {
-      const response = await fetch(`/api/audit-projects/${projectId}/analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          page_ids: pageIds,
-          background: isBatchAnalysis,
-          analysis_types: ["grammar", "seo", "ui", "performance", "tagsAnalysis", "images", "links"]
-        }),
-      });
 
-      const data = await response.json();
 
-      if (!response.ok) {
-        setError(data.error || 'Failed to start analysis');
-        setAnalyzingPages(new Set());
-        setBatchProgress(null);
-      } else if (isBatchAnalysis) {
-          setBatchProgress(prev => prev ? {
-            ...prev,
-            status: 'processing',
-            message: `Analysis started for ${pageIds.length} pages`
-          } : null);
-          
-          startBatchProgressPolling(projectId, pageIds);
-      }
-    } catch (error) {
-      setError('Failed to start analysis');
-      setAnalyzingPages(new Set());
-      setBatchProgress(null);
-    } finally {
-      setAnalyzing(false);
-    }
-  };
 
   /**
-   * Start batch progress polling with improved best practices
-   */
-  const startBatchProgressPolling = (projectId: string, pageIds: string[]) => {
-    const config = pollingConfigRef.current;
-    let pollCount = 0;
-    
-    // Clear any existing polling
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-    }
-    
-    const pollInterval = setInterval(async () => {
-      pollCount++;
-      
-      // Stop polling if we've exceeded the maximum time
-      if (pollCount >= config.maxPolls) {
-        console.warn('Batch progress polling timeout reached');
-        clearInterval(pollInterval);
-        setBatchProgress(null);
-        setAnalyzingPages(new Set());
-        toast.error('Analysis polling timeout - please check the analysis status manually');
-        return;
-      }
-
-      // Pause polling if requested
-      if (isPollingPaused) {
-        console.log('Polling paused by user.');
-        return;
-      }
-
-      try {
-        // Use batch fetching for better performance
-        const pageStatuses = await fetchBatchPageStatuses(pageIds, config);
-        
-        const { isComplete, shouldContinue } = processPageStatuses(pageStatuses, setBatchProgress, setAnalyzingPages);
-        
-        if (isComplete) {
-          clearInterval(pollInterval);
-          const completed = pageStatuses.filter(p => p.status === 'completed' || p.hasResults).length;
-          const failed = pageStatuses.filter(p => p.status === 'failed' || p.status === 'error').length;
-          const timeout = pageStatuses.filter(p => p.status === 'timeout').length;
-          showCompletionMessage(completed, failed, timeout, pageStatuses.length);
-          setBatchProgress(null);
-          setAnalyzingPages(new Set());
-        }
-      } catch (error) {
-        console.error('Batch progress polling error:', error);
-      }
-    }, config.initialInterval);
-    
-    pollingIntervalRef.current = pollInterval;
-    
-    return () => {
-      clearInterval(pollInterval);
-      pollingIntervalRef.current = null;
-    };
-  };
-
-  /**
-   * Pause batch progress polling
-   */
-  const pauseBatchPolling = () => {
-    setIsPollingPaused(true);
-    toast.info('Progress monitoring paused');
-  };
-
-  /**
-   * Resume batch progress polling
-   */
-  const resumeBatchPolling = () => {
-    setIsPollingPaused(false);
-    toast.info('Progress monitoring resumed');
-  };
-
-  /**
-   * Stop batch progress polling completely
-   */
-  const stopBatchPolling = () => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-    }
-    setBatchProgress(null);
-    setAnalyzingPages(new Set());
-    setIsPollingPaused(false);
-    toast.info('Progress monitoring stopped');
-  };
-
-  /**
-   * Analyze a single page
+   * Analyze a single page with improved performance and state management
    */
   const analyzeSinglePage = async (pageId: string) => {
     if (!projects[0]) return;
@@ -940,7 +514,16 @@ export function AuditMain() {
     setAnalyzingPages(prev => new Set(prev).add(pageId));
     setError('');
     
+    // const analysisToast = toast.loading('Starting analysis...');
+    
+    let timeoutId: NodeJS.Timeout | undefined;
+    let pollInterval: NodeJS.Timeout | undefined;
+    
     try {
+      // Start analysis with timeout
+      const controller = new AbortController();
+      timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes timeout
+      
       const response = await fetch(`/api/audit-projects/${projects[0].id}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -949,22 +532,45 @@ export function AuditMain() {
           background: false,
           analysis_types: ["grammar", "seo", "ui", "performance", "tagsAnalysis", "images", "links"]
         }),
+        signal: controller.signal
       });
+
+      if (timeoutId) clearTimeout(timeoutId);
 
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error || 'Failed to start analysis');
-        setAnalyzingPages(prev => {
-          const newAnalyzing = new Set(prev);
-          newAnalyzing.delete(pageId);
-          return newAnalyzing;
-        });
-      } else {
-        toast.success('Analysis started successfully');
+        throw new Error(data.error || 'Failed to start analysis');
       }
-    } catch (error) {
-      setError('Failed to start analysis');
+
+      // Analysis completed successfully
+      // toast.dismiss(analysisToast);
+      toast.success('Analysis completed successfully!');
+      
+      // Remove from analyzing pages
+      setAnalyzingPages(prev => {
+        const newAnalyzing = new Set(prev);
+        newAnalyzing.delete(pageId);
+        return newAnalyzing;
+      });
+
+      // Immediately fetch updated data
+      await fetchData();
+      
+    } catch (error: any) {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (pollInterval) clearInterval(pollInterval);
+      // toast.dismiss(analysisToast);
+      
+      if (error.name === 'AbortError') {
+        toast.error('Analysis timed out. Please try again.');
+        setError('Analysis timed out after 5 minutes');
+      } else {
+        toast.error(error.message || 'Analysis failed');
+        setError(error.message || 'Failed to start analysis');
+      }
+      
+      // Remove from analyzing pages on error
       setAnalyzingPages(prev => {
         const newAnalyzing = new Set(prev);
         newAnalyzing.delete(pageId);
@@ -974,45 +580,59 @@ export function AuditMain() {
   };
 
   /**
-   * Stop all analysis processes
+   * Poll for analysis status updates
    */
-  const stopAllAnalysis = async () => {
-    if (analyzingPages.size === 0 || !projects[0]) return;
-
-    setError('');
-    const stopToast = toast.loading('Stopping all analysis processes...');
-
-    try {
-      // Use the new DELETE endpoint to stop all analysis
-      const response = await fetch(`/api/audit-projects/${projects[0].id}/analyze`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || 'Failed to stop analysis processes');
-        toast.dismiss(stopToast);
-        toast.error(data.error || 'Failed to stop analysis processes');
+  const pollAnalysisStatus = async (pageId: string, maxAttempts: number = 60) => {
+    let attempts = 0;
+    
+    const poll = async () => {
+      if (attempts >= maxAttempts) {
+        console.warn(`Polling timeout for page ${pageId}`);
         return;
       }
-
-      // Clear analyzing pages state
-      setAnalyzingPages(new Set());
-      setBatchProgress(null);
-
-      toast.dismiss(stopToast);
-      toast.success('All analysis processes stopped successfully');
       
-      // Refresh data to show updated status
-      await fetchData();
-    } catch (error) {
-      setError('Failed to stop analysis processes');
-      console.error('Stop all analysis error:', error);
-      toast.dismiss(stopToast);
-      toast.error('Failed to stop analysis processes');
-    }
+      try {
+        const response = await fetch(`/api/audit-projects/${projects[0]?.id}/results`);
+        const data = await response.json();
+        
+        if (response.ok && data.pageResults) {
+          const pageResult = data.pageResults.find((p: any) => p.page.id === pageId);
+          
+          if (pageResult && pageResult.page.analysis_status === 'completed') {
+            // Analysis completed, update UI
+            setAnalyzingPages(prev => {
+              const newAnalyzing = new Set(prev);
+              newAnalyzing.delete(pageId);
+              return newAnalyzing;
+            });
+            
+            await fetchData();
+            return;
+          } else if (pageResult && pageResult.page.analysis_status === 'failed') {
+            // Analysis failed
+            setAnalyzingPages(prev => {
+              const newAnalyzing = new Set(prev);
+              newAnalyzing.delete(pageId);
+              return newAnalyzing;
+            });
+            
+            setError(`Analysis failed for page: ${pageResult.page.error_message || 'Unknown error'}`);
+            return;
+          }
+        }
+        
+        // Continue polling
+        attempts++;
+        setTimeout(poll, 2000); // Poll every 2 seconds
+        
+      } catch (error) {
+        console.error('Error polling analysis status:', error);
+        attempts++;
+        setTimeout(poll, 2000);
+      }
+    };
+    
+    poll();
   };
 
   // ============================================================================
@@ -1180,8 +800,6 @@ export function AuditMain() {
           isPageAnalyzing={(page: AnalyzedPage) => isPageAnalyzing(page, analyzingPages)}
           isAnalysisDisabled={isAnalysisDisabled}
           onAnalyzeSinglePage={analyzeSinglePage}
-          onStartAnalysis={startAnalysis}
-          onStopAllAnalysis={stopAllAnalysis}
           onDeletePage={() => {}} // Implement if needed
           onDeleteSelectedPages={() => {}} // Implement if needed
           getStatusBadge={getStatusBadge}

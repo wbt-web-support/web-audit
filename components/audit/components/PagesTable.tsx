@@ -17,7 +17,8 @@ import {
   Eye,
   RefreshCw,
   Square,
-  AlertTriangle
+  AlertTriangle,
+  Clock
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { AuditProject } from '@/lib/types/database';
@@ -60,13 +61,21 @@ interface PagesTableProps {
   isPageAnalyzing: (page: AnalyzedPage) => boolean;
   isAnalysisDisabled: () => boolean;
   onAnalyzeSinglePage: (pageId: string) => void;
-  onStartAnalysis: (projectId: string, pageIds: string[]) => void;
-  onStopAllAnalysis: () => void;
   onDeletePage: (pageId: string) => void;
   onDeleteSelectedPages: () => void;
   getStatusBadge: (status: string) => ReactElement;
   getAnalysisStatus: (page: AnalyzedPage) => string;
 }
+
+// Progress indicator component for analyzing pages
+const AnalysisProgress = ({ pageId }: { pageId: string }) => {
+  return (
+    <div className="flex items-center gap-2 text-sm text-blue-600">
+      <Loader2 className="h-4 w-4 animate-spin" />
+      <span>Analyzing...</span>
+    </div>
+  );
+};
 
 export function PagesTable({
   projects,
@@ -93,8 +102,6 @@ export function PagesTable({
   isPageAnalyzing,
   isAnalysisDisabled,
   onAnalyzeSinglePage,
-  onStartAnalysis,
-  onStopAllAnalysis,
   onDeletePage,
   onDeleteSelectedPages,
   getStatusBadge,
@@ -184,18 +191,7 @@ export function PagesTable({
             )}
           </div>
           <div className="flex items-center gap-2">
-            {/* Kill Switch for stopping all analysis */}
-            {analyzingPages.size > 0 && projects[0] && (
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={onStopAllAnalysis}
-                className="bg-red-600 hover:bg-red-700 text-white border-red-600"
-              >
-                <Square className="h-4 w-4 mr-2" />
-                Stop All Analysis ({analyzingPages.size})
-              </Button>
-            )}
+
             
             {selectedPages.size > 0 && (
               <>
@@ -206,55 +202,6 @@ export function PagesTable({
                 >
                   Clear Selection
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    if (projects[0]) {
-                      onStartAnalysis(projects[0].id, Array.from(selectedPages));
-                    }
-                  }}
-                  disabled={isAnalysisDisabled()}
-                  title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : ""}
-                >
-                  <Zap className="h-4 w-4 mr-2" />
-                  Smart Batch Analyze {selectedPages.size} Pages
-                </Button>
-              </>
-            )}
-            {selectedPages.size === 0 && filteredAndSortedPages.length > 0 && analyzingPages.size === 0 && (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    const selectablePageIds = filteredAndSortedPages
-                      .filter(p => !isPageAnalyzing(p))
-                      .map(p => p.page.id);
-                    setSelectedPages(new Set(selectablePageIds));
-                  }}
-                  disabled={isAnalysisDisabled()}
-                  title={isAnalysisDisabled() ? "Selection disabled while crawling is in progress" : ""}
-                >
-                  Select All ({filteredAndSortedPages.filter(p => !isPageAnalyzing(p)).length})
-                </Button>
-                {filteredAndSortedPages.filter(p => p.resultCount === 0).length > 0 && projects[0] && (
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      const unanalyzedPageIds = filteredAndSortedPages
-                        .filter(p => p.resultCount === 0 && !isPageAnalyzing(p))
-                        .map(p => p.page.id);
-                      if (unanalyzedPageIds.length > 0) {
-                        onStartAnalysis(projects[0].id, unanalyzedPageIds);
-                      }
-                    }}
-                    disabled={isAnalysisDisabled()}
-                    title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : ""}
-                  >
-                    <Zap className="h-4 w-4 mr-2" />
-                    Smart Analyze All Unanalyzed ({filteredAndSortedPages.filter(p => p.resultCount === 0 && !isPageAnalyzing(p)).length})
-                  </Button>
-                )}
               </>
             )}
           </div>
