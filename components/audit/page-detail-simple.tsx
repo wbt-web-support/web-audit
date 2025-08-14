@@ -257,7 +257,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             newAnalysis.image_analysis = data.results.image_analysis;
           }
           if (data.results.link_analysis) {
-            console.log("link_analysis", data.results.link_analysis);
             newAnalysis.link_analysis = data.results.link_analysis;
           }
           if (data.results.performance_analysis) {
@@ -326,7 +325,29 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
         // Check if this specific page is currently being analyzed
         const isPageAnalyzing = data.page?.analysis_status === "analyzing";
-        setIsAnalysisRunning(isPageAnalyzing);
+        
+        // Check if page has been stuck in analyzing status for too long (more than 10 minutes)
+        const pageUpdatedAt = data.page?.updated_at ? new Date(data.page.updated_at) : null;
+        const now = new Date();
+        const isStuck = pageUpdatedAt && isPageAnalyzing && 
+          (now.getTime() - pageUpdatedAt.getTime()) > 10 * 60 * 1000; // 10 minutes
+        
+        if (isStuck) {
+          console.warn('Page appears to be stuck in analyzing status, resetting to pending');
+          // Reset the page status to pending
+          try {
+            await fetch(`/api/pages/${pageId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ analysis_status: 'pending' })
+            });
+          } catch (error) {
+            console.error('Failed to reset stuck page status:', error);
+          }
+          setIsAnalysisRunning(false);
+        } else {
+          setIsAnalysisRunning(isPageAnalyzing);
+        }
 
         // Analyze the page data
         if (data.page) {
@@ -535,10 +556,23 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     };
   }, [pageId, fetchAnalysisResults]);
 
-  // Add polling fallback when analysis is running
+  // Add polling fallback when analysis is running with timeout
   useEffect(() => {
     if (isAnalysisRunning) {
+      let pollCount = 0;
+      const maxPolls = 60; // Maximum 5 minutes of polling (60 * 5 seconds)
+      
       const pollInterval = setInterval(async () => {
+        pollCount++;
+        
+        // Stop polling if we've exceeded the maximum time
+        if (pollCount >= maxPolls) {
+          console.warn('Polling timeout reached for page analysis');
+          setIsAnalysisRunning(false);
+          clearInterval(pollInterval);
+          return;
+        }
+        
         await fetchPageData();
       }, 5000); // Poll every 5 seconds
 
@@ -2967,15 +3001,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           // Handle the detailed link analysis data structure
                           let linkAnalysis: any = analysis.link_analysis;
                           
-                          // Debug: Log the raw data
-                          console.log('🔍 Link Analysis Debug:', {
-                            rawLinkAnalysis: analysis.link_analysis,
-                            type: typeof analysis.link_analysis,
-                            hasLinks: analysis.link_analysis?.links,
-                            linksLength: analysis.link_analysis?.links?.length,
-                            isString: typeof analysis.link_analysis === 'string',
-                            parsed: typeof analysis.link_analysis === 'string' ? JSON.parse(analysis.link_analysis) : null
-                          });
+                          // Debug log removed to prevent continuous logging
                           
                           // If it's a string, try to parse it
                           if (typeof linkAnalysis === 'string') {

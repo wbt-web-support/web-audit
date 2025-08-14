@@ -184,6 +184,70 @@ export async function POST(
 }
 
 /**
+ * Stop all analysis processes for a project
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const supabase = await createClient();
+    const { id } = await params;
+
+    // Validate user authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Verify project ownership and existence
+    const { data: project, error: projectError } = await supabase
+      .from("audit_projects")
+      .select("*")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .single();
+
+    if (projectError || !project) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    // Stop all analysis processes by updating project status and page statuses
+    await Promise.all([
+      // Update project status to stop analysis
+      supabase
+        .from("audit_projects")
+        .update({ 
+          status: "completed",
+          error_message: "Analysis stopped by user"
+        })
+        .eq("id", id),
+      
+      // Update all pages with 'analyzing' status to 'pending'
+      supabase
+        .from("scraped_pages")
+        .update({ 
+          analysis_status: "pending",
+          error_message: "Analysis stopped by user"
+        })
+        .eq("audit_project_id", id)
+        .eq("analysis_status", "analyzing")
+    ]);
+
+    return NextResponse.json({
+      message: "Analysis stopped successfully",
+      project_id: id
+    });
+  } catch (error) {
+    console.error("Stop analysis API error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * Performs comprehensive analysis on a single page
  * Optimized for parallel processing and efficient caching
  */
@@ -196,6 +260,22 @@ async function performSinglePageAnalysis(
   forceRefresh: boolean
 ) {
   try {
+    // Check if analysis has been stopped before proceeding with heavy tasks
+    const { data: currentProjectStatus } = await supabase
+      .from("audit_projects")
+      .select("error_message")
+      .eq("id", project.id)
+      .single();
+
+    if (currentProjectStatus?.error_message === "Analysis stopped by user") {
+      console.log(`[ANALYSIS] Aborting analysis for page ${page.id} due to stop signal.`);
+      await supabase
+        .from("scraped_pages")
+        .update({ analysis_status: "pending", error_message: "Analysis stopped by user" })
+        .eq("id", page.id);
+      throw new Error("Analysis stopped by user"); // Propagate stop signal
+    }
+
     // Update page status to analyzing
     await supabase
       .from("scraped_pages")
@@ -232,6 +312,22 @@ async function performSinglePageAnalysis(
           console.log(`[CACHE] SEO analysis loaded for page ${page.id}`);
         }
       }
+    }
+
+    // Check for stop signal before starting heavy analysis
+    const { data: stopCheck1 } = await supabase
+      .from("audit_projects")
+      .select("error_message")
+      .eq("id", project.id)
+      .single();
+
+    if (stopCheck1?.error_message === "Analysis stopped by user") {
+      console.log(`[ANALYSIS] Stop signal detected before analysis start for page ${page.id}`);
+      await supabase
+        .from("scraped_pages")
+        .update({ analysis_status: "pending", error_message: "Analysis stopped by user" })
+        .eq("id", page.id);
+      throw new Error("Analysis stopped by user");
     }
 
     // Initialize parallel analysis promises for optimal performance
@@ -277,6 +373,22 @@ async function performSinglePageAnalysis(
       : Promise.resolve(null);
     analysisPromises.push(linkPromise);
 
+    // Check for stop signal before UI analysis (most resource-intensive)
+    const { data: stopCheck2 } = await supabase
+      .from("audit_projects")
+      .select("error_message")
+      .eq("id", project.id)
+      .single();
+
+    if (stopCheck2?.error_message === "Analysis stopped by user") {
+      console.log(`[ANALYSIS] Stop signal detected before UI analysis for page ${page.id}`);
+      await supabase
+        .from("scraped_pages")
+        .update({ analysis_status: "pending", error_message: "Analysis stopped by user" })
+        .eq("id", page.id);
+      throw new Error("Analysis stopped by user");
+    }
+
     // UI analysis with screenshots (most resource-intensive)
     const screenshotUrls: Record<string, string | null> = { phone: null, tablet: null, desktop: null };
     
@@ -285,7 +397,7 @@ async function performSinglePageAnalysis(
       const uiPromises = ["phone", "tablet", "desktop"].map(async (device) => {
         try {
           console.log(`[UI] Starting ${device} analysis for page ${page.id}`);
-          const buffer = await takeScreenshotBuffer(page.url, device as any);
+          const buffer = await takeScreenshotBuffer(page.url, device as any, project.id);
           if (!buffer) return null;
           
           const storagePath = `project_${project.id}/screenshot_${page.id}_${device}.png`;
@@ -628,6 +740,22 @@ async function analyzePages(
       
       while (retries <= MAX_RETRIES) {
         try {
+          // Check if analysis has been stopped before starting
+          const { data: currentProject } = await supabase
+            .from("audit_projects")
+            .select("status, error_message")
+            .eq("id", projectId)
+            .single();
+
+          if (currentProject?.error_message === "Analysis stopped by user") {
+            console.log(`Analysis stopped by user for page ${page.id}`);
+            return {
+              success: false,
+              pageId: page.id,
+              error: "Analysis stopped by user",
+            };
+          }
+
           // Create timeout promise
           const timeoutPromise = new Promise((_, reject) => {
             setTimeout(() => reject(new Error('Analysis timeout')), TIMEOUT_MS);
@@ -649,6 +777,16 @@ async function analyzePages(
           console.log(`Successfully analyzed page ${page.id}`);
           return { success: true, pageId: page.id };
         } catch (error: any) {
+          // Check if this is a stop signal error
+          if (error.message === "Analysis stopped by user") {
+            console.log(`Page ${page.id} analysis stopped by user`);
+            return {
+              success: false,
+              pageId: page.id,
+              error: "Analysis stopped by user",
+            };
+          }
+          
           retries++;
           console.error(`Attempt ${retries} failed for page ${page.id}:`, error.message);
           
@@ -676,12 +814,24 @@ async function analyzePages(
     };
 
     // Function to start processing a page and add to active promises
-    const startPageAnalysis = (page: any) => {
+    const startPageAnalysis = async (page: any) => {
       if (completedPages.has(page.id) || processingPages.has(page.id)) return; // Skip if already completed or processing
+      
+      // Check for stop signal before starting new page
+      const { data: currentProjectStatus } = await supabase
+        .from("audit_projects")
+        .select("error_message")
+        .eq("id", projectId)
+        .single();
+
+      if (currentProjectStatus?.error_message === "Analysis stopped by user") {
+        console.log(`[START PAGE] Stop signal detected, not starting page ${page.id}`);
+        return;
+      }
       
       processingPages.add(page.id); // Mark as processing
       
-      const promise = processPage(page).then((result) => {
+      const promise = processPage(page).then(async (result) => {
         // Remove from active promises when done
         activePromises.delete(page.id);
         processingPages.delete(page.id); // Remove from processing set
@@ -705,12 +855,12 @@ async function analyzePages(
           const nextPage = pageQueue.shift();
           if (nextPage && !completedPages.has(nextPage.id) && !processingPages.has(nextPage.id)) {
             console.log(`Starting next page from queue: ${nextPage.id}. Active: ${activePromises.size + 1}, Queue remaining: ${pageQueue.length}`);
-            startPageAnalysis(nextPage);
+            await startPageAnalysis(nextPage);
           }
         }
         
         return result;
-      }).catch((error) => {
+      }).catch(async (error) => {
         // Handle unexpected errors with error
         activePromises.delete(page.id);
         processingPages.delete(page.id); // Remove from processing set
@@ -727,7 +877,7 @@ async function analyzePages(
           const nextPage = pageQueue.shift();
           if (nextPage && !completedPages.has(nextPage.id) && !processingPages.has(nextPage.id)) {
             console.log(`Starting next page from queue after error: ${nextPage.id}. Active: ${activePromises.size + 1}, Queue remaining: ${pageQueue.length}`);
-            startPageAnalysis(nextPage);
+            await startPageAnalysis(nextPage);
           }
         }
       });
@@ -743,7 +893,7 @@ async function analyzePages(
       const page = pageQueue.shift();
       if (page && !completedPages.has(page.id) && !processingPages.has(page.id)) {
         console.log(`Starting initial page ${i + 1}/${initialBatch}: ${page.id}`);
-        startPageAnalysis(page);
+        await startPageAnalysis(page);
       }
     }
 
@@ -751,6 +901,23 @@ async function analyzePages(
     let waitCount = 0;
     while (activePromises.size > 0 || pageQueue.length > 0) {
       console.log(`Waiting... Active: ${activePromises.size}, Queue: ${pageQueue.length}, Completed: ${successfulCount + failedCount}/${pages.length}`);
+      
+      // Check for stop signal every 2 seconds
+      if (waitCount % 2 === 0) {
+        const { data: currentProjectStatus } = await supabase
+          .from("audit_projects")
+          .select("error_message")
+          .eq("id", projectId)
+          .single();
+
+        if (currentProjectStatus?.error_message === "Analysis stopped by user") {
+          console.log(`[BATCH ANALYSIS] Stop signal detected. Aborting batch processing.`);
+          pageQueue.length = 0; // Empty the queue
+          activePromises.clear(); // Clear active promises (they will eventually abort themselves)
+          break; // Exit the while loop
+        }
+      }
+      
       await new Promise(resolve => setTimeout(resolve, 1000)); // Check every second
       
       // Periodic check to ensure queue processing is working
@@ -761,7 +928,7 @@ async function analyzePages(
           const nextPage = pageQueue.shift();
           if (nextPage && !completedPages.has(nextPage.id) && !processingPages.has(nextPage.id)) {
             console.log(`Periodic restart: Starting page ${nextPage.id}`);
-            startPageAnalysis(nextPage);
+            await startPageAnalysis(nextPage);
           }
         }
       }
@@ -818,6 +985,21 @@ async function analyzePages(
  */
 async function analyzeContentWithGemini(content: string, project?: any) {
   try {
+    // Check for stop signal before starting heavy AI analysis
+    if (project?.id) {
+      const supabase = await createClient();
+      const { data: currentProjectStatus } = await supabase
+        .from("audit_projects")
+        .select("error_message")
+        .eq("id", project.id)
+        .single();
+
+      if (currentProjectStatus?.error_message === "Analysis stopped by user") {
+        console.log(`[GEMINI] Stop signal detected, aborting content analysis`);
+        throw new Error("Analysis stopped by user");
+      }
+    }
+
     // Early return for empty content
     if (!content.trim()) {
       return {
@@ -1895,10 +2077,26 @@ async function uploadScreenshotToStorage(
  */
 async function takeScreenshotBuffer(
   url: string,
-  device: "phone" | "tablet" | "desktop"
+  device: "phone" | "tablet" | "desktop",
+  projectId?: string
 ): Promise<Buffer | null> {
   let browser: import("puppeteer").Browser | null = null;
   try {
+    // Check for stop signal before starting screenshot
+    if (projectId) {
+      const supabase = await createClient();
+      const { data: currentProjectStatus } = await supabase
+        .from("audit_projects")
+        .select("error_message")
+        .eq("id", projectId)
+        .single();
+
+      if (currentProjectStatus?.error_message === "Analysis stopped by user") {
+        console.log(`[SCREENSHOT] Stop signal detected, aborting screenshot for ${device}`);
+        throw new Error("Analysis stopped by user");
+      }
+    }
+
     // Launch browser with optimized settings
     browser = await puppeteer.launch({
       headless: true,

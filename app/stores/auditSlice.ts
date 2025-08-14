@@ -3,6 +3,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 interface CrawlSession {
   projectId: string;
   isCrawling: boolean;
+  backgroundCrawling: boolean; // Add background crawling state
   currentAction: string;
   liveImageCount: number;
   liveLinkCount: number;
@@ -40,6 +41,7 @@ export const auditSlice = createSlice({
         state.sessions[projectId] = {
           projectId,
           isCrawling: false,
+          backgroundCrawling: false, // Initialize background crawling
           currentAction: '',
           liveImageCount: 0,
           liveLinkCount: 0,
@@ -58,12 +60,13 @@ export const auditSlice = createSlice({
     },
 
     // Start crawling for a project
-    startCrawling: (state, action: PayloadAction<{ projectId: string }>) => {
-      const { projectId } = action.payload;
+    startCrawling: (state, action: PayloadAction<{ projectId: string; background?: boolean }>) => {
+      const { projectId, background = false } = action.payload;
       if (!state.sessions[projectId]) {
         state.sessions[projectId] = {
           projectId,
           isCrawling: false,
+          backgroundCrawling: false,
           currentAction: '',
           liveImageCount: 0,
           liveLinkCount: 0,
@@ -80,8 +83,9 @@ export const auditSlice = createSlice({
       }
 
       const session = state.sessions[projectId];
-      session.isCrawling = true;
-      session.currentAction = 'Crawling in progress...';
+      session.isCrawling = !background; // Only set isCrawling to true if not background
+      session.backgroundCrawling = background; // Set background crawling state
+      session.currentAction = background ? 'Crawling in background...' : 'Crawling in progress...';
       session.crawlingStartedAt = Date.now();
       session.lastUpdateAt = Date.now();
       
@@ -106,10 +110,11 @@ export const auditSlice = createSlice({
       const session = state.sessions[projectId];
       if (session) {
         session.isCrawling = false;
+        session.backgroundCrawling = false; // Stop background crawling too
         session.currentAction = '';
         session.lastUpdateAt = Date.now();
       }
-      state.globalIsCrawling = Object.values(state.sessions).some(s => s.isCrawling);
+      state.globalIsCrawling = Object.values(state.sessions).some(s => s.isCrawling || s.backgroundCrawling);
     },
 
     // Update live counts for a project
@@ -182,10 +187,11 @@ export const auditSlice = createSlice({
       const session = state.sessions[projectId];
       if (session) {
         session.isCrawling = false;
+        session.backgroundCrawling = false; // Complete background crawling too
         session.currentAction = '';
         session.lastUpdateAt = Date.now();
       }
-      state.globalIsCrawling = Object.values(state.sessions).some(s => s.isCrawling);
+      state.globalIsCrawling = Object.values(state.sessions).some(s => s.isCrawling || s.backgroundCrawling);
     },
 
     // Set active project
@@ -200,7 +206,7 @@ export const auditSlice = createSlice({
       if (state.activeProjectId === projectId) {
         state.activeProjectId = null;
       }
-      state.globalIsCrawling = Object.values(state.sessions).some(s => s.isCrawling);
+      state.globalIsCrawling = Object.values(state.sessions).some(s => s.isCrawling || s.backgroundCrawling);
     },
 
     // Clear all sessions

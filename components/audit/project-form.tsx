@@ -1,6 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useDispatch, useSelector } from "react-redux";
+import { toast } from "react-toastify";
+
+// UI Components
 import {
   Card,
   CardContent,
@@ -11,7 +16,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AuditProject, AuditProjectStatus } from "@/lib/types/database";
+
+// Icons
 import {
   Loader2,
   Save,
@@ -25,9 +31,12 @@ import {
   Trash2,
   Search,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { toast } from "react-toastify";
-import { useDispatch, useSelector } from "react-redux";
+
+// Types and Interfaces
+import { AuditProject, AuditProjectStatus } from "@/lib/types/database";
+import { RootState } from "@/app/stores/store";
+
+// Redux Actions
 import {
   setCompanyDetails,
   setCrawlType,
@@ -37,11 +46,16 @@ import {
   clearForm,
   setUrls,
 } from "@/app/stores/dashboardFormSlice";
-import { RootState } from "@/app/stores/store";
+
+// Custom Components
 import CustomInstructions from "@/app/(dashboard)/dashboard/components/CustomInstructions";
 import ServicesDropdown from "@/app/(dashboard)/dashboard/components/ServicesDropdown";
 import CustomUrls from "@/app/(dashboard)/dashboard/components/CustomUrls";
 import CheckStripKeys from "@/app/(dashboard)/dashboard/components/CheckStripKeys";
+
+// ============================================================================
+// INTERFACES
+// ============================================================================
 
 interface ProjectFormProps {
   project?: AuditProject | null;
@@ -50,8 +64,28 @@ interface ProjectFormProps {
   projects?: AuditProject[]; // For create mode to check duplicates
 }
 
+interface CompanyDetails {
+  companyName: string;
+  phoneNumber: string;
+  email: string;
+  address: string;
+  customInfo: string;
+}
+
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
+
 export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectFormProps) {
+  // ============================================================================
+  // STATE MANAGEMENT
+  // ============================================================================
+  
+  // Loading and error states
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  
+  // Form field states
   const [projectUrl, setProjectUrl] = useState(project?.base_url || "");
   const [companyName, setCompanyName] = useState(project?.company_name || "");
   const [phoneNumber, setPhoneNumber] = useState(project?.phone_number || "");
@@ -62,16 +96,36 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
     project?.crawl_type === "single" ? "single" : "full"
   );
 
-  const [error, setError] = useState("");
+  // ============================================================================
+  // HOOKS AND UTILITIES
+  // ============================================================================
+  
   const router = useRouter();
-  const normalizeUrl = (url: string) => url.replace(/\/+$/, "").toLowerCase();
   const dispatch = useDispatch();
   
-  // Get Redux state for create mode
-  const { inputUrl, selectedServices, instructions, urls, stripeKeyUrls } = useSelector((state: RootState) => state.dashboardForm);
+  // Redux state selectors
+  const { 
+    inputUrl, 
+    selectedServices, 
+    instructions, 
+    urls, 
+    stripeKeyUrls 
+  } = useSelector((state: RootState) => state.dashboardForm);
 
+  // URL normalization utility
+  const normalizeUrl = (url: string) => url.replace(/\/+$/, "").toLowerCase();
+
+  // ============================================================================
+  // EFFECTS
+  // ============================================================================
+
+  /**
+   * Initialize form with project data when editing
+   * Loads all project data into local state and Redux store
+   */
   useEffect(() => {
     if (project) {
+      // Set local form state
       setProjectUrl(project.base_url || "");
       setCompanyName(project.company_name || "");
       setPhoneNumber(project.phone_number || "");
@@ -80,39 +134,44 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
       setCustomInfo(project.custom_info || "");
       setCrawlTypeState(project.crawl_type === "single" ? "single" : "full");
       
-      // Load services from project data into Redux store
+      // Load services into Redux store
       if (project.services && project.services.length > 0) {
         dispatch(setSelectedServices(project.services));
       }
       
-      // Load instructions from project data into Redux store
+      // Load instructions into Redux store
       if (project.instructions && project.instructions.length > 0) {
         dispatch(setInstructions(project.instructions));
       }
 
-      // Load custom URLs from project data into Redux store
+      // Load custom URLs into Redux store
       if (Array.isArray(project.custom_urls) && project.custom_urls.length > 0) {
         dispatch(setUrls(project.custom_urls));
       } else {
         dispatch(setUrls([""]));
       }
-
-      console.log("project**********", project);
     }
   }, [project, dispatch]);
 
+  /**
+   * Handle crawl type changes
+   * - For single page crawl: Reset URLs and deselect custom URLs service
+   * - For full crawl: Allow custom URLs service
+   */
   useEffect(() => {
-    console.log("crawlType**********", crawlType);
     if (crawlType === 'single') {
       dispatch(setUrls(['']));
-      // Deselect 'check_custom_urls' if selected
+      // Deselect 'check_custom_urls' if selected for single page crawl
       if (selectedServices.includes('check_custom_urls')) {
         dispatch(setSelectedServices(selectedServices.filter(s => s !== 'check_custom_urls')));
       }
     }
   }, [crawlType, dispatch, selectedServices]);
 
-  // Sync company details to Redux store
+  /**
+   * Sync company details to Redux store
+   * Updates Redux whenever company details change
+   */
   useEffect(() => {
     dispatch(
       setCompanyDetails({
@@ -125,13 +184,24 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
     );
   }, [companyName, phoneNumber, email, address, customInfo, dispatch]);
 
-  // Sync URL to Redux for create mode
+  /**
+   * Sync URL to Redux for create mode
+   * Only syncs in create mode to avoid conflicts with edit mode
+   */
   useEffect(() => {
     if (mode === "create") {
       dispatch(setInputUrl(projectUrl));
     }
   }, [projectUrl, mode, dispatch]);
 
+  // ============================================================================
+  // EVENT HANDLERS
+  // ============================================================================
+
+  /**
+   * Main form submission handler
+   * Routes to appropriate handler based on mode
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -142,7 +212,12 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
     }
   };
 
+  /**
+   * Create new audit project
+   * Validates input and sends POST request to API
+   */
   const handleCreateProject = async () => {
+    // Validation
     if (!projectUrl.trim()) {
       toast.error("Please enter a valid URL.");
       return;
@@ -152,6 +227,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
     setError("");
 
     try {
+      // Prepare payload
       const payload = {
         base_url: projectUrl.trim(),
         crawlType: crawlType,
@@ -164,10 +240,15 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
           customInfo,
         },
         instructions: instructions,
-        custom_urls: (Array.isArray(urls) && urls.filter(u => u && u.trim()).length > 0) ? urls.filter(u => u && u.trim()) : null,
-        stripe_key_urls: (Array.isArray(stripeKeyUrls) && stripeKeyUrls.filter(u => u && u.trim()).length > 0) ? stripeKeyUrls.filter(u => u && u.trim()) : null,
+        custom_urls: (Array.isArray(urls) && urls.filter(u => u && u.trim()).length > 0) 
+          ? urls.filter(u => u && u.trim()) 
+          : null,
+        stripe_key_urls: (Array.isArray(stripeKeyUrls) && stripeKeyUrls.filter(u => u && u.trim()).length > 0) 
+          ? stripeKeyUrls.filter(u => u && u.trim()) 
+          : null,
       };
-      console.log("payload:**************", payload);
+     
+      // API call
       const response = await fetch("/api/audit-projects", {
         method: "POST",
         headers: {
@@ -175,8 +256,9 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
         },
         body: JSON.stringify(payload),
       });
-      console.log("response:**************", response);
+      
       const data = await response.json();
+      
       if (response.ok) {
         router.push(`/audit?project=${data.project.id}`);
         toast.success("Project created successfully!");
@@ -191,6 +273,10 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
     }
   };
 
+  /**
+   * Edit existing audit project
+   * Validates input and sends PUT request to API
+   */
   const handleEditProject = async () => {
     if (!projectUrl.trim()) return;
 
@@ -198,6 +284,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
     setError("");
 
     try {
+      // Prepare payload
       const payload = {
         base_url: projectUrl.trim(),
         company_name: companyName.trim() || null,
@@ -208,10 +295,15 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
         crawlType: crawlType,
         services: selectedServices,
         instructions: instructions,
-        custom_urls: (Array.isArray(urls) && urls.filter(u => u && u.trim()).length > 0) ? urls.filter(u => u && u.trim()) : null,
-        stripe_key_urls: (Array.isArray(stripeKeyUrls) && stripeKeyUrls.filter(u => u && u.trim()).length > 0) ? stripeKeyUrls.filter(u => u && u.trim()) : null,
+        custom_urls: (Array.isArray(urls) && urls.filter(u => u && u.trim()).length > 0) 
+          ? urls.filter(u => u && u.trim()) 
+          : null,
+        stripe_key_urls: (Array.isArray(stripeKeyUrls) && stripeKeyUrls.filter(u => u && u.trim()).length > 0) 
+          ? stripeKeyUrls.filter(u => u && u.trim()) 
+          : null,
       };
       
+      // API call
       const response = await fetch(`/api/audit-projects/${project?.id}`, {
         method: "PUT",
         headers: {
@@ -221,6 +313,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
       });
     
       const data = await response.json();
+      
       if (response.ok) {
         if (onSubmit && data.project) {
           onSubmit(data.project);
@@ -246,25 +339,35 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
     }
   };
 
+  // ============================================================================
+  // COMPUTED VALUES
+  // ============================================================================
+
   const title = mode === "create" ? "Create New Audit Project" : "Edit Project";
-  const description =
-    mode === "create"
-      ? "Enter website URL and company details to verify consistency across all pages"
-      : "Update website URL and company information for verification";
+  const description = mode === "create"
+    ? "Enter website URL and company details to verify consistency across all pages"
+    : "Update website URL and company information for verification";
 
   // Check if project is running and prevent editing
   const isProjectRunning = Boolean(
     project && (project.status === "crawling" || project.status === "analyzing")
   );
 
+  // ============================================================================
+  // RENDER
+  // ============================================================================
+
   return (
     <div className="w-full max-w-4xl">
       <Card>
+        {/* Header Section */}
         <CardHeader>
           <CardTitle>{title}</CardTitle>
           <CardDescription>{description}</CardDescription>
         </CardHeader>
+
         <CardContent>
+          {/* Status Messages */}
           {isProjectRunning && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
               <div className="flex items-center gap-2 text-amber-700">
@@ -284,8 +387,14 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
             </div>
           )}
 
+          {/* Main Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* URL Input - Always shown */}
+            
+            {/* ========================================
+                BASIC PROJECT INFORMATION
+            ========================================= */}
+            
+            {/* Website URL Input */}
             <div>
               <Label htmlFor="url" className="flex items-center gap-2">
                 <Globe className="h-4 w-4" />
@@ -303,7 +412,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
               />
             </div>
 
-            {/* Crawl Type Selection - Always shown */}
+            {/* Crawl Type Selection */}
             <div>
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 ml-0 sm:ml-2">
                 <div className="flex gap-4">
@@ -337,12 +446,16 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
               </div>
             </div>
 
-            {/* Services Dropdown - Show for both create and edit modes */}
+            {/* ========================================
+                SERVICES CONFIGURATION
+            ========================================= */}
+            
+            {/* Services Dropdown */}
             <div className="w-full">
               <ServicesDropdown />
             </div>
 
-            {/* Custom Instructions - Show when custom_instructions service is selected */}
+            {/* Custom Instructions - Conditional based on service selection */}
             {selectedServices.includes('custom_instructions') && (
               <div className="custom_instructions">
                 {mode === "edit" ? (
@@ -356,121 +469,130 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
                 )}
               </div>
             )}
-            {/* Stripe Key URLs are managed ONLY by CheckStripKeys and stored in stripeKeyUrls */}
+
+            {/* Stripe Key URLs - Conditional based on service selection */}
             {selectedServices.includes('check_stripe_keys') && (
               <div className="check_stripe_keys">
-              <CheckStripKeys />
+                <CheckStripKeys />
               </div>
             )}
 
-                 
-            {/* Company Details Section - Only show when contact_details_consistency is selected */}
-              {selectedServices.includes('contact_details_consistency') ? (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label
-                        htmlFor="companyName"
-                        className="flex items-center gap-2"
-                      >
-                        <Building className="h-4 w-4" />
-                        Company Name
-                      </Label>
-                      <Input
-                        id="companyName"
-                        type="text"
-                        placeholder="Acme Corporation"
-                        value={companyName}
-                        onChange={(e) => setCompanyName(e.target.value)}
-                        disabled={loading || isProjectRunning}
-                        className="mt-1"
-                      />
-                    </div>
-
-                    <div>
-                      <Label
-                        htmlFor="phoneNumber"
-                        className="flex items-center gap-2"
-                      >
-                        <Phone className="h-4 w-4" />
-                        Phone Number
-                      </Label>
-                      <Input
-                        id="phoneNumber"
-                        type="tel"
-                        placeholder="+1 (555) 123-4567"
-                        value={phoneNumber}
-                        onChange={(e) => setPhoneNumber(e.target.value)}
-                        disabled={loading || isProjectRunning}
-                        className="mt-1"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="email" className="flex items-center gap-2">
-                        <Mail className="h-4 w-4" />
-                        Email Address
-                      </Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        placeholder="contact@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        disabled={loading || isProjectRunning}
-                        className="mt-1"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="address" className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4" />
-                        Address
-                      </Label>
-                      <Input
-                        id="address"
-                        type="text"
-                        placeholder="123 Main St, City, State 12345"
-                        value={address}
-                        onChange={(e) => setAddress(e.target.value)}
-                        disabled={loading || isProjectRunning}
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-
+            {/* ========================================
+                COMPANY DETAILS SECTION
+            ========================================= */}
+            
+            {/* Company Details - Only show when contact_details_consistency is selected */}
+            {selectedServices.includes('contact_details_consistency') && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Company Name */}
                   <div>
-                    <Label htmlFor="customInfo" className="flex items-center gap-2">
-                      <FileText className="h-4 w-4" />
-                      Additional Information
+                    <Label htmlFor="companyName" className="flex items-center gap-2">
+                      <Building className="h-4 w-4" />
+                      Company Name
                     </Label>
                     <Input
-                      id="customInfo"
+                      id="companyName"
                       type="text"
-                      placeholder="Any other information to verify (hours, services, etc.)"
-                      value={customInfo}
-                      onChange={(e) => setCustomInfo(e.target.value)}
+                      placeholder="Acme Corporation"
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
                       disabled={loading || isProjectRunning}
                       className="mt-1"
                     />
                   </div>
-                </>
-              ) : null}
 
-            {/* Custom URLs - Show when check_custom_urls service is selected */}
-            {/* CustomUrls manages ONLY custom_urls (urls in Redux) */}
+                  {/* Phone Number */}
+                  <div>
+                    <Label htmlFor="phoneNumber" className="flex items-center gap-2">
+                      <Phone className="h-4 w-4" />
+                      Phone Number
+                    </Label>
+                    <Input
+                      id="phoneNumber"
+                      type="tel"
+                      placeholder="+1 (555) 123-4567"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      disabled={loading || isProjectRunning}
+                      className="mt-1"
+                    />
+                  </div>
+
+                  {/* Email Address */}
+                  <div>
+                    <Label htmlFor="email" className="flex items-center gap-2">
+                      <Mail className="h-4 w-4" />
+                      Email Address
+                    </Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="contact@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      disabled={loading || isProjectRunning}
+                      className="mt-1"
+                    />
+                  </div>
+
+                  {/* Address */}
+                  <div>
+                    <Label htmlFor="address" className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4" />
+                      Address
+                    </Label>
+                    <Input
+                      id="address"
+                      type="text"
+                      placeholder="123 Main St, City, State 12345"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      disabled={loading || isProjectRunning}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+
+                {/* Additional Information */}
+                <div>
+                  <Label htmlFor="customInfo" className="flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Additional Information
+                  </Label>
+                  <Input
+                    id="customInfo"
+                    type="text"
+                    placeholder="Any other information to verify (hours, services, etc.)"
+                    value={customInfo}
+                    onChange={(e) => setCustomInfo(e.target.value)}
+                    disabled={loading || isProjectRunning}
+                    className="mt-1"
+                  />
+                </div>
+              </>
+            )}
+
+            {/* ========================================
+                CUSTOM URLS SECTION
+            ========================================= */}
+            
+            {/* Custom URLs - Only show for full crawl with custom URLs service */}
             {selectedServices.includes('check_custom_urls') && crawlType === 'full' && (
               <div className="custom_urls">
                 <CustomUrls crawlType={crawlType} />
               </div>
             )}
 
-            {/* Action Buttons */}
+            {/* ========================================
+                ACTION BUTTONS
+            ========================================= */}
+            
             <div className="flex flex-col sm:flex-row items-stretch gap-3 pt-4">
               <Button
                 type="submit"
                 disabled={loading || !projectUrl.trim() || isProjectRunning}
-                className="w-full bg "
+                className="w-full bg"
               >
                 {loading ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -481,18 +603,6 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
                 )}
                 {mode === "create" ? "Search" : "Save Changes"}
               </Button>
-
-              {/* {mode === "edit" && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => router.push("/projects")}
-                  disabled={loading}
-                  className="w-full sm:w-auto"
-                >
-                  Cancel
-                </Button>
-              )} */}
             </div>
           </form>
         </CardContent>
