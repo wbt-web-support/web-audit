@@ -148,15 +148,6 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
       return;
     }
 
-    // Check for duplicate URLs
-    const found = projects.some(
-      (project) => normalizeUrl(project.base_url) === normalizeUrl(projectUrl)
-    );
-    if (found) {
-      toast.info("A URL is already present in the projects.");
-      return;
-    }
-
     setLoading(true);
     setError("");
 

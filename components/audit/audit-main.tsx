@@ -327,8 +327,10 @@ export function AuditMain() {
       }
     } catch (error) {
       setError('Failed to fetch data');
+      setLoading(false);
     } finally {
       setLoading(false);
+      setError('');
     }
   };
 
@@ -1231,10 +1233,11 @@ export function AuditMain() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-          {/* Start/Stop Crawl Buttons moved here */}
+          {/* Start/Stop/Recrawl Buttons - Mutually Exclusive */}
           {projects.length > 0 && projects[0] && (
             <>
-              {projects[0].status === 'pending' && (
+              {/* Start Crawl - Only show when project is pending and not crawling */}
+              {projects[0].status === 'pending' && !currentSession?.isCrawling && (
                 <Button
                   size="sm"
                   onClick={() => startCrawlingProcess(projects[0].id)}
@@ -1244,7 +1247,9 @@ export function AuditMain() {
                   Start Crawl
                 </Button>
               )}
-              {(projects[0].status === 'completed' || projects[0].status === 'failed') && (
+              
+              {/* Recrawl - Only show when project is completed/failed and not crawling */}
+              {(projects[0].status === 'completed' || projects[0].status === 'failed') && !currentSession?.isCrawling && (
                 <Button
                   size="sm"
                   onClick={() => {
@@ -1252,21 +1257,15 @@ export function AuditMain() {
                       startCrawlingProcess(projects[0].id);
                     }
                   }}
-                  disabled={crawling || currentSession?.isCrawling}
-                  className="relative overflow-hidden"
-                  style={{ background: currentSession?.isCrawling ? '#fff' : undefined }}
+                  disabled={crawling}
                 >
-                  <span className="relative z-10 flex items-center">
-                    <RefreshCw className={`h-4 w-4 transition-all ${crawling || currentSession?.isCrawling ? "animate-spin" : ""}`} />
-                    {currentSession?.isCrawling
-                      ? "Crawling..."
-                      : crawling
-                        ? "Starting Recrawl"
-                        : "Recrawl"}
-                  </span>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Recrawl
                 </Button>
               )}
-              {projects[0].status === 'crawling' && (
+              
+              {/* Stop Crawl - Only show when actively crawling */}
+              {(projects[0].status === 'crawling' || currentSession?.isCrawling) && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -1306,7 +1305,7 @@ export function AuditMain() {
       )}
 
       {/* Process Status Cards */}
-      {(currentSession?.currentAction || currentSession?.isCrawling) && (
+      {(currentSession?.currentAction || currentSession?.isCrawling || projects[0]?.status === 'crawling') && (
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3 text-blue-600">
@@ -1314,13 +1313,13 @@ export function AuditMain() {
               <div>
                 <p className="font-medium">Process Running</p>
                 <p className="text-sm text-muted-foreground">
-                  {currentSession?.currentAction || (currentSession?.isCrawling ? 'Crawling in progress...' : '')}
+                  {currentSession?.currentAction || ((currentSession?.isCrawling || projects[0]?.status === 'crawling') ? 'Crawling in progress...' : '')}
                 </p>
               </div>
             </div>
             
             {/* Recent Crawling Activity */}
-            {currentSession?.isCrawling && currentSession?.recentCrawledPages && currentSession.recentCrawledPages.length > 0 && (
+            {(currentSession?.isCrawling || projects[0]?.status === 'crawling') && currentSession?.recentCrawledPages && currentSession.recentCrawledPages.length > 0 && (
               <div className="mt-4 pt-4 border-t">
                 <p className="text-sm font-medium text-muted-foreground mb-2">
                   Pages Crawled ({currentSession.recentCrawledPages.length} total):
@@ -1656,9 +1655,9 @@ export function AuditMain() {
             <div>
               <CardTitle>Pages</CardTitle>
               <CardDescription>
-                {currentSession?.isCrawling ? "Pages are being crawled - analysis will be available when crawling completes" : "Select pages to analyze"}
+                {(currentSession?.isCrawling || projects[0]?.status === 'crawling') ? "Pages are being crawled - analysis will be available when crawling completes" : "Select pages to analyze"}
               </CardDescription>
-              {currentSession?.isCrawling && (
+              {(currentSession?.isCrawling || projects[0]?.status === 'crawling') && (
                 <div className="mt-2 flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
                   <AlertTriangle className="h-4 w-4" />
                   <span>Analysis buttons are disabled during crawling</span>
@@ -1918,7 +1917,7 @@ export function AuditMain() {
           {/* Results Counter */}
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              {currentSession?.isCrawling ? (
+              {(currentSession?.isCrawling || projects[0]?.status === 'crawling') ? (
                 `Showing ${filteredAndSortedPages.length} of ${currentSession?.analyzedPages?.length || 0} crawled pages`
               ) : (
                 `Showing ${filteredAndSortedPages.length} of ${currentSession?.analyzedPages?.length || 0} pages`
@@ -1953,7 +1952,7 @@ export function AuditMain() {
                   <p className="text-muted-foreground">No pages found</p>
                   <p className="text-sm text-muted-foreground mt-2">
                     {projects[0]?.pages_crawled === 0 ? 
-                      'Start crawling to discover pages' : 
+                      ((currentSession?.isCrawling || projects[0]?.status === 'crawling') ? 'Pages are being crawled...' : 'Start crawling to discover pages') : 
                       'Pages will appear here after crawling'}
                   </p>
                 </>
@@ -2051,9 +2050,16 @@ export function AuditMain() {
                               {analyzedPage.page.title || 'Untitled'}
                             </p>
                           </div>
-                          <p className="text-xs text-muted-foreground truncate mt-0.5">
-                            {analyzedPage.page.url}
-                          </p>
+                          <a 
+                            href={analyzedPage.page.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-muted-foreground truncate mt-0.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                          >
+                            {analyzedPage.page.url.length > 50 
+                              ? `${analyzedPage.page.url.substring(0, 50)}...` 
+                              : analyzedPage.page.url}
+                          </a>
                           {isPageAnalyzing(analyzedPage) && (
                             <div className="flex items-center gap-1 mt-1">
                               <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
@@ -2074,7 +2080,7 @@ export function AuditMain() {
                           </Badge>
                         ) : analyzedPage.resultCount > 0 ? (
                           getStatusBadge(analyzedPage.overallStatus)
-                        ) : currentSession?.isCrawling ? (
+                        ) : (currentSession?.isCrawling || projects[0]?.status === 'crawling') ? (
                           <Badge variant="outline" className="text-xs px-1.5 py-0.5 bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400">
                             <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                             Crawled

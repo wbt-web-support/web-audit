@@ -685,8 +685,76 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     analyzeGrammarOnly(true);
   };
 
+  const refreshSeoAnalysis = () => {
+    analyzeSeoWithAPI(true);
+  };
+
   const refreshUiQualityAnalysis = () => {
     analyzeUiQuality(activeUiTab, true);
+  };
+
+  const refreshPerformanceAnalysis = () => {
+    analyzePerformanceWithAPI(true);
+  };
+
+  const refreshImagesAnalysis = async () => {
+    if (!project?.id) return;
+    
+    try {
+      const response = await fetch(
+        `/api/audit-projects/${project.id}/analyze`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            page_ids: [pageId],
+            analysis_types: ["images"],
+            use_cache: false,
+            background: false,
+            force_refresh: true,
+          }),
+        }
+      );
+      
+      if (response.ok) {
+        // Results will come via realtime or polling
+        await fetchAnalysisResults();
+      }
+    } catch (error) {
+      console.error("Images analysis error:", error);
+    }
+  };
+
+  const refreshTechnicalAnalysis = async () => {
+    if (!project?.id) return;
+    
+    try {
+      const response = await fetch(
+        `/api/audit-projects/${project.id}/analyze`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            page_ids: [pageId],
+            analysis_types: ["tags", "social", "links"],
+            use_cache: false,
+            background: false,
+            force_refresh: true,
+          }),
+        }
+      );
+      
+      if (response.ok) {
+        // Results will come via realtime or polling
+        await fetchAnalysisResults();
+      }
+    } catch (error) {
+      console.error("Technical analysis error:", error);
+    }
   };
 
   const analyzeContentWithGemini = async (forceRefresh = false) => {
@@ -808,10 +876,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
       setSeoAnalyzing(false);
       setIsAnalysisRunning(false);
     }
-  };
-
-  const refreshSeoAnalysis = () => {
-    analyzeSeoWithAPI(true);
   };
 
   const analyzePage = (pageData: ScrapedPage): PageAnalysis => {
@@ -1065,10 +1129,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     }
   };
 
-  const refreshPerformanceAnalysis = () => {
-    analyzePerformanceWithAPI(true);
-  };
-
   if (loading) {
     return <PageDetailSkeleton />;
   }
@@ -1307,17 +1367,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           </Badge>
                         )}
                       </div>
-                      {analysis.grammarCheck && !grammarAnalyzing && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={refreshGrammarAnalysis}
-                          disabled={grammarAnalyzing}
-                        >
-                          <RefreshCw className="h-3 w-3 mr-1" />
-                          Refresh Analysis
-                        </Button>
-                      )}
+
                     </div>
 
                     <p className="text-sm text-muted-foreground">
@@ -1843,17 +1893,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           </Badge>
                         )}
                       </div>
-                      {analysis.seoAnalysis && !seoAnalyzing && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={refreshSeoAnalysis}
-                          disabled={seoAnalyzing}
-                        >
-                          <RefreshCw className="h-3 w-3 mr-1" />
-                          Refresh Analysis
-                        </Button>
-                      )}
+
                     </div>
 
                     <p className="text-sm text-muted-foreground">
@@ -2241,15 +2281,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                         )}
                       </div>
                       {/* Refresh Button for UI Quality */}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={refreshUiQualityAnalysis}
-                        disabled={uiAnalyzing}
-                      >
-                        <RefreshCw className="h-3 w-3 mr-1" />
-                        Refresh Analysis
-                      </Button>
+
                     </div>
 
                     {/* UI Device Tabs */}
@@ -2393,15 +2425,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           </Badge>
                         )}
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={refreshPerformanceAnalysis}
-                        disabled={performanceAnalyzing}
-                      >
-                        <RefreshCw className="h-3 w-3 mr-1" />
-                        Refresh Analysis
-                      </Button>
+
                     </div>
                     {(() => {
                       let perf: any = (analysis as any)?.performance_analysis;
@@ -2591,14 +2615,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                         <Image className="h-5 w-5" />
                         <h3 className="text-lg font-semibold">Images</h3>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => startFullAnalysis()}
-                      >
-                        <RefreshCw className="h-3 w-3 mr-1" />
-                        Refresh Analysis
-                      </Button>
+
                     </div>
                     {((): React.ReactNode => {
                       // Handle the detailed image analysis data structure
@@ -2943,14 +2960,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                             <Globe className="h-5 w-5" />
                             <h3 className="text-lg font-semibold">Links Analysis</h3>
                           </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => startFullAnalysis()}
-                          >
-                            <RefreshCw className="h-3 w-3 mr-1" />
-                            Refresh Analysis
-                          </Button>
+
                         </div>
 
                         {(() => {
@@ -3016,10 +3026,10 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                                   <p className="text-muted-foreground mb-4">
                                     No link analysis data is available for this page. Run a full analysis to get detailed link insights.
                                   </p>
-                                  <Button onClick={() => startFullAnalysis()}>
-                                    <RefreshCw className="h-4 w-4 mr-2" />
-                                    Run Full Analysis
-                                  </Button>
+                                                                      <Button onClick={() => startFullAnalysis()}>
+                                      <RefreshCw className="h-4 w-4 mr-2" />
+                                      Run Full Analysis
+                                    </Button>
                                 </div>
                               </div>
                             );
@@ -3282,10 +3292,10 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                                   <p className="text-sm text-muted-foreground mt-1">
                                     Run a full analysis to get detailed link insights and recommendations.
                                   </p>
-                                  <Button className="mt-4" onClick={() => startFullAnalysis()}>
-                                    <RefreshCw className="h-4 w-4 mr-2" />
-                                    Run Full Analysis
-                                  </Button>
+                                                                      <Button className="mt-4" onClick={() => startFullAnalysis()}>
+                                      <RefreshCw className="h-4 w-4 mr-2" />
+                                      Run Full Analysis
+                                    </Button>
                                 </CardContent>
                               </Card>
                             </div>
