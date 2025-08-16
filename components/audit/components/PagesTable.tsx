@@ -39,8 +39,6 @@ interface AnalyzedPage {
 interface PagesTableProps {
   projects: AuditProject[];
   currentSession: any;
-  selectedPages: Set<string>;
-  setSelectedPages: (pages: Set<string>) => void;
   analyzingPages: Set<string>;
   deletingPages: Set<string>;
   searchTerm: string;
@@ -62,9 +60,9 @@ interface PagesTableProps {
   isAnalysisDisabled: () => boolean;
   onAnalyzeSinglePage: (pageId: string) => void;
   onDeletePage: (pageId: string) => void;
-  onDeleteSelectedPages: () => void;
   getStatusBadge: (status: string) => ReactElement;
   getAnalysisStatus: (page: AnalyzedPage) => string;
+  onStopAnalysis?: (pageId: string) => void;
 }
 
 // Progress indicator component for analyzing pages
@@ -80,8 +78,6 @@ const AnalysisProgress = ({ pageId }: { pageId: string }) => {
 export function PagesTable({
   projects,
   currentSession,
-  selectedPages,
-  setSelectedPages,
   analyzingPages,
   deletingPages,
   searchTerm,
@@ -103,11 +99,12 @@ export function PagesTable({
   isAnalysisDisabled,
   onAnalyzeSinglePage,
   onDeletePage,
-  onDeleteSelectedPages,
   getStatusBadge,
-  getAnalysisStatus
+  getAnalysisStatus,
+  onStopAnalysis
 }: PagesTableProps) {
   const router = useRouter();
+  const [stoppingPages, setStoppingPages] = useState<Set<string>>(new Set());
 
   // Utility functions
   const toggleStatusFilter = (status: string) => {
@@ -151,6 +148,38 @@ export function PagesTable({
       <ArrowDown className="h-3 w-3 inline ml-1" />;
   };
 
+  // Check if a page analysis has timed out
+  const isPageTimedOut = (analyzedPage: AnalyzedPage) => {
+    return analyzedPage.page.error_message && 
+           analyzedPage.page.error_message.includes('timeout');
+  };
+
+  // Check if a page analysis was stopped by user
+  const isPageStopped = (analyzedPage: AnalyzedPage) => {
+    return analyzedPage.page.analysis_status === 'stopped' ||
+           (analyzedPage.page.error_message && 
+            analyzedPage.page.error_message.includes('stopped by user'));
+  };
+
+  // Handle stop analysis
+  const handleStopAnalysis = async (pageId: string) => {
+    if (!onStopAnalysis) return;
+    
+    setStoppingPages(prev => new Set(prev).add(pageId));
+    
+    try {
+      await onStopAnalysis(pageId);
+    } catch (error) {
+      console.error('Error stopping analysis:', error);
+    } finally {
+      setStoppingPages(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(pageId);
+        return newSet;
+      });
+    }
+  };
+
   const hasActiveFilters = () => {
     return searchTerm !== '' || 
            statusFilter.length > 0 || 
@@ -181,7 +210,7 @@ export function PagesTable({
           <div>
             <CardTitle>Pages</CardTitle>
             <CardDescription>
-              {isCrawling ? "Pages are being crawled - analysis will be available when crawling completes" : "Select pages to analyze"}
+              {isCrawling ? "Pages are being crawled - analysis will be available when crawling completes" : "Select pages to analyze (max 3 minutes per page)"}
             </CardDescription>
             {isCrawling && (
               <div className="mt-2 flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
@@ -193,17 +222,6 @@ export function PagesTable({
           <div className="flex items-center gap-2">
 
             
-            {selectedPages.size > 0 && (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setSelectedPages(new Set())}
-                >
-                  Clear Selection
-                </Button>
-              </>
-            )}
           </div>
         </div>
       </CardHeader>
@@ -258,7 +276,9 @@ export function PagesTable({
                     {[
                       { id: 'analyzed', label: 'Analyzed', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => getAnalysisStatus(p) === 'analyzed').length },
                       { id: 'not-analyzed', label: 'Not Analyzed', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => getAnalysisStatus(p) === 'not-analyzed').length },
-                      { id: 'analyzing', label: 'Analyzing', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => getAnalysisStatus(p) === 'analyzing').length }
+                      { id: 'analyzing', label: 'Analyzing', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => getAnalysisStatus(p) === 'analyzing').length },
+                      { id: 'timeout', label: 'Timeout', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => isPageTimedOut(p)).length },
+                      { id: 'stopped', label: 'Stopped', count: (currentSession?.analyzedPages || []).filter((p: AnalyzedPage) => isPageStopped(p)).length }
                     ].map(item => (
                       <div key={item.id} className="flex items-center space-x-2">
                         <Checkbox
@@ -346,7 +366,9 @@ export function PagesTable({
             <p className="text-xs text-muted-foreground">
               {filteredAndSortedPages.filter(p => getAnalysisStatus(p) === 'analyzed').length} analyzed • {' '}
               {filteredAndSortedPages.filter(p => getAnalysisStatus(p) === 'analyzing').length} analyzing • {' '}
-              {filteredAndSortedPages.filter(p => getAnalysisStatus(p) === 'not-analyzed').length} pending
+              {filteredAndSortedPages.filter(p => getAnalysisStatus(p) === 'not-analyzed').length} pending • {' '}
+              {filteredAndSortedPages.filter(p => isPageTimedOut(p)).length} timeout • {' '}
+              {filteredAndSortedPages.filter(p => isPageStopped(p)).length} stopped
             </p>
           )}
         </div>
@@ -368,25 +390,7 @@ export function PagesTable({
               <table className="w-full">
                 <thead className="bg-muted/50 border-b">
                   <tr className="text-left">
-                    <th className="w-8 p-2">
-                      <Checkbox
-                        checked={
-                          selectedPages.size > 0 && 
-                          currentPages.filter(p => !isPageAnalyzing(p)).length > 0 && 
-                          selectedPages.size === currentPages.filter(p => !isPageAnalyzing(p)).length
-                        }
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            const selectablePageIds = currentPages
-                              .filter(p => !isPageAnalyzing(p))
-                              .map(p => p.page.id);
-                            setSelectedPages(new Set(selectablePageIds));
-                          } else {
-                            setSelectedPages(new Set());
-                          }
-                        }}
-                      />
-                    </th>
+                  
                     <th className="w-8 p-2 text-xs font-medium text-muted-foreground text-center">#</th>
                     <th 
                       className="p-2 text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
@@ -415,34 +419,8 @@ export function PagesTable({
                   <tr
                     key={`${analyzedPage.project.id}-${analyzedPage.page.id}`}
                     className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
-                    onClick={(e) => {
-                      if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('input[type="checkbox"]')) {
-                        return;
-                      }
-                      const newSelected = new Set(selectedPages);
-                      if (selectedPages.has(analyzedPage.page.id)) {
-                        newSelected.delete(analyzedPage.page.id);
-                      } else {
-                        newSelected.add(analyzedPage.page.id);
-                      }
-                      setSelectedPages(newSelected);
-                    }}
                   >
-                    <td className="p-2" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={selectedPages.has(analyzedPage.page.id)}
-                        onCheckedChange={(checked) => {
-                          const newSelected = new Set(selectedPages);
-                          if (checked) {
-                            newSelected.add(analyzedPage.page.id);
-                          } else {
-                            newSelected.delete(analyzedPage.page.id);
-                          }
-                          setSelectedPages(newSelected);
-                        }}
-                        disabled={isPageAnalyzing(analyzedPage) || deletingPages.has(analyzedPage.page.id)}
-                      />
-                    </td>
+                    
                                          <td className="p-2 text-center text-xs text-muted-foreground">
                        {startIndex + index + 1}
                      </td>
@@ -474,6 +452,22 @@ export function PagesTable({
                             </span>
                           </div>
                         )}
+                        {isPageTimedOut(analyzedPage) && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <Clock className="h-3 w-3 text-red-500" />
+                            <span className="text-xs text-red-600 dark:text-red-400">
+                              Analysis timed out after 3 minutes
+                            </span>
+                          </div>
+                        )}
+                        {isPageStopped(analyzedPage) && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <Square className="h-3 w-3 text-orange-500" />
+                            <span className="text-xs text-orange-600 dark:text-orange-400">
+                              Analysis was stopped by user
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="p-2 text-center">
@@ -481,6 +475,16 @@ export function PagesTable({
                         <Badge variant="outline" className="text-xs px-1.5 py-0.5 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
                           <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                           Analyzing
+                        </Badge>
+                      ) : isPageTimedOut(analyzedPage) ? (
+                        <Badge variant="outline" className="text-xs px-1.5 py-0.5 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400">
+                          <Clock className="h-3 w-3 mr-1" />
+                          Timeout
+                        </Badge>
+                      ) : isPageStopped(analyzedPage) ? (
+                        <Badge variant="outline" className="text-xs px-1.5 py-0.5 bg-orange-50 dark:bg-orange-950 text-orange-600 dark:text-orange-400">
+                          <Square className="h-3 w-3 mr-1" />
+                          Stopped
                         </Badge>
                       ) : analyzedPage.resultCount > 0 ? (
                         getStatusBadge(analyzedPage.overallStatus)
@@ -524,9 +528,45 @@ export function PagesTable({
                             Deleting
                           </Button>
                         ) : isPageAnalyzing(analyzedPage) ? (
-                          <Button size="sm" disabled className="h-7 px-3 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
-                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                            Analyzing
+                          <Button 
+                            size="sm" 
+                            className="h-7 px-3 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400"
+                            onClick={() => handleStopAnalysis(analyzedPage.page.id)}
+                            disabled={stoppingPages.has(analyzedPage.page.id)}
+                          >
+                            {stoppingPages.has(analyzedPage.page.id) ? (
+                              <>
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                Stopping...
+                              </>
+                            ) : (
+                              <>
+                                <Square className="h-3 w-3 mr-1" />
+                                Stop
+                              </>
+                            )}
+                          </Button>
+                        ) : isPageTimedOut(analyzedPage) ? (
+                          <Button
+                            size="sm"
+                            className="h-7 px-3 w-full bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400"
+                            onClick={() => onAnalyzeSinglePage(analyzedPage.page.id)}
+                            disabled={isAnalysisDisabled()}
+                            title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : "Retry analysis after timeout"}
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            Retry
+                          </Button>
+                        ) : isPageStopped(analyzedPage) ? (
+                          <Button
+                            size="sm"
+                            className="h-7 px-3 w-full bg-orange-50 dark:bg-orange-950 text-orange-600 dark:text-orange-400"
+                            onClick={() => onAnalyzeSinglePage(analyzedPage.page.id)}
+                            disabled={isAnalysisDisabled()}
+                            title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : "Retry analysis after stopping"}
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            Retry
                           </Button>
                         ) : analyzedPage.resultCount > 0 ? (
                           <>

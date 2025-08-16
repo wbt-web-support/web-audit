@@ -55,7 +55,7 @@ export interface ScrapedPage {
   content: string | null;
   status_code: number | null;
   scraped_at: string;
-  analysis_status: 'pending' | 'analyzing' | 'completed' | 'failed';
+  analysis_status: 'pending' | 'analyzing' | 'completed' | 'failed' | 'stopped';
   error_message: string | null;
 }
 

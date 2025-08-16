@@ -156,7 +156,7 @@ export function AuditMain() {
   
   // Local state
   const [projects, setProjects] = useState<AuditProject[]>([]);
-  const [selectedPages, setSelectedPages] = useState<Set<string>>(new Set());
+
   const [analyzingPages, setAnalyzingPages] = useState<Set<string>>(new Set());
   const [deletingPages, setDeletingPages] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
@@ -580,6 +580,38 @@ export function AuditMain() {
   };
 
   /**
+   * Stop analysis for a single page
+   */
+  const stopAnalysis = async (pageId: string) => {
+    if (!projects[0]) return;
+
+    try {
+      const response = await fetch(`/api/audit-projects/${projects[0].id}/analyze/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          page_id: pageId
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to stop analysis');
+      }
+
+      toast.success('Analysis stopped successfully!');
+      
+      // Immediately fetch updated data
+      await fetchData();
+      
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to stop analysis');
+      throw error;
+    }
+  };
+
+  /**
    * Poll for analysis status updates
    */
   const pollAnalysisStatus = async (pageId: string, maxAttempts: number = 60) => {
@@ -778,8 +810,6 @@ export function AuditMain() {
         <PagesTable 
           projects={projects}
           currentSession={currentSession}
-          selectedPages={selectedPages}
-          setSelectedPages={setSelectedPages}
           analyzingPages={analyzingPages}
           deletingPages={deletingPages}
           searchTerm={searchTerm}
@@ -800,8 +830,8 @@ export function AuditMain() {
           isPageAnalyzing={(page: AnalyzedPage) => isPageAnalyzing(page, analyzingPages)}
           isAnalysisDisabled={isAnalysisDisabled}
           onAnalyzeSinglePage={analyzeSinglePage}
+          onStopAnalysis={stopAnalysis}
           onDeletePage={() => {}} // Implement if needed
-          onDeleteSelectedPages={() => {}} // Implement if needed
           getStatusBadge={getStatusBadge}
           getAnalysisStatus={getAnalysisStatus}
         />

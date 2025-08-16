@@ -168,6 +168,7 @@ export async function POST(
 /**
  * Performs comprehensive analysis on a single page
  * Optimized for parallel processing and efficient caching with progress tracking
+ * Includes 3-minute overall timeout for the entire analysis process
  */
 async function performSinglePageAnalysis(
   supabase: any,
@@ -178,6 +179,7 @@ async function performSinglePageAnalysis(
   forceRefresh: boolean
 ) {
   const startTime = Date.now();
+  const OVERALL_TIMEOUT = 180000; // 3 minutes total timeout
   
   try {
     // Update page status to analyzing
@@ -189,7 +191,7 @@ async function performSinglePageAnalysis(
       })
       .eq("id", page.id);
 
-    console.log(`[ANALYSIS] Starting analysis for page ${page.id} (${page.url})`);
+    console.log(`[ANALYSIS] Starting analysis for page ${page.id} (${page.url}) with 3-minute timeout`);
 
     // Initialize analysis variables
     let grammarAnalysis = null;
@@ -410,9 +412,42 @@ async function performSinglePageAnalysis(
       analysisLabels.push('ui_phone', 'ui_tablet', 'ui_desktop');
     }
 
-    // Execute all analysis promises in parallel for maximum performance
+    // Execute all analysis promises in parallel for maximum performance with overall timeout
     console.log(`[ANALYSIS] Executing ${analysisPromises.length} analysis tasks in parallel for page ${page.id}`);
-    const results = await Promise.all(analysisPromises);
+    
+    // Add overall timeout for the entire analysis process
+    const overallTimeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Analysis timeout: Page analysis exceeded ${OVERALL_TIMEOUT / 1000} seconds`));
+      }, OVERALL_TIMEOUT);
+    });
+
+    // Add stop check promise that periodically checks if analysis was stopped
+    const stopCheckPromise = new Promise((_, reject) => {
+      const checkInterval = setInterval(async () => {
+        try {
+          const { data: currentPage, error } = await supabase
+            .from("scraped_pages")
+            .select("analysis_status")
+            .eq("id", page.id)
+            .single();
+          
+          if (!error && currentPage && currentPage.analysis_status === "stopped") {
+            clearInterval(checkInterval);
+            reject(new Error("Analysis was stopped by user"));
+          }
+        } catch (err) {
+          // Ignore errors in stop check
+        }
+      }, 2000); // Check every 2 seconds
+      
+      // Clear interval when timeout is reached
+      setTimeout(() => clearInterval(checkInterval), OVERALL_TIMEOUT);
+    });
+    
+    const analysisPromise = Promise.all(analysisPromises);
+    
+    const results = await Promise.race([analysisPromise, overallTimeoutPromise, stopCheckPromise]) as any[];
     
     // Extract results in order: grammar, seo, performance, tags, socialMeta, image, link, ui (3 devices)
     const [
@@ -595,16 +630,33 @@ async function performSinglePageAnalysis(
   } catch (error) {
     console.error(`Single page analysis failed for page ${page.id}:`, error);
 
-    // Mark page as failed with error message
+    // Check if it's a timeout error or stopped by user
+    const isTimeoutError = error instanceof Error && error.message.includes('timeout');
+    const isStoppedByUser = error instanceof Error && error.message.includes('stopped by user');
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+
+    // Determine the status and error message
+    let status = "failed";
+    let finalErrorMessage = errorMessage;
+    
+    if (isTimeoutError) {
+      status = "failed";
+      finalErrorMessage = `Analysis timed out after ${OVERALL_TIMEOUT / 1000} seconds`;
+    } else if (isStoppedByUser) {
+      status = "stopped";
+      finalErrorMessage = "Analysis was stopped by user";
+    }
+
+    // Mark page with appropriate status
     await supabase
       .from("scraped_pages")
       .update({ 
-        analysis_status: "failed",
-        error_message: error instanceof Error ? error.message : 'Unknown error occurred'
+        analysis_status: status,
+        error_message: finalErrorMessage
       })
       .eq("id", page.id);
 
-    // Update the pages_analyzed count for the project (even for failed pages)
+    // Update the pages_analyzed count for the project (even for failed/stopped pages)
     await updatePagesAnalyzedCount(supabase, project.id);
 
     throw error;

@@ -81,7 +81,7 @@ export async function PATCH(
     const body = await request.json();
     const { analysis_status } = body;
 
-    if (!analysis_status || !['pending', 'analyzing', 'completed', 'failed'].includes(analysis_status)) {
+    if (!analysis_status || !['pending', 'analyzing', 'completed', 'failed', 'stopped'].includes(analysis_status)) {
       return NextResponse.json({ error: 'Invalid analysis_status value' }, { status: 400 });
     }
 
