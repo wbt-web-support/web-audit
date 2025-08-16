@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Eye, EyeOff, Mail, Lock, User, CheckCircle } from "lucide-react";
+import { SocialAuth } from "@/components/auth";
 
 export function SignUpForm({
   className,
@@ -55,7 +56,7 @@ export function SignUpForm({
 
   return (
     <div className={cn("w-full", className)} {...props}>
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 p-8">
+      <div className="card p-8">
         <form onSubmit={handleSignUp} className="space-y-6">
           {/* Email Field */}
           <div className="space-y-2">
@@ -71,7 +72,7 @@ export function SignUpForm({
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="pl-10 h-12 border-slate-200 dark:border-slate-600 focus:border-primary focus:ring-primary/20 transition-colors"
+                className="pl-10 h-12 input-field"
               />
             </div>
           </div>
@@ -90,7 +91,7 @@ export function SignUpForm({
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="pl-10 pr-12 h-12 border-slate-200 dark:border-slate-600 focus:border-primary focus:ring-primary/20 transition-colors"
+                className="pl-10 pr-12 h-12 input-field"
               />
               <Button
                 type="button"
@@ -122,7 +123,7 @@ export function SignUpForm({
                 required
                 value={repeatPassword}
                 onChange={(e) => setRepeatPassword(e.target.value)}
-                className="pl-10 pr-12 h-12 border-slate-200 dark:border-slate-600 focus:border-primary focus:ring-primary/20 transition-colors"
+                className="pl-10 pr-12 h-12 input-field"
               />
               <Button
                 type="button"
@@ -141,7 +142,7 @@ export function SignUpForm({
           </div>
 
           {/* Password Requirements */}
-          <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-4 space-y-2">
+          <div className="bg-[var(--color-neutral-50)] dark:bg-[var(--color-neutral-700)]/50 rounded-lg p-4 space-y-2">
             <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Password Requirements:</p>
             <div className="grid grid-cols-1 gap-1 text-xs text-slate-600 dark:text-slate-400">
               <div className="flex items-center gap-2">
@@ -165,7 +166,7 @@ export function SignUpForm({
           {/* Submit Button */}
           <Button 
             type="submit" 
-            className="w-full h-12 bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5" 
+            className="btn-primary w-full h-12 font-semibold" 
             disabled={isLoading}
           >
             {isLoading ? (
@@ -178,6 +179,9 @@ export function SignUpForm({
             )}
           </Button>
 
+          {/* Social Login Options */}
+          <SocialAuth variant="signup" />
+
           {/* Terms and Privacy */}
           <p className="text-xs text-center text-slate-500 dark:text-slate-400">
             By creating an account, you agree to our{" "}
@@ -187,7 +191,7 @@ export function SignUpForm({
           </p>
 
           {/* Login Link */}
-          <div className="text-center pt-4 border-t border-slate-200 dark:border-slate-700">
+          <div className="text-center pt-4 border-t border-[var(--color-border-light)] dark:border-[var(--color-border-darkMode)]">
             <p className="text-sm text-slate-600 dark:text-slate-400">
               Already have an account?{" "}
               <Link 

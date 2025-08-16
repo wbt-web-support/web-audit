@@ -139,7 +139,7 @@ export default async function Home() {
       </header>
 
       {/* Hero Section */}
-      <section className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+      <section className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-primary">
         <div className="container mx-auto px-4 text-center relative z-10">
           <div className="max-w-6xl mx-auto">
             <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-6 sm:mb-8">
@@ -150,7 +150,7 @@ export default async function Home() {
             
             <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 sm:mb-8 leading-tight">
               <span className="block sm:inline">Audit Your Website with</span>
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-600"> AI-Powered</span>
+              <span className="text-gradient"> AI-Powered</span>
               <span className="block sm:inline"> Analysis</span>
             </h1>
             
@@ -163,14 +163,14 @@ export default async function Home() {
               <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12 px-4">
                 <Link 
                   href="/auth/sign-up"
-                  className="inline-flex items-center justify-center px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg font-semibold bg-gradient-to-r from-primary to-blue-600 text-white rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 hover:from-primary/90 hover:to-blue-600/90"
+                  className="btn-primary inline-flex items-center justify-center px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg font-semibold rounded-lg"
                 >
                   Start Free Audit
                   <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
                 </Link>
                 <Link 
                   href="/auth/login"
-                  className="inline-flex items-center justify-center px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg font-semibold border-2 border-primary text-primary rounded-lg hover:bg-primary hover:text-white transition-all duration-300"
+                  className="btn-secondary inline-flex items-center justify-center px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg font-semibold rounded-lg"
                 >
                   Sign In
                 </Link>
@@ -199,7 +199,7 @@ export default async function Home() {
       </section>
 
       {/* Stats Section */}
-      <section className="py-16 sm:py-20 bg-white dark:bg-slate-950">
+      <section className="py-16 sm:py-20 bg-gradient-secondary">
         <div className="container mx-auto px-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
             {stats.map((stat, index) => (
@@ -217,7 +217,7 @@ export default async function Home() {
       </section>
 
       {/* Core Features Section */}
-      <section className="py-16 sm:py-20 bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-slate-950">
+      <section className="py-16 sm:py-20 bg-gradient-secondary">
         <div className="container mx-auto px-4">
           <div className="max-w-7xl mx-auto">
             <div className="text-center mb-12 sm:mb-16">
@@ -229,8 +229,8 @@ export default async function Home() {
             
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
               {coreFeatures.map((feature, index) => (
-                <div key={index} className="group text-center p-6 sm:p-8 rounded-2xl bg-white dark:bg-slate-800 shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-slate-200 dark:border-slate-700">
-                  <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-primary/10 to-blue-500/10 rounded-2xl mb-6 group-hover:scale-110 transition-transform duration-300">
+                <div key={index} className="card group text-center p-6 sm:p-8 transform hover:-translate-y-2">
+                  <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-[var(--color-primary-500)]/10 to-[var(--color-secondary-500)]/10 rounded-2xl mb-6 group-hover:scale-110 transition-transform duration-[var(--transition-normal)]">
                     <feature.icon className="h-8 w-8 sm:h-10 sm:w-10 text-primary" />
                   </div>
                   <h3 className="text-lg sm:text-xl font-semibold mb-4">{feature.title}</h3>
@@ -245,7 +245,7 @@ export default async function Home() {
       </section>
 
       {/* Advanced Features Section */}
-      <section className="py-16 sm:py-20 bg-white dark:bg-slate-950">
+      <section className="py-16 sm:py-20 bg-gradient-primary">
         <div className="container mx-auto px-4">
           <div className="max-w-7xl mx-auto">
             <div className="text-center mb-12 sm:mb-16">
@@ -257,9 +257,9 @@ export default async function Home() {
             
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
               {advancedFeatures.map((feature, index) => (
-                <div key={index} className="group text-center p-6 sm:p-8 rounded-2xl bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-900 shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-slate-200 dark:border-slate-700">
-                  <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 rounded-2xl mb-6 group-hover:scale-110 transition-transform duration-300">
-                    <feature.icon className="h-8 w-8 sm:h-10 sm:w-10 text-blue-600" />
+                <div key={index} className="card group text-center p-6 sm:p-8 transform hover:-translate-y-2">
+                  <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-[var(--color-secondary-500)]/10 to-[var(--color-primary-500)]/10 rounded-2xl mb-6 group-hover:scale-110 transition-transform duration-[var(--transition-normal)]">
+                    <feature.icon className="h-8 w-8 sm:h-10 sm:w-10 text-secondary" />
                   </div>
                   <h3 className="text-lg sm:text-xl font-semibold mb-4">{feature.title}</h3>
                   <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
@@ -273,7 +273,7 @@ export default async function Home() {
       </section>
 
       {/* Business Features Section */}
-      <section className="py-16 sm:py-20 bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-slate-950">
+      <section className="py-16 sm:py-20 bg-gradient-secondary">
         <div className="container mx-auto px-4">
           <div className="max-w-7xl mx-auto">
             <div className="text-center mb-12 sm:mb-16">
@@ -285,9 +285,9 @@ export default async function Home() {
             
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
               {businessFeatures.map((feature, index) => (
-                <div key={index} className="group text-center p-6 sm:p-8 rounded-2xl bg-white dark:bg-slate-800 shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-slate-200 dark:border-slate-700">
-                  <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-2xl mb-6 group-hover:scale-110 transition-transform duration-300">
-                    <feature.icon className="h-8 w-8 sm:h-10 sm:w-10 text-green-600" />
+                <div key={index} className="card group text-center p-6 sm:p-8 transform hover:-translate-y-2">
+                  <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-[var(--color-success-500)]/10 to-[var(--color-warning-500)]/10 rounded-2xl mb-6 group-hover:scale-110 transition-transform duration-[var(--transition-normal)]">
+                    <feature.icon className="h-8 w-8 sm:h-10 sm:w-10 text-success" />
                   </div>
                   <h3 className="text-lg sm:text-xl font-semibold mb-4">{feature.title}</h3>
                   <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
@@ -301,14 +301,14 @@ export default async function Home() {
       </section>
 
       {/* How It Works Section */}
-      <section className="py-16 sm:py-20 bg-white dark:bg-slate-950">
+      <section className="py-16 sm:py-20 bg-gradient-primary">
         <div className="container mx-auto px-4">
           <div className="max-w-6xl mx-auto text-center">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-12 sm:mb-16">How It Works in 3 Simple Steps</h2>
             <div className="grid md:grid-cols-3 gap-8 sm:gap-12">
               <div className="relative">
                 <div className="text-center p-6 sm:p-8">
-                  <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-primary to-blue-600 rounded-full text-white font-bold text-xl sm:text-2xl mb-6 shadow-lg">
+                  <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r from-[var(--color-primary-500)] to-[var(--color-secondary-500)] rounded-full text-white font-bold text-xl sm:text-2xl mb-6 shadow-[var(--shadow-lg)]">
                     1
                   </div>
                   <h3 className="text-lg sm:text-xl font-semibold mb-4">Enter Your URL</h3>
@@ -322,7 +322,7 @@ export default async function Home() {
               </div>
               <div className="relative">
                 <div className="text-center p-6 sm:p-8">
-                  <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-primary to-blue-600 rounded-full text-white font-bold text-xl sm:text-2xl mb-6 shadow-lg">
+                  <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r from-[var(--color-primary-500)] to-[var(--color-secondary-500)] rounded-full text-white font-bold text-xl sm:text-2xl mb-6 shadow-[var(--shadow-lg)]">
                     2
                   </div>
                   <h3 className="text-lg sm:text-xl font-semibold mb-4">AI-Powered Analysis</h3>
@@ -335,7 +335,7 @@ export default async function Home() {
                 </div>
               </div>
               <div className="text-center p-6 sm:p-8">
-                <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-primary to-blue-600 rounded-full text-white font-bold text-xl sm:text-2xl mb-6 shadow-lg">
+                <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r from-[var(--color-primary-500)] to-[var(--color-secondary-500)] rounded-full text-white font-bold text-xl sm:text-2xl mb-6 shadow-[var(--shadow-lg)]">
                   3
                 </div>
                 <h3 className="text-lg sm:text-xl font-semibold mb-4">Get Actionable Insights</h3>
@@ -349,7 +349,7 @@ export default async function Home() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-16 sm:py-20 bg-gradient-to-br from-primary to-blue-600 text-white">
+      <section className="py-16 sm:py-20 bg-gradient-to-r from-[var(--color-primary-500)] to-[var(--color-secondary-500)] text-white">
         <div className="container mx-auto px-4 text-center">
           <div className="max-w-4xl mx-auto">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-6">
@@ -362,7 +362,7 @@ export default async function Home() {
                <div className="flex flex-col sm:flex-row gap-4 justify-center">
                  <Link 
                    href="/auth/sign-up"
-                   className="inline-flex items-center justify-center px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg font-semibold bg-gradient-to-r from-primary to-blue-600 text-white rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 hover:from-primary/90 hover:to-blue-600/90"
+                   className="btn-primary inline-flex items-center justify-center px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg font-semibold rounded-lg"
                  >
                    Start Free Audit Now
                    <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
