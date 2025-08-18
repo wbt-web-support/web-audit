@@ -144,7 +144,23 @@ export default async function Home() {
           </div>
           <div className="flex items-center gap-4">
             <ThemeSwitcher />
-            {hasEnvVars && <AuthButton />}
+            {hasEnvVars && (
+              <div className="flex items-center gap-3">
+                <Link 
+                  href="/auth/login"
+                  className="text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200"
+                >
+                  Sign In
+                </Link>
+                <Link 
+                  href="/auth/sign-up"
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors duration-200 shadow-sm hover:shadow-md"
+                >
+                  Sign Up
+                </Link>
+              </div>
+            )}
+            {!hasEnvVars && <AuthButton />}
           </div>
         </div>
       </header>

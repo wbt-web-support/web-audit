@@ -438,7 +438,7 @@ export function AuditMain() {
         const errorMessage = data.error || 'Failed to start crawling';
         setError(errorMessage);
         dispatch(stopCrawling({ projectId }));
-        toast.error(errorMessage);
+        // toast.error(errorMessage);
         return;
       }
 
@@ -478,7 +478,7 @@ export function AuditMain() {
         setError(data.error || 'Failed to stop process');
         dispatch(startCrawling({ projectId }));
         toast.dismiss(stopToast);
-        toast.error(data.error || 'Failed to stop process');
+        // toast.error(data.error || 'Failed to stop process');
         return;
       }
 
@@ -566,7 +566,7 @@ export function AuditMain() {
         toast.error('Analysis timed out. Please try again.');
         setError('Analysis timed out after 5 minutes');
       } else {
-        toast.error(error.message || 'Analysis failed');
+        // toast.error(error.message || 'Analysis failed');
         setError(error.message || 'Failed to start analysis');
       }
       
@@ -606,7 +606,7 @@ export function AuditMain() {
       await fetchData();
       
     } catch (error: any) {
-      toast.error(error.message || 'Failed to stop analysis');
+      console.error(error.message || 'Failed to stop analysis');
       throw error;
     }
   };

@@ -570,14 +570,14 @@ export function PagesTable({
                         ) : isPageStopped(analyzedPage) ? (
                           <Button
                             size="sm"
-                            className="h-7 px-3 w-full bg-orange-50 dark:bg-orange-950 text-orange-600 dark:text-orange-400"
+                            className="h-7 px-3 w-full sm:w-auto"
                             onClick={() => onAnalyzeSinglePage(analyzedPage.page.id)}
                             disabled={isAnalysisDisabled()}
-                            title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : "Retry analysis after stopping"}
+                            title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : "Analyze this page"}
                           >
-                            <RefreshCw className="h-3 w-3 mr-1" />
-                            <span className="hidden sm:inline">Retry</span>
-                            <span className="sm:hidden">Retry</span>
+                            <BarChart3 className="h-3 w-3 mr-1" />
+                            <span className="hidden sm:inline">Analyze</span>
+                            <span className="sm:hidden">Analyze</span>
                           </Button>
                         ) : analyzedPage.resultCount > 0 ? (
                           <>
