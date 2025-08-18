@@ -2,9 +2,8 @@ import React from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/app/stores/store';
 import { setInstructions } from '@/app/stores/dashboardFormSlice';
-import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { FileText, Plus, Trash2 } from 'lucide-react';
+import { FileText } from 'lucide-react';
 
 interface CustomInstructionsProps {
   loading?: boolean;
@@ -22,18 +21,8 @@ export default function CustomInstructions({ loading = false, isProjectRunning =
     }
   }, [projectInstructions, dispatch]);
 
-  const handleInstructionChange = (idx: number, value: string) => {
-    const updated = instructions.map((inst, i) => (i === idx ? value : inst));
-    dispatch(setInstructions(updated));
-  };
-
-  const handleAddInstruction = () => {
-    dispatch(setInstructions([...instructions, '']));
-  };
-
-  const handleRemoveInstruction = (idx: number) => {
-    const updated = instructions.filter((_, i) => i !== idx);
-    dispatch(setInstructions(updated));
+  const handleInstructionChange = (value: string) => {
+    dispatch(setInstructions([value]));
   };
 
   return (
@@ -46,40 +35,14 @@ export default function CustomInstructions({ loading = false, isProjectRunning =
         These instructions are applied to each page analysis.
       </p>
       <div className="space-y-3">
-        {instructions.map((inst, idx) => (
-          <div key={idx} className="flex items-center gap-2">
-            <textarea
-              value={inst}
-              onChange={(e) => handleInstructionChange(idx, e.target.value)}
-              placeholder={`Instruction ${idx + 1}`}
-              className="flex-1 h-16 rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-              rows={2}
-              disabled={loading || isProjectRunning}
-            />
-            <Button
-              type="button"
-              size="icon"
-              variant="outline"
-              onClick={handleAddInstruction}
-              aria-label="Add instruction"
-              disabled={loading || isProjectRunning}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            {instructions.length > 1 && (
-              <Button
-                type="button"
-                size="icon"
-                variant="destructive"
-                onClick={() => handleRemoveInstruction(idx)}
-                aria-label="Remove instruction"
-                disabled={loading || isProjectRunning}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        ))}
+        <textarea
+          value={instructions[0] || ''}
+          onChange={(e) => handleInstructionChange(e.target.value)}
+          placeholder="Enter your custom instructions here..."
+          className="w-full h-16 rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+          rows={2}
+          disabled={loading || isProjectRunning}
+        />
       </div>
     </div>
   );

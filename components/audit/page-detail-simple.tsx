@@ -26,6 +26,10 @@ import {
   Image,
   Globe,
   Calendar,
+  Settings,
+  Lightbulb,
+  Target,
+  Clock,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { PageDetailSkeleton } from "@/components/skeletons";
@@ -165,6 +169,7 @@ interface PageAnalysis {
     recommendations: string[];
   };
   performance_analysis?: any;
+  custom_instructions_analysis?: any;
 }
 
 interface PageDetailSimpleProps {
@@ -217,7 +222,15 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   const [performanceAnalyzing, setPerformanceAnalyzing] = useState(false);
   const [performanceCached, setPerformanceCached] = useState(false);
   const [performanceCachedAt, setPerformanceCachedAt] = useState<string | null>(null);
+  const [customInstructionsAnalyzing, setCustomInstructionsAnalyzing] = useState(false);
+  const [customInstructionsCached, setCustomInstructionsCached] = useState(false);
+  const [customInstructionsCachedAt, setCustomInstructionsCachedAt] = useState<string | null>(null);
   const [activeTechnicalTab, setActiveTechnicalTab] = useState("tags_analysis");
+  const [imagesAnalyzing, setImagesAnalyzing] = useState(false);
+  const [technicalAnalyzing, setTechnicalAnalyzing] = useState(false);
+  const [customInstructionInput, setCustomInstructionInput] = useState("");
+  const [isCustomInstructionLoading, setIsCustomInstructionLoading] = useState(false);
+  const [customInstructionResult, setCustomInstructionResult] = useState<any>(null);
 
   // Fetch results from audit_results table
   const fetchAnalysisResults = useCallback(async () => {
@@ -294,11 +307,28 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             setPerformanceAnalyzing(false);
           }
 
+          if (data.results.instructions) {
+            newAnalysis.custom_instructions_analysis = data.results.instructions;
+            setCustomInstructionsCached(true);
+            setCustomInstructionsCachedAt(data.results.created_at || data.results.updated_at);
+            setCustomInstructionsAnalyzing(false);
+          }
+
           if (data.results.image_analysis) {
             newAnalysis.image_analysis = data.results.image_analysis;
+            setImagesAnalyzing(false);
           }
           if (data.results.link_analysis) {
             newAnalysis.link_analysis = data.results.link_analysis;
+            setTechnicalAnalyzing(false);
+          }
+          if (data.results.tags_analysis) {
+            newAnalysis.tags_analysis = data.results.tags_analysis;
+            setTechnicalAnalyzing(false);
+          }
+          if (data.results.social_meta_analysis) {
+            newAnalysis.social_meta_analysis = data.results.social_meta_analysis;
+            setTechnicalAnalyzing(false);
           }
           if (data.results.performance_analysis) {
             newAnalysis.performance_analysis = data.results.performance_analysis;
@@ -356,6 +386,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
           let hasSeoCache = false;
           let hasUiQualityCache = false;
           let hasPerformanceCache = false;
+          let hasCustomInstructionsCache = false;
 
           // Check for cached results and merge them
           if (data.results) {
@@ -422,6 +453,12 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               setPerformanceCachedAt(data.results.created_at || data.results.updated_at);
               hasPerformanceCache = true;
             }
+            if (data.results.instructions) {
+              basicAnalysis.custom_instructions_analysis = data.results.instructions;
+              setCustomInstructionsCached(true);
+              setCustomInstructionsCachedAt(data.results.created_at || data.results.updated_at);
+              hasCustomInstructionsCache = true;
+            }
           }
 
           setAnalysis(basicAnalysis);
@@ -440,6 +477,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             }
             if (!hasPerformanceCache) {
               setPerformanceAnalyzing(true);
+            }
+            if (!hasCustomInstructionsCache) {
+              setCustomInstructionsAnalyzing(true);
             }
           } else if (
             data.page.analysis_status === "pending" ||
@@ -465,7 +505,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     } finally {
       setLoading(false);
     }
-  }, [pageId, grammarCached, seoCached, performanceCached]);
+  }, [pageId, grammarCached, seoCached, performanceCached, customInstructionsCached]);
 
   useEffect(() => {
     fetchPageData();
@@ -501,6 +541,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               if (!seoCached) setSeoAnalyzing(true);
               if (!uiQualityCached) setUiAnalyzing(true);
               if (!performanceCached) setPerformanceAnalyzing(true);
+              if (!customInstructionsCached) setCustomInstructionsAnalyzing(true);
             } else if (updatedPage.analysis_status === "completed") {
               // Fetch the completed results
 
@@ -511,6 +552,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               setSeoAnalyzing(false);
               setUiAnalyzing(false);
               setPerformanceAnalyzing(false);
+              setCustomInstructionsAnalyzing(false);
             }
           }
         )
@@ -734,6 +776,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   const refreshImagesAnalysis = async () => {
     if (!project?.id) return;
     
+    setImagesAnalyzing(true);
+    setIsAnalysisRunning(true);
+    
     try {
       const response = await fetch(
         `/api/audit-projects/${project.id}/analyze`,
@@ -758,11 +803,16 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
       }
     } catch (error) {
       console.error("Images analysis error:", error);
+      setImagesAnalyzing(false);
+      setIsAnalysisRunning(false);
     }
   };
 
   const refreshTechnicalAnalysis = async () => {
     if (!project?.id) return;
+    
+    setTechnicalAnalyzing(true);
+    setIsAnalysisRunning(true);
     
     try {
       const response = await fetch(
@@ -788,6 +838,48 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
       }
     } catch (error) {
       console.error("Technical analysis error:", error);
+      setTechnicalAnalyzing(false);
+      setIsAnalysisRunning(false);
+    }
+  };
+
+  // Handle custom instruction analysis without saving to DB
+  const analyzeCustomInstruction = async () => {
+    if (!customInstructionInput.trim() || !project?.id) return;
+    
+    setIsCustomInstructionLoading(true);
+    setCustomInstructionResult(null);
+    
+    try {
+      const response = await fetch(
+        `/api/audit-projects/${project.id}/analyze`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            page_ids: [pageId],
+            analysis_types: ["custom_instructions"],
+            custom_instruction: customInstructionInput.trim(),
+            use_cache: false,
+            background: false,
+            force_refresh: true,
+          }),
+        }
+      );
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log("Custom instruction result:", result);
+        setCustomInstructionResult(result.custom_instructions_analysis);
+      } else {
+        console.error("Custom instruction analysis failed");
+      }
+    } catch (error) {
+      console.error("Custom instruction analysis error:", error);
+    } finally {
+      setIsCustomInstructionLoading(false);
     }
   };
 
@@ -1340,17 +1432,24 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       cached: uiQualityCached,
                     },
                     {
+                      id: "custom_instructions",
+                      label: "Custom Instructions",
+                      icon: Settings,
+                      analyzing: customInstructionsAnalyzing,
+                      cached: customInstructionsCached,
+                    },
+                    {
                       id: "images",
                       label: "Images",
                       icon: Image,
-                      analyzing: false,
+                      analyzing: imagesAnalyzing,
                       cached: false,
                     },
                     {
                       id: "technical_fixes",
                       label: "Technical Fixes",
                       icon: Shield,
-                      analyzing: false,
+                      analyzing: technicalAnalyzing,
                       cached: false,
                     },
                   ].map((tab) => {
@@ -1368,7 +1467,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                         <IconComponent className="h-4 w-4" />
                         {tab.label}
                         {tab.analyzing && (
-                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
                         )}
                         {tab.cached && !tab.analyzing && (
                           <Badge variant="outline" className="text-xs">
@@ -2648,10 +2747,29 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       <div className="flex items-center gap-2">
                         <Image className="h-5 w-5" />
                         <h3 className="text-lg font-semibold">Images</h3>
+                        {imagesAnalyzing && (
+                          <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                        )}
                       </div>
-
                     </div>
                     {((): React.ReactNode => {
+                      // Show loading state when analyzing
+                      if (imagesAnalyzing) {
+                        return (
+                          <div className="flex items-center justify-center py-12">
+                            <div className="text-center">
+                              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
+                              <p className="text-sm text-muted-foreground">
+                                Analyzing images...
+                              </p>
+                              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                Extracting and analyzing image data
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      }
+                      
                       // Handle the detailed image analysis data structure
                       let imageAnalysis: any = analysis.image_analysis;
                       
@@ -2787,8 +2905,292 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                     })()}
                   </div>
                 )}
+                {activeAnalysisTab === "custom_instructions" && (
+                  <div className="space-y-6">
+                    {/* Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                          <Settings className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                            Custom Instructions Analysis
+                          </h3>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            Ask questions about this page or use saved instructions
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {customInstructionsAnalyzing && (
+                          <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>Analyzing...</span>
+                          </div>
+                        )}
+                        {customInstructionsCached && !customInstructionsAnalyzing && (
+                          <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 dark:bg-green-950/20 dark:text-green-400 dark:border-green-800">
+                            Cached
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Custom Instruction Input */}
+                    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                          <Lightbulb className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                        </div>
+                        <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                          Ask a Question
+                        </h4>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        <div>
+                          <label htmlFor="custom-instruction" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            What would you like to know about this page?
+                          </label>
+                          <textarea
+                            id="custom-instruction"
+                            value={customInstructionInput}
+                            onChange={(e) => setCustomInstructionInput(e.target.value)}
+                            placeholder="e.g., How many images are on this page? What's the site name? Are there any contact forms?"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-100 resize-none"
+                            rows={3}
+                            disabled={isCustomInstructionLoading}
+                          />
+                        </div>
+                        
+                        <div className="flex items-center gap-3">
+                          <Button
+                            onClick={analyzeCustomInstruction}
+                            disabled={!customInstructionInput.trim() || isCustomInstructionLoading}
+                            className="bg-purple-600 hover:bg-purple-700 text-white"
+                          >
+                            {isCustomInstructionLoading ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Analyzing...
+                              </>
+                            ) : (
+                              <>
+                                <BarChart3 className="h-4 w-4 mr-2" />
+                                Analyze
+                              </>
+                            )}
+                          </Button>
+                          
+                          {customInstructionResult && (
+                            <Button
+                              onClick={() => {
+                                setCustomInstructionInput("");
+                                setCustomInstructionResult(null);
+                              }}
+                              variant="outline"
+                              size="sm"
+                            >
+                              Clear
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                                          {(() => {
+                        // Show temporary result if available, otherwise show saved analysis
+                        const analysisToShow = customInstructionResult || (analysis as any)?.custom_instructions_analysis;
+                        
+                        if (!analysisToShow) {
+                          return (
+                            <div className="text-center py-16">
+                              <div className="flex flex-col items-center gap-4">
+                                <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-full">
+                                  <Settings className="h-8 w-8 text-gray-400" />
+                                </div>
+                                <div className="max-w-md">
+                                  <h4 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+                                    No Analysis Available
+                                  </h4>
+                                  <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">
+                                    Ask a question above or wait for saved instructions analysis to complete.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                                              // Handle error state
+                        if (analysisToShow.error) {
+                          return (
+                            <div className="text-center py-12">
+                              <div className="flex flex-col items-center gap-4">
+                                <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-full">
+                                  <AlertTriangle className="h-8 w-8 text-red-500" />
+                                </div>
+                                <div className="max-w-md">
+                                  <h4 className="text-lg font-medium text-red-900 dark:text-red-100 mb-2">
+                                    Analysis Error
+                                  </h4>
+                                  <p className="text-red-600 dark:text-red-400 text-sm">
+                                    {analysisToShow.error}
+                                  </p>
+                                  {analysisToShow.details && (
+                                    <p className="text-gray-500 dark:text-gray-400 text-xs mt-2">
+                                      {analysisToShow.details}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        // Handle legacy response format
+                        if (analysisToShow.response) {
+                        return (
+                          <div className="space-y-6">
+                            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm">
+                              <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
+                                <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                                Analysis Response
+                              </h4>
+                              <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
+                                <div className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                                  {analysisToShow.response}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Handle both old and new analysis formats
+                      const isNewFormat = analysisToShow.answer !== undefined;
+                      
+                      if (isNewFormat) {
+                        // New focused format
+                        return (
+                          <div className="space-y-6">
+                            {/* Direct Answer */}
+                            {analysisToShow.answer && (
+                              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
+                                <div className="flex items-center gap-3 mb-4">
+                                  <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                                    <BarChart3 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                                  </div>
+                                  <h4 className="text-lg font-semibold text-blue-900 dark:text-blue-100">
+                                    Analysis Result
+                                  </h4>
+                                </div>
+                                
+                                <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-blue-100 dark:border-blue-800">
+                                  <div 
+                                    className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed"
+                                    dangerouslySetInnerHTML={{ __html: analysisToShow.answer }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Details Section */}
+                            {analysisToShow.details && Object.keys(analysisToShow.details).length > 0 && (
+                              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm">
+                                <div className="flex items-center gap-3 mb-4">
+                                  <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                                    <FileText className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                  </div>
+                                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                                    Detailed Information
+                                  </h4>
+                                </div>
+                                
+                                <div className="grid gap-4">
+                                  {Object.entries(analysisToShow.details).map(([key, value]) => {
+                                    if (!value || value === "Information not found in the provided page content") return null;
+                                    
+                                    return (
+                                      <div key={key} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                        <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-2 capitalize">
+                                          {key.replace(/_/g, ' ')}
+                                        </h5>
+                                        <div 
+                                          className="text-sm text-gray-700 dark:text-gray-300"
+                                          dangerouslySetInnerHTML={{ __html: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }}
+                                        />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Summary Section */}
+                            {analysisToShow.summary && analysisToShow.summary !== "Analysis completed" && (
+                              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm">
+                                <div className="flex items-center gap-3 mb-4">
+                                  <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                                    <Lightbulb className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                                  </div>
+                                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                                    Summary
+                                  </h4>
+                                </div>
+                                
+                                <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                  <div 
+                                    className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed"
+                                    dangerouslySetInnerHTML={{ __html: analysisToShow.summary }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      } else {
+                        // Old comprehensive format - handle gracefully
+                        return (
+                          <div className="space-y-6">
+                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
+                              <div className="flex items-center gap-3 mb-4">
+                                <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                                  <BarChart3 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                                </div>
+                                <h4 className="text-lg font-semibold text-blue-900 dark:text-blue-100">
+                                  Analysis Result
+                                </h4>
+                              </div>
+                              
+                              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-blue-100 dark:border-blue-800">
+                                <p className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
+                                  {typeof analysisToShow === 'string' 
+                                    ? analysisToShow 
+                                    : JSON.stringify(analysisToShow, null, 2)
+                                  }
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                    })()}
+                  </div>
+                )}
                 {activeAnalysisTab === "technical_fixes" && (
                   <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Shield className="h-5 w-5" />
+                        <h3 className="text-lg font-semibold">Technical Fixes</h3>
+                        {technicalAnalyzing && (
+                          <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                        )}
+                      </div>
+                    </div>
+                    
                     {/* Sub-tabs for Technical Fixes */}
                     <div className="border-b mb-4">
                       <div className="flex gap-1">
@@ -2815,6 +3217,23 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                     {activeTechnicalTab === "tags_analysis" && (
                       <div>
                         {(() => {
+                          // Show loading state when analyzing
+                          if (technicalAnalyzing) {
+                            return (
+                              <div className="flex items-center justify-center py-12">
+                                <div className="text-center">
+                                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
+                                  <p className="text-sm text-muted-foreground">
+                                    Analyzing technical elements...
+                                  </p>
+                                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                    Checking tags, social meta, and links
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          }
+                          
                           const tagsAnalysis = (analysis as any)?.tags_analysis;
                           if (!tagsAnalysis || !tagsAnalysis.detectedTags || Object.keys(tagsAnalysis.detectedTags).length === 0) {
                             return (
@@ -2905,6 +3324,23 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                     {activeTechnicalTab === "social_share_preview" && (
                       <div>
                         {(() => {
+                          // Show loading state when analyzing
+                          if (technicalAnalyzing) {
+                            return (
+                              <div className="flex items-center justify-center py-12">
+                                <div className="text-center">
+                                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
+                                  <p className="text-sm text-muted-foreground">
+                                    Analyzing social meta tags...
+                                  </p>
+                                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                    Checking Open Graph and Twitter cards
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          }
+                          
                           const socialMeta = (analysis as any)?.social_meta_analysis;
                           if (!socialMeta) {
                             return (
@@ -2994,10 +3430,25 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                             <Globe className="h-5 w-5" />
                             <h3 className="text-lg font-semibold">Links Analysis</h3>
                           </div>
-
                         </div>
 
                         {(() => {
+                          // Show loading state when analyzing
+                          if (technicalAnalyzing) {
+                            return (
+                              <div className="flex items-center justify-center py-12">
+                                <div className="text-center">
+                                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
+                                  <p className="text-sm text-muted-foreground">
+                                    Analyzing links...
+                                  </p>
+                                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                    Extracting and categorizing page links
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          }
                           // Handle the detailed link analysis data structure
                           let linkAnalysis: any = analysis.link_analysis;
                           

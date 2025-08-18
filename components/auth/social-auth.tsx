@@ -41,15 +41,15 @@ export function SocialAuth({ className, variant = "login" }: SocialAuthProps) {
         </div>
       </div>
 
-      <div className="flex justify-center mt-6">
+      <div className="flex justify-center mt-6 ">
         <Button
           variant="outline"
-          className="h-11 border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+          className="h-11 w-full border-[var(--color-warm-nude-300)] dark:border-[var(--color-warm-nude-600)] hover:bg-[var(--color-warm-nude-50)] dark:hover:bg-[var(--color-warm-nude-800)] hover:border-[var(--color-warm-nude-400)] dark:hover:border-[var(--color-warm-nude-500)] transition-colors text-[var(--color-warm-nude-800)] dark:text-[var(--color-warm-nude-200)]"
           onClick={() => handleSocialLogin("google")}
           disabled={isLoading === "google"}
         >
           {isLoading === "google" ? (
-            <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin mr-2" />
+            <div className="w-4 h-4 border-2 border-[var(--color-warm-nude-600)] border-t-transparent rounded-full animate-spin mr-2" />
           ) : (
             <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>

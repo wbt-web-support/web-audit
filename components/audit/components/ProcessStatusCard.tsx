@@ -13,15 +13,15 @@ export function ProcessStatusCard({ currentSession }: ProcessStatusCardProps) {
       <CardContent className="pt-6">
         <div className={`flex items-center gap-3 ${isBackgroundCrawling ? 'text-amber-600 dark:text-amber-400' : 'text-blue-600'}`}>
           {isBackgroundCrawling ? (
-            <Zap className="h-5 w-5 animate-pulse" />
+            <Zap className="h-4 w-4 sm:h-5 sm:w-5 animate-pulse flex-shrink-0" />
           ) : (
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin flex-shrink-0" />
           )}
-          <div>
-            <p className="font-medium">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-sm sm:text-base">
               {isBackgroundCrawling ? 'Background Process Running' : 'Process Running'}
             </p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs sm:text-sm text-muted-foreground">
               {currentSession?.currentAction || (isBackgroundCrawling ? 'Crawling in background...' : 'Crawling in progress...')}
             </p>
           </div>
@@ -30,17 +30,17 @@ export function ProcessStatusCard({ currentSession }: ProcessStatusCardProps) {
         {/* Recent Crawling Activity */}
         {(currentSession?.isCrawling || currentSession?.backgroundCrawling) && currentSession?.recentCrawledPages && currentSession.recentCrawledPages.length > 0 && (
           <div className="mt-4 pt-4 border-t">
-            <p className="text-sm font-medium text-muted-foreground mb-2">
+            <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-2">
               Pages Crawled ({currentSession.recentCrawledPages.length} total):
             </p>
             <div className="space-y-2 max-h-32 overflow-y-auto">
               {currentSession.recentCrawledPages.slice(0, 10).map((page: any, index: number) => (
-                <div key={page.id || index} className="flex items-center gap-2 text-sm">
-                  <CheckCircle className="h-3 w-3 text-green-500" />
-                  <span className="truncate">
+                <div key={page.id || index} className="flex items-center gap-2 text-xs sm:text-sm">
+                  <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
+                  <span className="truncate min-w-0">
                     {page.title || page.url}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground flex-shrink-0">
                     ({page.status_code || 'N/A'})
                   </span>
                 </div>

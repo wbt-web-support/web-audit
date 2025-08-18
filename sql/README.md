@@ -41,6 +41,12 @@ This completely restructures the audit_results table for better performance:
 - Overall score and status fields
 - **Note**: This will drop the existing audit_results table and recreate it
 
+### 6. Add Instructions and Custom Fields (15_add_instructions_to_audit_projects.sql)
+This adds support for custom instructions and additional audit features:
+- `instructions` - Custom instructions to apply during page analysis
+- `custom_urls` - Custom URLs to check during audit
+- `stripe_key_urls` - Stripe key URLs to check during audit
+
 ## Important Notes
 
 - All tables have Row Level Security (RLS) enabled

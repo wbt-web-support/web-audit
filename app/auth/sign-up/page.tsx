@@ -14,7 +14,7 @@ export default function Page() {
           </Link>
           <div className="flex items-center gap-2">
             <Globe2 className="h-6 w-6" />
-            <span className="text-xl font-semibold">Web Audit</span>
+            <span className="text-xl font-semibold">Website Audit</span>
           </div>
         </div>
       </header>

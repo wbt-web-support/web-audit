@@ -30,16 +30,16 @@ export function ProjectHeader({
 }: ProjectHeaderProps) {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-blue-600 dark:from-white dark:to-blue-400 bg-clip-text text-transparent">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex-1">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-slate-900 to-blue-600 dark:from-white dark:to-blue-400 bg-clip-text text-transparent">
             Dashboard
           </h1>
-          <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mt-2">
+          <p className="text-base sm:text-lg text-slate-600 dark:text-slate-400 max-w-2xl mt-2">
             Analyze website pages and view detailed audit results
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Start/Stop/Recrawl Buttons */}
           {projects.length > 0 && projects[0] && (
             <>
@@ -49,9 +49,11 @@ export function ProjectHeader({
                   size="sm"
                   onClick={() => onStartCrawl(projects[0].id)}
                   disabled={crawling}
+                  className="w-full sm:w-auto"
                 >
                   <Play className="h-4 w-4 mr-2" />
-                  Start Crawl
+                  <span className="hidden sm:inline">Start Crawl</span>
+                  <span className="sm:hidden">Start</span>
                 </Button>
               )}
               
@@ -62,9 +64,11 @@ export function ProjectHeader({
                   variant="outline"
                   onClick={() => onStartCrawl(projects[0].id, true)}
                   disabled={crawling}
+                  className="w-full sm:w-auto"
                 >
                   <Zap className="h-4 w-4 mr-2" />
-                  Background Crawl
+                  <span className="hidden sm:inline">Background Crawl</span>
+                  <span className="sm:hidden">Background</span>
                 </Button>
               )}
               
@@ -74,9 +78,11 @@ export function ProjectHeader({
                   size="sm"
                   variant="outline"
                   onClick={() => onStopCrawl(projects[0].id)}
+                  className="w-full sm:w-auto"
                 >
                   <Pause className="h-4 w-4 mr-2" />
-                  Stop Background
+                  <span className="hidden sm:inline">Stop Background</span>
+                  <span className="sm:hidden">Stop</span>
                 </Button>
               )}
               
@@ -90,13 +96,13 @@ export function ProjectHeader({
                     }
                   }}
                   disabled={crawling}
+                  className="w-full sm:w-auto"
                 >
                   <RefreshCw className="h-4 w-4 mr-2" />
-                  Recrawl
+                  <span className="hidden sm:inline">Recrawl</span>
+                  <span className="sm:hidden">Recrawl</span>
                 </Button>
               )}
-              
-
               
               {/* Stop Crawl */}
               {(projects[0].status === 'crawling' || currentSession?.isCrawling) && (
@@ -104,9 +110,11 @@ export function ProjectHeader({
                   size="sm"
                   variant="outline"
                   onClick={() => onStopCrawl(projects[0].id)}
+                  className="w-full sm:w-auto"
                 >
                   <Square className="h-4 w-4 mr-2" />
-                  Stop Crawl
+                  <span className="hidden sm:inline">Stop Crawl</span>
+                  <span className="sm:hidden">Stop</span>
                 </Button>
               )}
             </>
@@ -117,15 +125,18 @@ export function ProjectHeader({
             size="sm"
             onClick={onRefresh}
             disabled={loading || deleting || analyzing}
+            className="w-full sm:w-auto"
           >
             <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+            <span className="hidden sm:inline">Refresh</span>
+            <span className="sm:hidden">Refresh</span>
           </Button>
           
-          <Link href={`/projects/edit/${projects[0]?.id ?? ''}`}>
-            <Button variant="outline">
+          <Link href={`/projects/edit/${projects[0]?.id ?? ''}`} className="w-full sm:w-auto">
+            <Button variant="outline" className="w-full sm:w-auto">
               <Settings className="h-4 w-4 mr-2" />
-              Edit Project
+              <span className="hidden sm:inline">Edit Project</span>
+              <span className="sm:hidden">Edit</span>
             </Button>
           </Link>
         </div>

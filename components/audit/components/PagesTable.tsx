@@ -227,7 +227,7 @@ export function PagesTable({
       </CardHeader>
       <CardContent>
         <div className="mb-6 space-y-4">
-          <div className="flex items-end gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
             <div className="flex-1">
               <Label htmlFor="search">Search pages</Label>
               <Input
@@ -245,7 +245,8 @@ export function PagesTable({
                 className={showFilters ? 'bg-primary/5 border-primary/20' : ''}
               >
                 <Filter className="h-4 w-4 mr-2" />
-                Filters
+                <span className="hidden sm:inline">Filters</span>
+                <span className="sm:hidden">Filter</span>
                 {hasActiveFilters() && (
                   <Badge variant="secondary" className="ml-2 text-xs">
                     Active
@@ -259,7 +260,8 @@ export function PagesTable({
                   onClick={clearAllFilters}
                 >
                   <X className="h-4 w-4 mr-2" />
-                  Clear
+                  <span className="hidden sm:inline">Clear</span>
+                  <span className="sm:hidden">Clear</span>
                 </Button>
               )}
             </div>
@@ -268,7 +270,7 @@ export function PagesTable({
           {/* Filter Panel */}
           {showFilters && (
             <div className="p-4 border rounded-lg bg-muted/50 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Analysis Status Filter */}
                 <div>
                   <Label className="text-sm font-medium">Analysis Status</Label>
@@ -353,7 +355,7 @@ export function PagesTable({
         </div>
 
         {/* Results Counter */}
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <p className="text-sm text-muted-foreground">
             {isCrawling ? (
               `Showing ${currentPages.length} of ${filteredAndSortedPages.length} crawled pages (page ${currentPage} of ${totalPages})`
@@ -386,8 +388,8 @@ export function PagesTable({
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="overflow-x-scroll">
-              <table className="w-full">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[800px]">
                 <thead className="bg-muted/50 border-b">
                   <tr className="text-left">
                   
@@ -436,7 +438,7 @@ export function PagesTable({
                           href={analyzedPage.page.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-muted-foreground truncate mt-0.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                          className="text-xs text-muted-foreground truncate mt-0.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors block"
                         >
                           {analyzedPage.page.url.length > 50 
                             ? `${analyzedPage.page.url.substring(0, 50)}...` 
@@ -474,24 +476,28 @@ export function PagesTable({
                       {isPageAnalyzing(analyzedPage) ? (
                         <Badge variant="outline" className="text-xs px-1.5 py-0.5 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
                           <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                          Analyzing
+                          <span className="hidden sm:inline">Analyzing</span>
+                          <span className="sm:hidden">...</span>
                         </Badge>
                       ) : isPageTimedOut(analyzedPage) ? (
                         <Badge variant="outline" className="text-xs px-1.5 py-0.5 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400">
                           <Clock className="h-3 w-3 mr-1" />
-                          Timeout
+                          <span className="hidden sm:inline">Timeout</span>
+                          <span className="sm:hidden">TO</span>
                         </Badge>
                       ) : isPageStopped(analyzedPage) ? (
                         <Badge variant="outline" className="text-xs px-1.5 py-0.5 bg-orange-50 dark:bg-orange-950 text-orange-600 dark:text-orange-400">
                           <Square className="h-3 w-3 mr-1" />
-                          Stopped
+                          <span className="hidden sm:inline">Stopped</span>
+                          <span className="sm:hidden">Stop</span>
                         </Badge>
                       ) : analyzedPage.resultCount > 0 ? (
                         getStatusBadge(analyzedPage.overallStatus)
                       ) : isCrawling ? (
                         <Badge variant="outline" className="text-xs px-1.5 py-0.5 bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400">
                           <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                          Crawled
+                          <span className="hidden sm:inline">Crawled</span>
+                          <span className="sm:hidden">Crawl</span>
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="text-xs px-1.5 py-0.5">
@@ -521,28 +527,31 @@ export function PagesTable({
                       </span>
                     </td>
                     <td className="p-2" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-center gap-1">
+                      <div className="flex flex-col sm:flex-row items-center justify-center gap-1">
                         {deletingPages.has(analyzedPage.page.id) ? (
-                          <Button size="sm" disabled className="h-7 px-3">
+                          <Button size="sm" disabled className="h-7 px-3 w-full sm:w-auto">
                             <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                            Deleting
+                            <span className="hidden sm:inline">Deleting</span>
+                            <span className="sm:hidden">Del</span>
                           </Button>
                         ) : isPageAnalyzing(analyzedPage) ? (
                           <Button 
                             size="sm" 
-                            className="h-7 px-3 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400"
+                            className="h-7 px-3 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400 w-full sm:w-auto"
                             onClick={() => handleStopAnalysis(analyzedPage.page.id)}
                             disabled={stoppingPages.has(analyzedPage.page.id)}
                           >
                             {stoppingPages.has(analyzedPage.page.id) ? (
                               <>
                                 <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                Stopping...
+                                <span className="hidden sm:inline">Stopping...</span>
+                                <span className="sm:hidden">Stop...</span>
                               </>
                             ) : (
                               <>
                                 <Square className="h-3 w-3 mr-1" />
-                                Stop
+                                <span className="hidden sm:inline">Stop</span>
+                                <span className="sm:hidden">Stop</span>
                               </>
                             )}
                           </Button>
@@ -555,7 +564,8 @@ export function PagesTable({
                             title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : "Retry analysis after timeout"}
                           >
                             <RefreshCw className="h-3 w-3 mr-1" />
-                            Retry
+                            <span className="hidden sm:inline">Retry</span>
+                            <span className="sm:hidden">Retry</span>
                           </Button>
                         ) : isPageStopped(analyzedPage) ? (
                           <Button
@@ -566,39 +576,43 @@ export function PagesTable({
                             title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : "Retry analysis after stopping"}
                           >
                             <RefreshCw className="h-3 w-3 mr-1" />
-                            Retry
+                            <span className="hidden sm:inline">Retry</span>
+                            <span className="sm:hidden">Retry</span>
                           </Button>
                         ) : analyzedPage.resultCount > 0 ? (
                           <>
                             <Button
                               size="sm"
-                              className="h-7 px-3 w-full"
+                              className="h-7 px-3 w-full sm:w-auto"
                               onClick={() => router.push(`/audit/${analyzedPage.page.id}`)}
                             >
                               <Eye className="h-3 w-3 mr-1" />
-                              View
+                              <span className="hidden sm:inline">View</span>
+                              <span className="sm:hidden">View</span>
                             </Button>
                             <Button
                               size="sm"
-                              className="h-7 px-3 w-full"
+                              className="h-7 px-3 w-full sm:w-auto"
                               onClick={() => onAnalyzeSinglePage(analyzedPage.page.id)}
                               disabled={isAnalysisDisabled()}
                               title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : ""}
                             >
                               <RefreshCw className="h-3 w-3 mr-1" />
-                              Re-Analyze
+                              <span className="hidden sm:inline">Re-Analyze</span>
+                              <span className="sm:hidden">Re-Analyze</span>
                             </Button>
                           </>
                         ) : (
                           <Button
                             size="sm"
-                            className="h-7 px-3 w-full"
+                            className="h-7 px-3 w-full sm:w-auto"
                             onClick={() => onAnalyzeSinglePage(analyzedPage.page.id)}
                             disabled={isAnalysisDisabled()}
                             title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : ""}
                           >
                             <BarChart3 className="h-3 w-3 mr-1" />
-                            Analyze
+                            <span className="hidden sm:inline">Analyze</span>
+                            <span className="sm:hidden">Analyze</span>
                           </Button>
                         )}
                       </div>
@@ -611,11 +625,11 @@ export function PagesTable({
            
            {/* Pagination Controls */}
            {totalPages > 1 && (
-             <div className="flex items-center justify-between">
-               <div className="text-sm text-muted-foreground">
+             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+               <div className="text-sm text-muted-foreground text-center sm:text-left">
                  Page {currentPage} of {totalPages}
                </div>
-               <div className="flex items-center gap-2">
+               <div className="flex items-center justify-center gap-2">
                  <Button
                    variant="outline"
                    size="sm"

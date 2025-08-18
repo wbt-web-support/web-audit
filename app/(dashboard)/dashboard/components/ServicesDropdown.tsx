@@ -11,7 +11,7 @@ const SERVICES = [
     { label: "Brand Consistency", value: "contact_details_consistency" },
     { label: "Hidden Urls", value: "check_custom_urls" },
     { label: "Stripe Keys Check", value: "check_stripe_keys" },
-    { label: "Add Custom Instructions", value: "custom_instructions" },
+    // { label: "Add Custom Instructions", value: "custom_instructions" },
 ];
 
 /**

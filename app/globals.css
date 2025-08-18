@@ -5,17 +5,17 @@
 @layer base {
   :root {
     /* Color Variables */
-    --color-primary-50: hsl(210, 100%, 96%);
-    --color-primary-100: hsl(210, 100%, 91%);
-    --color-primary-200: hsl(214, 95%, 83%);
-    --color-primary-300: hsl(213, 97%, 72%);
-    --color-primary-400: hsl(215, 95%, 65%);
-    --color-primary-500: hsl(215, 100%, 50%);
-    --color-primary-600: hsl(215, 100%, 45%);
-    --color-primary-700: hsl(215, 100%, 40%);
-    --color-primary-800: hsl(215, 100%, 35%);
-    --color-primary-900: hsl(215, 100%, 25%);
-    --color-primary-950: hsl(215, 100%, 15%);
+    --color-primary-50: hsl(210, 40%, 98%);
+    --color-primary-100: hsl(210, 40%, 95%);
+    --color-primary-200: hsl(214, 35%, 88%);
+    --color-primary-300: hsl(213, 37%, 78%);
+    --color-primary-400: hsl(215, 35%, 68%);
+    --color-primary-500: hsl(214, 23%, 29%);
+    --color-primary-600: hsl(215, 40%, 52%);
+    --color-primary-700: hsl(215, 40%, 46%);
+    --color-primary-800: hsl(215, 40%, 40%);
+    --color-primary-900: hsl(215, 40%, 30%);
+    --color-primary-950: hsl(215, 40%, 20%);
 
     --color-secondary-50: hsl(220, 100%, 96%);
     --color-secondary-100: hsl(220, 100%, 91%);
@@ -28,6 +28,32 @@
     --color-secondary-800: hsl(220, 100%, 35%);
     --color-secondary-900: hsl(220, 100%, 25%);
     --color-secondary-950: hsl(220, 100%, 15%);
+
+    /* Rich Nude Colors */
+    --color-nude-50: hsl(30, 20%, 98%);
+    --color-nude-100: hsl(30, 20%, 95%);
+    --color-nude-200: hsl(30, 20%, 88%);
+    --color-nude-300: hsl(30, 20%, 78%);
+    --color-nude-400: hsl(30, 20%, 68%);
+    --color-nude-500: hsl(30, 20%, 58%);
+    --color-nude-600: hsl(30, 20%, 48%);
+    --color-nude-700: hsl(30, 20%, 38%);
+    --color-nude-800: hsl(30, 20%, 28%);
+    --color-nude-900: hsl(30, 20%, 18%);
+    --color-nude-950: hsl(30, 20%, 8%);
+
+    /* Warm Nude Colors */
+    --color-warm-nude-50: hsl(25, 25%, 98%);
+    --color-warm-nude-100: hsl(25, 25%, 95%);
+    --color-warm-nude-200: hsl(25, 25%, 88%);
+    --color-warm-nude-300: hsl(25, 25%, 78%);
+    --color-warm-nude-400: hsl(25, 25%, 68%);
+    --color-warm-nude-500: hsl(25, 25%, 58%);
+    --color-warm-nude-600: hsl(25, 25%, 48%);
+    --color-warm-nude-700: hsl(25, 25%, 38%);
+    --color-warm-nude-800: hsl(25, 25%, 28%);
+    --color-warm-nude-900: hsl(25, 25%, 18%);
+    --color-warm-nude-950: hsl(25, 25%, 8%);
 
     --color-success-50: hsl(142, 76%, 96%);
     --color-success-100: hsl(142, 76%, 91%);
@@ -171,33 +197,74 @@
     --color-border-medium: hsl(214, 16%, 36%);
     --color-border-dark: hsl(214, 16%, 48%);
     --color-border-darkMode: hsl(214, 16%, 90%);
+
+    /* Dark mode nude colors - slightly warmer for better contrast */
+    --color-nude-500: hsl(30, 25%, 65%);
+    --color-nude-600: hsl(30, 25%, 55%);
+    --color-nude-700: hsl(30, 25%, 45%);
+    --color-nude-800: hsl(30, 25%, 35%);
+    --color-nude-900: hsl(30, 25%, 25%);
+
+    --color-warm-nude-500: hsl(25, 30%, 65%);
+    --color-warm-nude-600: hsl(25, 30%, 55%);
+    --color-warm-nude-700: hsl(25, 30%, 45%);
+    --color-warm-nude-800: hsl(25, 30%, 35%);
+    --color-warm-nude-900: hsl(25, 30%, 25%);
   }
 }
 
 @layer components {
   /* Common component styles using CSS variables */
   .btn-primary {
-    background: linear-gradient(to right, var(--color-primary-500), var(--color-secondary-500));
-    color: var(--color-text-inverse);
+    background: linear-gradient(135deg, var(--color-secondary-600), var(--color-secondary-700));
+    color: #ffffff !important;
     box-shadow: var(--shadow-lg);
     transition: all var(--transition-normal);
     transform: translateY(0);
+    border: 1px solid var(--color-secondary-500);
   }
   
   .btn-primary:hover {
+    background: linear-gradient(135deg, var(--color-secondary-700), var(--color-secondary-800));
+    color: #ffffff !important;
     box-shadow: var(--shadow-xl);
     transform: translateY(-2px);
+    border-color: var(--color-secondary-600);
+  }
+
+  .btn-primary:active {
+    background: linear-gradient(135deg, var(--color-secondary-800), var(--color-secondary-900));
+    color: #ffffff !important;
+    transform: translateY(0);
   }
 
   .btn-secondary {
-    border: 2px solid var(--color-primary-500);
-    color: var(--color-primary-500);
+    border: 2px solid var(--color-secondary-500);
+    color: var(--color-secondary-700);
+    background-color: transparent;
     transition: all var(--transition-normal);
   }
   
   .btn-secondary:hover {
-    background-color: var(--color-primary-500);
-    color: var(--color-text-inverse);
+    background-color: var(--color-secondary-500);
+    color: #ffffff !important;
+    border-color: var(--color-secondary-600);
+  }
+
+  .btn-nude {
+    background: linear-gradient(135deg, var(--color-secondary-500), var(--color-secondary-600));
+    color: #ffffff !important;
+    box-shadow: var(--shadow-md);
+    transition: all var(--transition-normal);
+    border: 1px solid var(--color-secondary-400);
+  }
+  
+  .btn-nude:hover {
+    background: linear-gradient(135deg, var(--color-secondary-600), var(--color-secondary-700));
+    color: #ffffff !important;
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-1px);
+    border-color: var(--color-secondary-500);
   }
 
   .card {
@@ -223,8 +290,8 @@
   }
   
   .input-field:focus {
-    border-color: var(--color-primary-500);
-    box-shadow: 0 0 0 3px var(--color-primary-500) / 0.2;
+    border-color: var(--color-secondary-500);
+    box-shadow: 0 0 0 3px var(--color-secondary-500) / 0.2;
   }
 
   .dark .input-field {
@@ -233,6 +300,13 @@
 
   .text-gradient {
     background: linear-gradient(to right, var(--color-primary-500), var(--color-secondary-500));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .dark .text-gradient {
+    background: linear-gradient(to right, var(--color-secondary-400), var(--color-secondary-300));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;

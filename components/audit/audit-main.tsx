@@ -738,9 +738,9 @@ export function AuditMain() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800">
-      <div className="container mx-auto px-4 py-8 space-y-8">
+      <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8 space-y-4 sm:space-y-8">
         {/* Back Button */}
-        <div className="mb-4">
+        <div className="mb-2 sm:mb-4">
           <BackButton href="/projects" id={`audit-session-${selectedProjectId || 'default'}`}>
             Back to Projects
           </BackButton>
@@ -765,7 +765,7 @@ export function AuditMain() {
         <div className="bg-red-50 border border-red-200 rounded-lg p-3">
           <div className="flex items-center gap-2 text-red-700">
             <XCircle className="h-4 w-4" />
-            {error}
+            <span className="text-sm">{error}</span>
           </div>
         </div>
       )}

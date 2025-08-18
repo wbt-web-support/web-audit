@@ -35,16 +35,28 @@ export function ThemeSwitcher() {
             <span className="sr-only">Toggle theme</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => setTheme("light")}>
+        <DropdownMenuContent 
+          align="end" 
+          className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-lg"
+        >
+          <DropdownMenuItem 
+            onClick={() => setTheme("light")}
+            className="hover:bg-blue-50 dark:hover:bg-blue-900/20 focus:bg-blue-50 dark:focus:bg-blue-900/20"
+          >
             <Sun className="mr-2 h-4 w-4" />
             <span>Light</span>
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setTheme("dark")}>
+          <DropdownMenuItem 
+            onClick={() => setTheme("dark")}
+            className="hover:bg-blue-50 dark:hover:bg-blue-900/20 focus:bg-blue-50 dark:focus:bg-blue-900/20"
+          >
             <Moon className="mr-2 h-4 w-4" />
             <span>Dark</span>
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setTheme("system")}>
+          <DropdownMenuItem 
+            onClick={() => setTheme("system")}
+            className="hover:bg-blue-50 dark:hover:bg-blue-900/20 focus:bg-blue-50 dark:focus:bg-blue-900/20"
+          >
             <span>System</span>
           </DropdownMenuItem>
         </DropdownMenuContent>

@@ -97,6 +97,7 @@ export async function POST(
       use_cache = true,
       background = null,
       force_refresh = false,
+      custom_instruction = null,
     } = body;
   
     // Verify project ownership and existence
@@ -147,7 +148,8 @@ export async function POST(
       project,
       analysis_types,
       use_cache,
-      force_refresh
+      force_refresh,
+      custom_instruction
     );
 
     return NextResponse.json({
@@ -176,7 +178,8 @@ async function performSinglePageAnalysis(
   project: any,
   analysisTypes: string[],
   useCache: boolean,
-  forceRefresh: boolean
+  forceRefresh: boolean,
+  customInstruction?: string | null
 ) {
   const startTime = Date.now();
   const OVERALL_TIMEOUT = 180000; // 3 minutes total timeout
@@ -489,10 +492,22 @@ async function performSinglePageAnalysis(
       : typeof project.services === "string"
         ? project.services.split(",").map((s: string) => s.trim())
         : [];
-    if (
+    
+    // Check for temporary custom instruction from request body
+    const tempCustomInstruction = customInstruction;
+    
+    if (tempCustomInstruction) {
+      // Use temporary instruction from request
+      customInstructionsAnalysis = await analyzeCustomInstructions(
+        tempCustomInstruction,
+        page.html || "",
+        screenshotUrls
+      );
+    } else if (
       project.instructions &&
       servicesArr.includes("custom_instructions")
     ) {
+      // Use saved project instructions
       customInstructionsAnalysis = await analyzeCustomInstructions(
         project.instructions,
         page.html || "",
@@ -526,7 +541,8 @@ async function performSinglePageAnalysis(
       tagsAnalysis,
       socialMetaAnalysis,
       imageAnalysis,
-      linkAnalysis
+      linkAnalysis,
+      customInstructionsAnalysis
     );
     console.log(`[DB] Analysis results saved for page ${page.id}`);
 
@@ -625,6 +641,15 @@ async function performSinglePageAnalysis(
         freshly_scraped: true,
       };
     }
+    
+    if (analysisTypes.includes("custom_instructions")) {
+      return {
+        custom_instructions_analysis: customInstructionsAnalysis,
+        cached,
+        cached_at: cachedAt,
+        freshly_scraped: true,
+      };
+    }
 
     return { error: "No valid analysis types specified" };
   } catch (error) {
@@ -676,7 +701,8 @@ async function upsertAnalysisResult(
   tagsAnalysis: any = null,
   socialMetaAnalysis: any = null,
   imageAnalysis: any = null,
-  linkAnalysis: any = null
+  linkAnalysis: any = null,
+  customInstructionsAnalysis: any = null
 ) {
   const status =
     overallScore >= 80 ? "pass" : overallScore >= 60 ? "warning" : "fail";
@@ -731,6 +757,9 @@ async function upsertAnalysisResult(
   }
   if (linkAnalysis) {
     updateData.link_analysis = linkAnalysis;
+  }
+  if (customInstructionsAnalysis) {
+    updateData.instructions = customInstructionsAnalysis;
   }
 
   const { error } = await supabase.from("audit_results").upsert(updateData, {
@@ -1632,71 +1661,146 @@ async function analyzeCustomInstructions(
   screenshotUrls: Record<string, string | null>
 ): Promise<any> {
   try {
-    console.log("instructions start**********", instructions);
+    console.log("Starting custom instructions analysis");
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
-    let prompt = `You are an expert web auditor.
-    \n\nFollow these custom instructions:
-    \n${instructions}\n\n
-    You are provided with the following page HTML and screenshots.
-    \n\nIMPORTANT LIMITATION: Only use the provided page HTML and screenshots.
-     Do NOT use any external or general knowledge. Limit your response strictly to what 
-     is present in the data. If you cannot answer something based on the provided data,
-      say so.\n\nPage HTML:\n${pageHtml}\n`;
-    // Add screenshot references
-    for (const device of ["phone", "tablet", "desktop"]) {
-      if (screenshotUrls[device]) {
-        prompt += `\nScreenshot (${device}): [image attached]`;
-      }
-    }
+    
+         const prompt = `You are a web analysis assistant with access to the complete website data. The user has provided specific instructions for what they want you to analyze.
+
+USER INSTRUCTIONS:
+${instructions}
+
+AVAILABLE DATA:
+- Complete page HTML content (provided below)
+- Visual screenshots from multiple devices (mobile, tablet, desktop)
+
+RESPONSE FORMAT:
+Provide your response in the following JSON format, focusing ONLY on what the user specifically asked for:
+
+{
+  "answer": "Direct answer to the user's specific question/request (can include HTML with Tailwind CSS classes)",
+  "details": {
+    // ONLY include fields that are relevant to the user's question
+    // For example, if they ask about site name, include "site_name"
+    // If they ask about images, include "total_images" and "image_details"
+    // If they ask about something else, include "other_findings"
+    // DO NOT include fields that are not relevant to the question
+  },
+  "summary": "Brief summary of what was found (only if relevant to the request)"
+}
+
+CRITICAL REQUIREMENTS:
+1. You MUST analyze the provided HTML content and screenshots - do not say we cannot measure or analyze the webpage
+2. Answer ONLY what the user specifically asked for - be direct and concise
+3. If they ask for a count, give the exact number by analyzing the HTML
+4. If they ask for site name, extract it from the HTML (title tag, meta tags, or visible content)
+5. If they ask for specific information, provide it clearly based on the available data
+6. Use the HTML content to find the requested information - it contains all the page data
+7. If information cannot be found in the provided data, say "Information not found in the provided page content"
+8. Do not mention that we cannot measure or analyze - you have the complete page data
+9. Use "we" instead of "I" in all responses when referring to the analysis capabilities
+10. ONLY include details fields that are relevant to the user's specific question
+11. FORMAT YOUR RESPONSE WITH HTML AND TAILWIND CSS CLASSES for better presentation:
+    - Use <div class="text-lg font-semibold text-blue-600 mb-2"> for headings
+    - Use <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-3"> for highlighted information
+    - Use <span class="font-medium text-gray-700"> for important numbers or data
+    - Use <div class="text-sm text-gray-600 mt-2"> for additional details
+    - Use <ul class="list-disc list-inside space-y-1 mt-2"> for lists
+    - Use <li class="text-gray-700"> for list items
+    - Use <div class="bg-green-50 border border-green-200 rounded-lg p-3 mt-3"> for positive findings
+    - Use <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-3"> for warnings
+    - Use <div class="bg-red-50 border border-red-200 rounded-lg p-3 mt-3"> for issues
+
+Page HTML Content:
+${pageHtml}
+
+Visual Analysis:
+${Object.entries(screenshotUrls)
+  .filter(([_, url]) => url)
+  .map(([device, url]) => `${device.charAt(0).toUpperCase() + device.slice(1)} view: [image attached]`)
+  .join('\n')}
+
+Analyze the provided HTML content and screenshots to answer the user's specific question. Only include details fields that are relevant to what they asked for. Format your response with appropriate HTML and Tailwind CSS classes for better visual presentation.`;
+
     // Prepare Gemini content parts
     const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [{ text: prompt }];
+    
+    // Add screenshots as base64 images
     for (const device of ["phone", "tablet", "desktop"]) {
       if (screenshotUrls[device]) {
-        // Fetch and attach image as base64
-        const response = await axios.get(screenshotUrls[device]!, { responseType: "arraybuffer" });
-        const base64Image = Buffer.from(response.data, "binary").toString("base64");
-        parts.push({
-          inlineData: {
-            mimeType: "image/png",
-            data: base64Image,
-          },
-        });
+        try {
+          const response = await axios.get(screenshotUrls[device]!, { responseType: "arraybuffer" });
+          const base64Image = Buffer.from(response.data, "binary").toString("base64");
+          parts.push({
+            inlineData: {
+              mimeType: "image/png",
+              data: base64Image,
+            },
+          });
+        } catch (imageError) {
+          console.error(`Failed to process ${device} screenshot:`, imageError);
+        }
       }
     }
+    
     const contents = [{ role: "user", parts }];
-    let result;
-    try {
-      // Add timeout handling for Gemini Custom Instructions API
-      const GEMINI_CUSTOM_TIMEOUT = 180000; // 3 minutes for custom instructions
-      
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Gemini Custom Instructions API timeout')), GEMINI_CUSTOM_TIMEOUT);
-      });
-      
-      const geminiPromise = model.generateContent({ contents });
-      
-      result = await Promise.race([geminiPromise, timeoutPromise]) as any;
-    } catch (err) {
-      console.error("[Gemini Custom Instructions] Gemini API error:", err);
-      return { error: "Gemini API error" };
-    }
-    let geminiResponse = typeof result?.response?.text === "function" ? result.response.text() : result?.response?.text || null;
+    
+    // Add timeout handling for Gemini Custom Instructions API
+    const GEMINI_CUSTOM_TIMEOUT = 180000; // 3 minutes for custom instructions
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Custom instructions analysis timeout')), GEMINI_CUSTOM_TIMEOUT);
+    });
+    
+    const geminiPromise = model.generateContent({ contents });
+    
+    const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
+    
+    let geminiResponse = typeof result?.response?.text === "function" 
+      ? result.response.text() 
+      : result?.response?.text || null;
+    
     // Clean up Gemini's response
     let cleaned = (geminiResponse || "").replace(/```json|```/g, "").trim();
+    
     // Try to extract the first JSON object if extra text is present
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       cleaned = jsonMatch[0];
     }
+    
     try {
-      return JSON.parse(cleaned);
-    } catch (e) {
-      // If not JSON, just return the text
-      return { response: geminiResponse };
+      const parsedResponse = JSON.parse(cleaned);
+      
+      // Return the focused response structure
+      return {
+        answer: parsedResponse.answer || "Analysis completed",
+        details: parsedResponse.details || {
+          site_name: null,
+          total_images: null,
+          image_details: null,
+          other_findings: null
+        },
+        summary: parsedResponse.summary || "Analysis completed"
+      };
+    } catch (parseError) {
+      // If JSON parsing fails, return a simple response with the raw text
+      return {
+        answer: "Analysis completed with unstructured response",
+        details: {
+          site_name: null,
+          total_images: null,
+          image_details: null,
+          other_findings: null
+        },
+        summary: geminiResponse || "Analysis completed"
+      };
     }
   } catch (error) {
-    console.error("[Gemini Custom Instructions] Error:", error);
-    return { error: "Failed to process custom instructions" };
+    console.error("[Custom Instructions Analysis] Error:", error);
+    return {
+      error: "Failed to process custom instructions analysis",
+      details: error instanceof Error ? error.message : "Unknown error"
+    };
   }
 }
 
