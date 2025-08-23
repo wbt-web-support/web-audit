@@ -16,6 +16,7 @@ interface CrawlSession {
   showLinksAnalysis: boolean;
   crawlingStartedAt: number | null;
   lastUpdateAt: number | null;
+  projectData?: any; // Store full project data
 }
 
 interface AuditState {
@@ -199,6 +200,36 @@ export const auditSlice = createSlice({
       state.activeProjectId = action.payload.projectId;
     },
 
+    // Set project status
+    setProjectStatus: (state, action: PayloadAction<{ 
+      projectId: string; 
+      status: string; 
+      isCrawling?: boolean;
+      currentAction?: string;
+    }>) => {
+      const { projectId, status, isCrawling, currentAction } = action.payload;
+      const session = state.sessions[projectId];
+      if (session) {
+        if (isCrawling !== undefined) session.isCrawling = isCrawling;
+        if (currentAction !== undefined) session.currentAction = currentAction;
+        session.lastUpdateAt = Date.now();
+      }
+      state.globalIsCrawling = Object.values(state.sessions).some(s => s.isCrawling || s.backgroundCrawling);
+    },
+
+    // Update project data
+    updateProjectData: (state, action: PayloadAction<{ 
+      projectId: string; 
+      projectData: any;
+    }>) => {
+      const { projectId, projectData } = action.payload;
+      const session = state.sessions[projectId];
+      if (session) {
+        session.projectData = projectData;
+        session.lastUpdateAt = Date.now();
+      }
+    },
+
     // Clear session data
     clearSession: (state, action: PayloadAction<{ projectId: string }>) => {
       const { projectId } = action.payload;
@@ -229,6 +260,8 @@ export const {
   toggleLinksAnalysis,
   completeCrawling,
   setActiveProject,
+  setProjectStatus,
+  updateProjectData,
   clearSession,
   clearAllSessions,
 } = auditSlice.actions;

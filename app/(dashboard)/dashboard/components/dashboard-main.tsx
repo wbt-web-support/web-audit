@@ -8,6 +8,7 @@ import { RecentProjects } from './recent-projects';
 import { ProjectForm } from '@/components/audit/project-form';
 import { DashboardSkeleton } from '@/components/skeletons';
 import { useDashboardStats } from '../hooks/use-dashboard-stats';
+import { useAutoProjectCreation } from '../hooks/use-auto-project-creation';
 import { PerformanceMonitor } from './performance-monitor';
 import type { AuditProject } from '@/lib/types/database';
 import React from 'react';
@@ -36,6 +37,15 @@ export function DashboardMain() {
   const { stats, loading, error, refetch, isStale } = useDashboardStats();
   const [minLoadingTime, setMinLoadingTime] = useState(true);
   const [debouncedLoading, setDebouncedLoading] = useState(true);
+  
+  // Auto-project creation hook
+  const { websiteUrl, isCreating, hasAttempted } = useAutoProjectCreation({
+    onProjectCreated: (projectId) => {
+      console.log('Auto-created project:', projectId);
+      // Optionally refresh stats after project creation
+      refetch(true);
+    }
+  });
 
   // Ensure minimum loading time to prevent flash
   useEffect(() => {
@@ -56,14 +66,27 @@ export function DashboardMain() {
     return () => clearTimeout(timer);
   }, [loading]);
 
-  // Loading state - show skeleton while fetching data OR when no stats yet
-  if (debouncedLoading || !stats || minLoadingTime) {
+  // Loading state - show skeleton while fetching data
+  if (debouncedLoading || minLoadingTime) {
     return <DashboardSkeleton />;
   }
 
-  // Additional safety check - ensure we have all required data
-  if (!stats.totalProjects && !stats.recentProjects.length) {
-    return <DashboardSkeleton />;
+  // Show auto-project creation loading state
+  if (isCreating) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center py-8 max-w-md mx-auto">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-6"></div>
+          <h2 className="text-xl font-semibold mb-2 text-slate-900">Creating Your Project</h2>
+          <p className="mb-6 text-slate-600">
+            Setting up audit project for {websiteUrl}...
+          </p>
+          <div className="text-sm text-slate-500">
+            This will only take a moment
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Error state - show error message with retry button
@@ -93,6 +116,25 @@ export function DashboardMain() {
         
         {/* Dashboard Header Section */}
         <DashboardHeader />
+        
+        {/* Auto-Project Creation Banner */}
+        {websiteUrl && hasAttempted && !isCreating && (
+          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <Plus className="h-5 w-5 text-blue-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-medium text-blue-900">
+                  Project Created Successfully!
+                </h3>
+                <p className="text-sm text-blue-700">
+                  Your audit project for <strong>{websiteUrl}</strong> has been automatically created and you've been redirected to the audit page.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* Statistics Cards - Show immediately if cached, with loading overlay if refreshing */}
         <div className="relative">
@@ -174,13 +216,14 @@ function DashboardHeader() {
 
 /**
  * Statistics cards component displaying key metrics
+ * Shows 0 values for new users with no projects
  * Memoized to prevent unnecessary re-renders
  */
 const StatsCards = React.memo(({ stats, loading }: { stats: DashboardStats, loading: boolean }) => {
   const statCards = [
     {
       title: "Total Projects",
-      value: stats.totalProjects,
+      value: stats.totalProjects || 0,
       icon: Globe,
       color: "bg-slate-100",
       iconColor: "text-slate-700",
@@ -188,7 +231,7 @@ const StatsCards = React.memo(({ stats, loading }: { stats: DashboardStats, load
     },
     {
       title: "Active Projects",
-      value: stats.activeProjects,
+      value: stats.activeProjects || 0,
       icon: Clock,
       color: "bg-amber-50",
       iconColor: "text-amber-600",
@@ -196,7 +239,7 @@ const StatsCards = React.memo(({ stats, loading }: { stats: DashboardStats, load
     },
     {
       title: "Total Pages Analyzed",
-      value: stats.totalPagesAnalyzed,
+      value: stats.totalPagesAnalyzed || 0,
       icon: CheckCircle,
       color: "bg-emerald-50",
       iconColor: "text-emerald-600",
@@ -204,7 +247,7 @@ const StatsCards = React.memo(({ stats, loading }: { stats: DashboardStats, load
     },
     {
       title: "Average Score",
-      value: `${stats.averageScore.toFixed(1)}%`,
+      value: stats.averageScore ? `${stats.averageScore.toFixed(1)}%` : "0.0%",
       icon: TrendingUp,
       color: "bg-purple-50",
       iconColor: "text-purple-600",

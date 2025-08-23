@@ -1,6 +1,6 @@
-import { AuthButton } from "@/components/auth-button";
-import { ThemeSwitcher } from "@/components/theme-switcher";
-import { hasEnvVars } from "@/lib/utils";
+'use client';
+
+import { useState } from "react";
 import { 
   Globe2, 
   Search, 
@@ -35,18 +35,28 @@ import {
   CheckSquare
 } from "lucide-react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+import { useAppDispatch, useAppSelector } from "./stores/hooks";
+import { setWebsiteUrl } from "./stores/homeSlice";
+import { HomeUrlDisplay } from "../components/home-url-display";
 
-export default async function Home() {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  
-  if (data?.user) {
-    redirect("/dashboard");
-  }
+export default function Home() {
+  const dispatch = useAppDispatch();
+  const websiteUrl = useAppSelector((state) => state.home.websiteUrl);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!websiteUrl.trim()) return;
+    
+    setIsSubmitting(true);
+    
+    // Store the website URL in Redux
+    dispatch(setWebsiteUrl(websiteUrl.trim()));
+    
+    // Redirect to sign-up with the website URL
+    const signUpUrl = `/auth/sign-up?website=${encodeURIComponent(websiteUrl.trim())}`;
+    window.location.href = signUpUrl;
+  };
 
   const allFeatures = [
     // Core Features
@@ -135,6 +145,7 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen">
+      <HomeUrlDisplay />
       {/* Header */}
       <header className="border-b border-slate-200 dark:border-slate-700 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -142,25 +153,25 @@ export default async function Home() {
             <Globe2 className="h-6 w-6" />
             <span className="text-xl font-semibold">Website Audit</span>
           </div>
-          <div className="flex items-center gap-4">
-            <ThemeSwitcher />
-            {hasEnvVars && (
-              <div className="flex items-center gap-3">
-                <Link 
-                  href="/auth/login"
-                  className="text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200"
-                >
-                  Sign In
-                </Link>
-                <Link 
-                  href="/auth/sign-up"
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors duration-200 shadow-sm hover:shadow-md"
-                >
-                  Sign Up
-                </Link>
-              </div>
-            )}
-            {!hasEnvVars && <AuthButton />}
+          <div className="flex items-center gap-6">
+            <Link 
+              href="/pricing"
+              className="text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200"
+            >
+              Pricing
+            </Link>
+            <Link 
+              href={websiteUrl ? `/auth/login?website=${encodeURIComponent(websiteUrl)}` : "/auth/login"}
+              className="text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200"
+            >
+              Sign In
+            </Link>
+            <Link 
+              href={websiteUrl ? `/auth/sign-up?website=${encodeURIComponent(websiteUrl)}` : "/auth/sign-up"}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors duration-200 shadow-sm hover:shadow-md"
+            >
+              Sign Up
+            </Link>
           </div>
         </div>
       </header>
@@ -186,36 +197,39 @@ export default async function Home() {
               content quality, and user experience across all devices with our intelligent web auditing platform.
             </p>
             
-            {hasEnvVars ? (
-              <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12 px-4">
-                <Link 
-                  href="/auth/sign-up"
-                  className="btn-primary inline-flex items-center justify-center px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg font-semibold rounded-lg"
+            <div className="max-w-2xl mx-auto mb-12 px-4">
+              <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 w-full">
+                <input
+                  type="url"
+                  placeholder="Enter your website URL (e.g., https://example.com)"
+                  value={websiteUrl}
+                  onChange={(e) => dispatch(setWebsiteUrl(e.target.value))}
+                  className="flex-1 px-4 py-3 sm:py-4 text-base sm:text-lg border-2 border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400"
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Start Free Audit
-                  <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
-                </Link>
-                <Link 
-                  href="/auth/login"
-                  className="btn-secondary inline-flex items-center justify-center px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg font-semibold rounded-lg"
-                >
-                  Sign In
-                </Link>
-              </div>
-            ) : (
-              <div className="bg-accent text-sm p-4 px-6 rounded-lg text-foreground flex gap-3 items-center justify-center max-w-md mx-auto mb-12">
-                <Globe2 size="16" />
-                <span className="text-xs sm:text-sm">Please set up your Supabase environment variables to get started</span>
-              </div>
-            )}
+                  {isSubmitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white mr-2"></div>
+                      Starting...
+                    </>
+                  ) : (
+                    <>
+                      Start Free Audit
+                      <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
+                    </>
+                  )}
+                </button>
+              </form>
+              
+            </div>
 
             <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground mb-8">
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-secondary rounded-full flex items-center justify-center">
-                  <Play className="h-4 w-4 sm:h-5 sm:w-5 text-white ml-0.5" />
-                </div>
-                <span className="text-xs sm:text-sm">Watch Demo (2 min)</span>
-              </div>
+              
             </div>
           </div>
         </div>
@@ -243,8 +257,8 @@ export default async function Home() {
         </div>
       </section>
 
-       {/* How It Works Section */}
-       <section className="py-16 sm:py-20 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+      {/* How It Works Section */}
+      <section className="py-16 sm:py-20 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
         <div className="container mx-auto px-4">
           <div className="max-w-6xl mx-auto text-center">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-12 sm:mb-16">How It Works in 3 Simple Steps</h2>
@@ -373,19 +387,9 @@ export default async function Home() {
                 </div>
               ))}
             </div>
-            
-            {/* Bottom CTA */}
-            {/* <div className="text-center mt-16 sm:mt-20">
-              <div className="inline-flex items-center gap-2 text-muted-foreground text-sm">
-                <CheckCircle className="h-4 w-4 text-success" />
-                <span>All features included in every plan</span>
-              </div>
-            </div> */}
           </div>
         </div>
       </section>
-
-     
 
       {/* CTA Section */}
       <section className="py-16 sm:py-20 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 dark:from-blue-800 dark:via-blue-900 dark:to-indigo-900 text-white relative overflow-hidden">
@@ -405,23 +409,21 @@ export default async function Home() {
             <p className="text-lg sm:text-xl mb-8 opacity-90">
               Join thousands of businesses optimizing their online presence with AI-powered insights
             </p>
-                         {hasEnvVars && (
-               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                 <Link 
-                   href="/auth/sign-up"
-                   className="bg-white text-blue-600 hover:bg-gray-100 inline-flex items-center justify-center px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg font-semibold rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl"
-                 >
-                   Start Free Audit Now
-                   <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
-                 </Link>
-                 <Link 
-                   href="/auth/login"
-                   className="inline-flex items-center justify-center px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg font-semibold border-2 border-white text-white rounded-lg hover:bg-white hover:text-blue-600 transition-all duration-300"
-                 >
-                   Sign In
-                 </Link>
-               </div>
-             )}
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link 
+                href={websiteUrl ? `/auth/sign-up?website=${encodeURIComponent(websiteUrl)}` : "/auth/sign-up"}
+                className="bg-white text-blue-600 hover:bg-gray-100 inline-flex items-center justify-center px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg font-semibold rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl"
+              >
+                Start Free Audit Now
+                <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
+              </Link>
+              <Link 
+                href={websiteUrl ? `/auth/login?website=${encodeURIComponent(websiteUrl)}` : "/auth/login"}
+                className="inline-flex items-center justify-center px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg font-semibold border-2 border-white text-white rounded-lg hover:bg-white hover:text-blue-600 transition-all duration-300"
+              >
+                Sign In
+              </Link>
+            </div>
           </div>
         </div>
       </section>

@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AuditMain } from "@/components/audit/audit-main";
+import { AutoProjectCreationWrapper } from "./auto-project-creation-wrapper";
+import { ProjectSyncWrapper } from "./project-sync-wrapper";
 
 export default async function AuditPage() {
   const supabase = await createClient();
@@ -10,5 +12,11 @@ export default async function AuditPage() {
     redirect("/auth/login");
   }
 
-  return <AuditMain />;
+  return (
+    <AutoProjectCreationWrapper>
+      <ProjectSyncWrapper>
+        <AuditMain />
+      </ProjectSyncWrapper>
+    </AutoProjectCreationWrapper>
+  );
 } 

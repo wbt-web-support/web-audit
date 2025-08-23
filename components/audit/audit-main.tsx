@@ -179,10 +179,45 @@ export function AuditMain() {
       dispatch(setActiveProject({ projectId: selectedProjectId }));
     }
     
+    // Check for any background crawling processes that need to be resumed
+    checkAndResumeBackgroundProcesses();
+    
     return () => {
       crawlingStartedRef.current = false;
     };
   }, [selectedProjectId, dispatch]);
+
+  // Function to check and resume background processes
+  const checkAndResumeBackgroundProcesses = async () => {
+    try {
+      const response = await fetch('/api/audit-projects/background-status');
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Resume any background crawling processes
+        data.crawlingProjects?.forEach((project: any) => {
+          if (project.status === 'crawling') {
+            dispatch(initializeSession({ projectId: project.id }));
+            dispatch(startCrawling({ projectId: project.id, background: true }));
+            
+            // Update live counts
+            if (project.crawl_progress) {
+              dispatch(updateLiveCounts({
+                projectId: project.id,
+                imageCount: project.crawl_progress.total_images || 0,
+                linkCount: project.crawl_progress.total_links || 0,
+                internalLinks: project.crawl_progress.internal_links || 0,
+                externalLinks: project.crawl_progress.external_links || 0,
+                pagesCount: project.crawl_progress.pages_crawled || 0
+              }));
+            }
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error resuming background processes:', error);
+    }
+  };
 
   // Poll for crawl progress when crawling is active
   useEffect(() => {
@@ -196,6 +231,53 @@ export function AuditMain() {
     
     return () => clearInterval(interval);
   }, [currentSession?.isCrawling, currentSession?.backgroundCrawling, projects, dispatch, selectedProjectId]);
+
+  // Global background crawling status check - runs even when component unmounts
+  useEffect(() => {
+    let globalInterval: NodeJS.Timeout;
+    
+    const checkGlobalCrawlingStatus = async () => {
+      try {
+        // Check if any projects are crawling in the background
+        const response = await fetch('/api/audit-projects/background-status');
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Update Redux state for any background crawling projects
+          data.crawlingProjects?.forEach((project: any) => {
+            if (project.status === 'crawling') {
+              dispatch(initializeSession({ projectId: project.id }));
+              dispatch(startCrawling({ projectId: project.id, background: true }));
+              
+              // Update live counts if available
+              if (project.crawl_progress) {
+                dispatch(updateLiveCounts({
+                  projectId: project.id,
+                  imageCount: project.crawl_progress.total_images || 0,
+                  linkCount: project.crawl_progress.total_links || 0,
+                  internalLinks: project.crawl_progress.internal_links || 0,
+                  externalLinks: project.crawl_progress.external_links || 0,
+                  pagesCount: project.crawl_progress.pages_crawled || 0
+                }));
+              }
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Global crawling status check error:', error);
+      }
+    };
+
+    // Check immediately
+    checkGlobalCrawlingStatus();
+    
+    // Then check every 10 seconds for background processes
+    globalInterval = setInterval(checkGlobalCrawlingStatus, 10000);
+    
+    return () => {
+      if (globalInterval) clearInterval(globalInterval);
+    };
+  }, [dispatch]);
 
   // ============================================================================
   // DATA FETCHING
@@ -223,7 +305,7 @@ export function AuditMain() {
         // Start crawling if project is pending
         if (projectData.project.status === "pending" && !crawlingStartedRef.current) {
           crawlingStartedRef.current = true;
-          startCrawlingProcess(projectData.project.id);
+          startCrawlingProcess(projectData.project.id, true); // Start in background by default
           return;
         }
         
@@ -754,6 +836,28 @@ export function AuditMain() {
         {(currentSession?.currentAction || currentSession?.isCrawling || currentSession?.backgroundCrawling || projects[0]?.status === 'crawling') && (
           <div className="mb-6">
             <ProcessStatusCard currentSession={currentSession} />
+          </div>
+        )}
+
+        {/* Global Background Crawling Status */}
+        {auditState.globalIsCrawling && (
+          <div className="mb-6">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                <div className="flex-1">
+                  <h3 className="text-sm font-medium text-blue-900">
+                    Background Crawling Active
+                  </h3>
+                  <p className="text-xs text-blue-700 mt-1">
+                    {Object.values(auditState.sessions).filter(s => s.backgroundCrawling).length} project(s) crawling in background
+                  </p>
+                </div>
+                <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                  Background
+                </Badge>
+              </div>
+            </div>
           </div>
         )}
 

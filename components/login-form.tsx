@@ -6,10 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect } from "react";
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from "lucide-react";
 import { SocialAuth } from "@/components/auth";
+import { useAppDispatch } from "@/app/stores/hooks";
+import { setWebsiteUrl } from "@/app/stores/homeSlice";
 
 export function LoginForm({
   className,
@@ -21,6 +23,16 @@ export function LoginForm({
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const dispatch = useAppDispatch();
+  const searchParams = useSearchParams();
+
+  // Capture website URL from query parameter and store in Redux
+  useEffect(() => {
+    const websiteParam = searchParams.get('website');
+    if (websiteParam) {
+      dispatch(setWebsiteUrl(websiteParam));
+    }
+  }, [searchParams, dispatch]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,8 +46,16 @@ export function LoginForm({
         password,
       });
       if (error) throw error;
-      // Redirect to dashboard after successful login
-      router.push("/dashboard");
+      
+      // Check if there's a stored website URL for auto-project creation
+      const storedUrl = searchParams.get('website');
+      if (storedUrl) {
+        // Redirect directly to audit page - the auto-project creation will happen there
+        router.push("/audit");
+      } else {
+        // Redirect to dashboard after successful login
+        router.push("/dashboard");
+      }
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {

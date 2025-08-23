@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -44,7 +45,8 @@ import {
   ChevronDown,
   ChevronUp,
   MoreVertical,
-  Filter
+  Filter,
+  Wifi
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ProjectManagerSkeleton } from '@/components/skeletons';
@@ -65,6 +67,15 @@ interface ProjectMetrics {
   smallImages: number;
   largeImages: number;
   topFormats: [string, number][];
+}
+
+interface CrawlingProgress {
+  pages_crawled: number;
+  total_pages: number;
+  total_images: number;
+  total_links: number;
+  internal_links: number;
+  external_links: number;
 }
 
 // ============================================================================
@@ -219,6 +230,77 @@ const StatusBadge = React.memo(({ status }: { status: string }) => {
 StatusBadge.displayName = 'StatusBadge';
 
 /**
+ * Real-time crawling progress indicator
+ */
+const CrawlingProgressIndicator = React.memo(({ 
+  project, 
+  liveProgress 
+}: { 
+  project: AuditProject; 
+  liveProgress?: CrawlingProgress;
+}) => {
+  const isCrawling = project.status === 'crawling';
+  
+  // Calculate current progress from project data or use live progress
+  const currentProgress = liveProgress || {
+    pages_crawled: project.pages_crawled || 0,
+    total_pages: project.total_pages || 0,
+    total_images: project.all_image_analysis?.length || 0,
+    total_links: project.all_links_analysis?.length || 0,
+    internal_links: project.all_links_analysis?.filter(link => link.type === 'internal').length || 0,
+    external_links: project.all_links_analysis?.filter(link => link.type === 'external').length || 0
+  };
+
+  if (!isCrawling) return null;
+
+  const progressPercentage = currentProgress.total_pages > 0 
+    ? Math.round((currentProgress.pages_crawled / currentProgress.total_pages) * 100)
+    : 0;
+
+  return (
+    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+      <div className="flex items-center gap-2 mb-2">
+        <Activity className="h-4 w-4 text-blue-600 animate-pulse" />
+        <span className="text-sm font-medium text-blue-700">Live Crawling Progress</span>
+        <div className="flex items-center gap-1 ml-auto">
+          <Wifi className="h-3 w-3 text-blue-600" />
+          <span className="text-xs text-blue-600">Live</span>
+        </div>
+      </div>
+      
+      <div className="space-y-2">
+        {/* Progress Bar */}
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs text-blue-600">
+            <span>Pages Crawled</span>
+            <span>{currentProgress.pages_crawled} / {currentProgress.total_pages}</span>
+          </div>
+          <Progress value={progressPercentage} className="h-2" />
+        </div>
+        
+        {/* Live Stats */}
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="text-center p-2 bg-blue-100 rounded">
+            <div className="font-semibold text-blue-700">{currentProgress.total_images}</div>
+            <div className="text-blue-600">Images</div>
+          </div>
+          <div className="text-center p-2 bg-blue-100 rounded">
+            <div className="font-semibold text-blue-700">{currentProgress.total_links}</div>
+            <div className="text-blue-600">Links</div>
+          </div>
+          <div className="text-center p-2 bg-blue-100 rounded">
+            <div className="font-semibold text-blue-700">{currentProgress.internal_links}</div>
+            <div className="text-blue-600">Internal</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+CrawlingProgressIndicator.displayName = 'CrawlingProgressIndicator';
+
+/**
  * Search input component with clear functionality
  */
 const SearchInput = React.memo(({ 
@@ -327,13 +409,15 @@ const ProjectCard = React.memo(({
   onDelete, 
   onViewDetails, 
   onEdit,
-  calculateMetrics
+  calculateMetrics,
+  liveProgress
 }: { 
   project: AuditProject; 
   onDelete: () => void; 
   onViewDetails: () => void; 
   onEdit: () => void;
   calculateMetrics: (project: AuditProject) => ProjectMetrics;
+  liveProgress?: CrawlingProgress;
 }) => {
   const metrics = calculateMetrics(project);
   const isRunning = isProjectRunning(project.status);
@@ -417,6 +501,9 @@ const ProjectCard = React.memo(({
             </DropdownMenu>
           </div>
         </div>
+
+        {/* Real-time Crawling Progress */}
+        <CrawlingProgressIndicator project={project} liveProgress={liveProgress} />
       </CardContent>
     </Card>
   );
@@ -440,6 +527,10 @@ ProjectCard.displayName = 'ProjectCard';
  * - Optimized for performance with virtual scrolling and memoization
  */
 export function ProjectManager() {
+  // Constants
+  const CACHE_DURATION = 30 * 1000; // Cache duration: 30 seconds to avoid unnecessary refetches
+  const POLLING_INTERVAL = 5 * 1000; // Polling interval: 5 seconds for real-time updates
+  
   // State management
   const [projects, setProjects] = useState<AuditProject[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<AuditProject[]>([]);
@@ -448,11 +539,14 @@ export function ProjectManager() {
   const [error, setError] = useState('');
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
   
+  // Real-time crawling progress state
+  const [liveProgress, setLiveProgress] = useState<Record<string, CrawlingProgress>>({});
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [lastProgressUpdate, setLastProgressUpdate] = useState<Date | null>(null);
+  const [nextUpdateIn, setNextUpdateIn] = useState<number>(5000);
+  
   const router = useRouter();
   const abortControllerRef = useRef<AbortController | null>(null);
-
-  // Cache duration: 30 seconds to avoid unnecessary refetches
-  const CACHE_DURATION = 30 * 1000;
 
   // ============================================================================
   // MEMOIZED UTILITY FUNCTIONS (inside component where hooks can be called)
@@ -497,9 +591,94 @@ export function ProjectManager() {
     setFilteredProjects(filtered);
   }, [projects, searchQuery, memoizedFilterProjects]);
 
+  // Start/stop real-time polling for crawling projects
+  useEffect(() => {
+    const hasCrawlingProjects = projects.some(project => project.status === 'crawling');
+    
+    if (hasCrawlingProjects) {
+      // Start polling
+      const interval = setInterval(fetchLiveProgress, POLLING_INTERVAL);
+      setPollingInterval(interval);
+      
+      // Initial fetch
+      fetchLiveProgress();
+      
+      return () => {
+        clearInterval(interval);
+        setPollingInterval(null);
+      };
+    } else {
+      // Stop polling if no crawling projects
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        setPollingInterval(null);
+      }
+      // Clear live progress data
+      setLiveProgress({});
+    }
+  }, [projects]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [pollingInterval]);
+
+  // Countdown effect for next update
+  useEffect(() => {
+    if (!pollingInterval) return;
+    
+    const countdownInterval = setInterval(() => {
+      setNextUpdateIn(prev => {
+        if (prev <= 1000) {
+          return POLLING_INTERVAL;
+        }
+        return prev - 1000;
+      });
+    }, 1000);
+    
+    return () => clearInterval(countdownInterval);
+  }, [pollingInterval]);
+
   // ============================================================================
   // API FUNCTIONS
   // ============================================================================
+
+  /**
+   * Fetch live progress for crawling projects
+   */
+  const fetchLiveProgress = useCallback(async () => {
+    try {
+      const response = await fetch('/api/audit-projects/background-status');
+      if (response.ok) {
+        const data = await response.json();
+        const progressMap: Record<string, CrawlingProgress> = {};
+        
+        data.crawlingProjects?.forEach((project: any) => {
+          progressMap[project.id] = project.crawl_progress;
+        });
+        
+        setLiveProgress(progressMap);
+        setLastProgressUpdate(new Date());
+      } else {
+        console.warn('Failed to fetch live progress:', response.status);
+      }
+    } catch (error) {
+      // Silently fail for live progress updates - don't show errors to user
+      console.warn('Failed to fetch live progress:', error);
+      
+      // If we get multiple errors, stop polling to avoid spam
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        setPollingInterval(null);
+        setLiveProgress({});
+        setLastProgressUpdate(null);
+      }
+    }
+  }, [pollingInterval]);
 
   /**
    * Fetch all projects from the API with caching
@@ -628,6 +807,23 @@ export function ProjectManager() {
                 <p className="mt-1 text-slate-600 text-lg">
                   Monitor and manage your website audit projects with comprehensive analytics and insights
                 </p>
+                {/* Real-time status indicator */}
+                {Object.keys(liveProgress).length > 0 && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 border border-blue-200 rounded-full">
+                      <Wifi className="h-3 w-3 text-blue-600 animate-pulse" />
+                      <span className="text-sm text-blue-700 font-medium">
+                        Live Updates Active • {Object.keys(liveProgress).length} project{Object.keys(liveProgress).length > 1 ? 's' : ''} crawling
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      Last updated: {lastProgressUpdate ? lastProgressUpdate.toLocaleTimeString() : 'N/A'}
+                    </div>
+                    <div className="text-xs text-blue-600 font-medium">
+                      Next update in: {Math.ceil(nextUpdateIn / 1000)}s
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             <Button 
@@ -651,6 +847,19 @@ export function ProjectManager() {
             <Button variant="outline" className="border-slate-200 text-slate-700 hover:bg-slate-50">
               <Filter className="h-4 w-4 mr-2" />
               Filter
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => fetchProjects(true)}
+              className="border-slate-200 text-slate-700 hover:bg-slate-50"
+              disabled={loading}
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <BarChart3 className="h-4 w-4 mr-2" />
+              )}
+              Refresh
             </Button>
             <div className="text-sm text-slate-500 w-full sm:w-auto text-center sm:text-left">
               {filteredProjects.length} of {projects.length} projects
@@ -685,6 +894,7 @@ export function ProjectManager() {
                   onViewDetails={() => handleViewDetails(project.id)}
                   onEdit={() => handleEditProject(project.id)}
                   calculateMetrics={memoizedCalculateProjectMetrics}
+                  liveProgress={liveProgress[project.id]}
                 />
               ))}
             </div>

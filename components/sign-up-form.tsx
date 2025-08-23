@@ -6,10 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect } from "react";
 import { Eye, EyeOff, Mail, Lock, User, CheckCircle } from "lucide-react";
 import { SocialAuth } from "@/components/auth";
+import { useAppDispatch } from "@/app/stores/hooks";
+import { setWebsiteUrl } from "@/app/stores/homeSlice";
 
 export function SignUpForm({
   className,
@@ -23,8 +25,18 @@ export function SignUpForm({
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const dispatch = useAppDispatch();
+  const searchParams = useSearchParams();
 
-  const handleSignUp = async (e: React.FormEvent) => {
+  // Capture website URL from query parameter and store in Redux
+  useEffect(() => {
+    const websiteParam = searchParams.get('website');
+    if (websiteParam) {
+      dispatch(setWebsiteUrl(websiteParam));
+    }
+  }, [searchParams, dispatch]);
+
+    const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     const supabase = createClient();
     setIsLoading(true);
@@ -36,17 +48,29 @@ export function SignUpForm({
       return;
     }
 
+    // Get the website URL from query parameters
+    const websiteParam = searchParams.get('website');
+
     try {
       const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/confirm?next=/dashboard`,
+          emailRedirectTo: `${window.location.origin}/auth/confirm?next=${websiteParam ? '/audit' : '/dashboard'}`,
         },
       });
-      if (error) throw error;
-      console.log("sign up success going to sign up success page");
-      router.push("/auth/sign-up-success");
+             if (error) throw error;
+       console.log("sign up success going to sign up success page");
+       
+       // Check if there's a stored website URL for auto-project creation
+       const storedUrl = searchParams.get('website');
+       if (storedUrl) {
+         // Store the website URL in Redux for later use after email confirmation
+         // The user will be redirected to audit after confirming email
+         router.push("/auth/sign-up-success");
+       } else {
+         router.push("/auth/sign-up-success");
+       }
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {

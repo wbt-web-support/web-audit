@@ -12,9 +12,17 @@ export default function Page() {
             <ArrowLeft className="h-5 w-5" />
             <span className="text-sm text-muted-foreground">Back to Home</span>
           </Link>
-          <div className="flex items-center gap-2">
-            <Globe2 className="h-6 w-6" />
-            <span className="text-xl font-semibold">Website Audit</span>
+          <div className="flex items-center gap-6">
+            <Link 
+              href="/pricing"
+              className="text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200"
+            >
+              Pricing
+            </Link>
+            <div className="flex items-center gap-2">
+              <Globe2 className="h-6 w-6" />
+              <span className="text-xl font-semibold">Website Audit</span>
+            </div>
           </div>
         </div>
       </header>
