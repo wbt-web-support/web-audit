@@ -30,6 +30,8 @@ import {
   Plus,
   Trash2,
   Search,
+  CheckCircle,
+  Clock,
 } from "lucide-react";
 
 // Types and Interfaces
@@ -358,13 +360,19 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
   // ============================================================================
 
   return (
-    <div className="w-full max-w-4xl">
-      <Card>
-        {/* Header Section */}
-        <CardHeader>
-          <CardTitle>{title}</CardTitle>
-          <CardDescription>{description}</CardDescription>
-        </CardHeader>
+    <Card className="h-full">
+      {/* Header Section */}
+      <CardHeader>
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
+            <Plus className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div>
+            <CardTitle>{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
+          </div>
+        </div>
+      </CardHeader>
 
         <CardContent>
           {/* Status Messages */}
@@ -408,7 +416,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
                 onChange={(e) => setProjectUrl(e.target.value)}
                 disabled={loading || isProjectRunning}
                 required
-                className="mt-1"
+                className="form-input mt-1"
               />
             </div>
 
@@ -498,7 +506,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
                       disabled={loading || isProjectRunning}
-                      className="mt-1"
+                      className="form-input mt-1"
                     />
                   </div>
 
@@ -515,7 +523,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
                       value={phoneNumber}
                       onChange={(e) => setPhoneNumber(e.target.value)}
                       disabled={loading || isProjectRunning}
-                      className="mt-1"
+                      className="form-input mt-1"
                     />
                   </div>
 
@@ -532,7 +540,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       disabled={loading || isProjectRunning}
-                      className="mt-1"
+                      className="form-input mt-1"
                     />
                   </div>
 
@@ -549,7 +557,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
                       disabled={loading || isProjectRunning}
-                      className="mt-1"
+                      className="form-input mt-1"
                     />
                   </div>
                 </div>
@@ -567,7 +575,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
                     value={customInfo}
                     onChange={(e) => setCustomInfo(e.target.value)}
                     disabled={loading || isProjectRunning}
-                    className="mt-1"
+                    className="form-input mt-1"
                   />
                 </div>
               </>
@@ -592,7 +600,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
               <Button
                 type="submit"
                 disabled={loading || !projectUrl.trim() || isProjectRunning}
-                className="w-full bg"
+                className="btn-primary w-full"
               >
                 {loading ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -601,12 +609,52 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
                 ) : (
                   <Save className="h-4 w-4 mr-2" />
                 )}
-                {mode === "create" ? "Search" : "Save Changes"}
+                {mode === "create" ? "Start Audit" : "Save Changes"}
               </Button>
             </div>
+
+            {/* ========================================
+                FEATURES SECTION
+            ========================================= */}
+            
+            <div className="border-t border-slate-200 dark:border-slate-700 pt-6 mt-6">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+                <div className="p-1 bg-emerald-100 dark:bg-emerald-900/20 rounded">
+                  <CheckCircle className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                What You'll Get
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <span className="text-xs text-slate-600 dark:text-slate-400">Comprehensive page analysis</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <span className="text-xs text-slate-600 dark:text-slate-400">Consistency verification</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <span className="text-xs text-slate-600 dark:text-slate-400">SEO optimization insights</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <span className="text-xs text-slate-600 dark:text-slate-400">Performance metrics</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <span className="text-xs text-slate-600 dark:text-slate-400">Mobile responsiveness check</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <span className="text-xs text-slate-600 dark:text-slate-400">Accessibility compliance</span>
+                </div>
+              </div>
+            </div>
+
+           
           </form>
         </CardContent>
       </Card>
-    </div>
   );
 }

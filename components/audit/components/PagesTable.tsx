@@ -598,8 +598,7 @@ export function PagesTable({
                               title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : ""}
                             >
                               <RefreshCw className="h-3 w-3 mr-1" />
-                              <span className="hidden sm:inline">Re-Analyze</span>
-                              <span className="sm:hidden">Re-Analyze</span>
+                             
                             </Button>
                           </>
                         ) : (

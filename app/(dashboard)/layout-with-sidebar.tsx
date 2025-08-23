@@ -10,12 +10,13 @@ import {
   Settings,
   User,
   BarChart3,
-  PenIcon
+  PenIcon,
+  Menu,
+  X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { LogoutButton } from '@/components/logout-button';
-import { ThemeSwitcher } from '@/components/theme-switcher';
 
 interface SidebarLayoutProps {
   children: React.ReactNode;
@@ -23,6 +24,7 @@ interface SidebarLayoutProps {
 
 export function SidebarLayout({ children }: SidebarLayoutProps) {
   const pathname = usePathname();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -36,68 +38,123 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
   };
 
   return (
-    <div className="min-h-screen bg-background flex">
-      {/* Sidebar - always open, wide on desktop, icons only on mobile */}
-      <div
-        className={cn(
-          "flex flex-col bg-card border-r border-border transition-all duration-300",
-          "w-16 lg:min-w-44 fixed inset-y-0 left-0 z-30"
-        )}
-      >
-        <div className="flex h-16 items-center justify-center lg:justify-between px-2 lg:px-4 border-b border-border">
-          <h2 className="hidden lg:block text-xl font-semibold text-foreground">Web Audit</h2>
-          <span className="block lg:hidden text-lg font-bold text-foreground">WA</span>
+    <div className="min-h-screen">
+      {/* Mobile Navbar */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b">
+        <div className="flex items-center justify-between px-4 py-3">
+          {/* Logo and Brand */}
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-500 rounded-lg">
+              <BarChart3 className="h-5 w-5 text-white" />
+            </div>
+            <h2 className="text-lg font-semibold">Web Audit</h2>
+          </div>
+          
+          {/* Hamburger Menu */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="p-2"
+          >
+            {sidebarOpen ? (
+              <X className="h-5 w-5" />
+            ) : (
+              <Menu className="h-5 w-5" />
+            )}
+          </Button>
         </div>
-        <nav className="flex-1 space-y-1 px-1 lg:px-2 py-4 ">
-          {navigation.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={cn(
-                  "group flex items-center rounded-md px-0 lg:px-2 py-2 text-sm font-medium transition-colors justify-center lg:justify-start",
-                  isActive(item.href)
-                    ? "bg-primary/10 text-primary"
-                    : "text-foreground hover:bg-muted hover:text-foreground"
-                )}
-                title={item.name}
+      </div>
+
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div 
+          className="lg:hidden fixed inset-0 z-40 bg-black/50"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Desktop Layout Container */}
+      <div className="lg:flex lg:h-screen lg:overflow-hidden">
+        {/* Sidebar */}
+        <div className={cn(
+          "fixed inset-y-0 left-0 z-50 w-64 bg-white border-r transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 lg:flex-shrink-0 lg:sticky lg:top-0",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        )}>
+          <div className="flex flex-col h-full">
+            {/* Desktop Logo/Brand Section */}
+            <div className="hidden lg:flex h-16 items-center px-6 border-b flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-500 rounded-lg">
+                  <BarChart3 className="h-5 w-5 text-white" />
+                </div>
+                <h2 className="text-xl font-semibold">Web Audit</h2>
+              </div>
+            </div>
+
+            {/* Mobile Close Button */}
+            <div className="lg:hidden flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-500 rounded-lg">
+                  <BarChart3 className="h-5 w-5 text-white" />
+                </div>
+                <h2 className="text-lg font-semibold">Web Audit</h2>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSidebarOpen(false)}
+                className="p-2"
               >
-                <Icon
-                  className={cn(
-                    "flex-shrink-0 h-5 w-5",
-                    isActive(item.href)
-                      ? "text-primary"
-                      : "text-muted-foreground group-hover:text-foreground",
-                    " lg:mr-3"
-                  )}
-                />
-                <span className="hidden lg:inline">{item.name}</span>
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="border-t border-border p-4  lg:p-4 ">
-          <div className={cn(
-            "flex items-center gap-2 justify-center lg:justify-start"
-          )}>
-            {/* <User className="h-5 w-5 text-muted-foreground" /> */}
-            {/* <span className="hidden lg:inline text-sm font-medium text-foreground">Account</span> */}
-            <div className= "  lg:bg-transparent lg:ml-auto flex flex-col lg:flex-row items-center gap-2">
-              <ThemeSwitcher />
-              <LogoutButton />
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Navigation */}
+            <nav className="flex-1 px-4 py-6 space-y-1">
+              {navigation.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    onClick={() => setSidebarOpen(false)}
+                    className={cn(
+                      "group flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200",
+                      isActive(item.href)
+                        ? "bg-blue-50 text-blue-600 border border-blue-200"
+                        : "hover:bg-gray-50"
+                    )}
+                  >
+                    <Icon
+                      className={cn(
+                        "h-5 w-5 flex-shrink-0",
+                        isActive(item.href)
+                          ? "text-blue-600"
+                          : "text-gray-400 group-hover:text-gray-600"
+                      )}
+                    />
+                    <span>{item.name}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+
+            {/* Bottom Section - Logout */}
+            <div className="border-t p-4 flex-shrink-0">
+              <div className="flex items-center justify-center">
+                <LogoutButton />
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      {/* Main content */}
-      <div className={cn(
-        "flex-1 transition-all duration-300",
-        "ml-16 lg:ml-44"
-      )}>
-        <main className="min-h-screen">
-          {children}
-        </main>
+
+        {/* Main Content */}
+        <div className="flex-1 min-w-0 lg:overflow-y-auto">
+          <main className="min-h-screen pt-16 lg:pt-0">
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   );

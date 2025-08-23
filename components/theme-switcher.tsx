@@ -1,6 +1,6 @@
 "use client";
 
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun, Monitor } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,6 +57,7 @@ export function ThemeSwitcher() {
             onClick={() => setTheme("system")}
             className="hover:bg-blue-50 dark:hover:bg-blue-900/20 focus:bg-blue-50 dark:focus:bg-blue-900/20"
           >
+            <Monitor className="mr-2 h-4 w-4" />
             <span>System</span>
           </DropdownMenuItem>
         </DropdownMenuContent>

@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Globe, Clock, CheckCircle, AlertTriangle, XCircle, Edit, BarChart3 } from "lucide-react";
+import { Globe, Clock, CheckCircle, AlertTriangle, XCircle, Edit, BarChart3, Plus } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
@@ -26,26 +26,31 @@ const STATUS_CONFIG = {
   completed: {
     icon: CheckCircle,
     className: "text-emerald-500 dark:text-emerald-400",
+    bgColor: "bg-emerald-50 dark:bg-emerald-900/20",
     animate: false
   },
   crawling: {
     icon: Clock,
     className: "text-blue-500 dark:text-blue-400",
+    bgColor: "bg-blue-50 dark:bg-blue-900/20",
     animate: true
   },
   analyzing: {
     icon: Clock,
     className: "text-amber-500 dark:text-amber-400",
+    bgColor: "bg-amber-50 dark:bg-amber-900/20",
     animate: true
   },
   failed: {
     icon: XCircle,
     className: "text-red-500 dark:text-red-400",
+    bgColor: "bg-red-50 dark:bg-red-900/20",
     animate: false
   },
   pending: {
     icon: AlertTriangle,
-    className: "text-muted-foreground",
+    className: "text-slate-500 dark:text-slate-400",
+    bgColor: "bg-slate-50 dark:bg-slate-800",
     animate: false
   }
 } as const;
@@ -71,13 +76,15 @@ function StatusIcon({ status }: { status: string }) {
   const IconComponent = config.icon;
   
   return (
-    <IconComponent 
-      className={cn(
-        "h-5 w-5",
-        config.className,
-        config.animate && "animate-pulse"
-      )} 
-    />
+    <div className={cn("p-2 rounded-lg", config.bgColor)}>
+      <IconComponent 
+        className={cn(
+          "h-4 w-4",
+          config.className,
+          config.animate && "animate-pulse"
+        )} 
+      />
+    </div>
   );
 }
 
@@ -87,41 +94,42 @@ function ProjectCard({ project }: { project: AuditProject }) {
 
   return (
     <div className={cn(
-      "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 border rounded-lg transition-colors",
-      "hover:bg-muted/50"
+      "group p-4 border border-slate-200 dark:border-slate-700 rounded-lg transition-all duration-200",
+      "hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-sm",
+      "bg-white dark:bg-slate-800"
     )}>
-      <div className="flex items-center gap-4 w-full sm:w-auto">
+      <div className="flex items-start gap-3 mb-3">
         <StatusIcon status={project.status} />
-        <div>
-          <p className="font-medium break-all max-w-xs sm:max-w-none">
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-slate-900 dark:text-slate-100 text-sm truncate">
             {project.base_url}
           </p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             {formatProjectStats(project.pages_crawled, project.pages_analyzed)}
           </p>
         </div>
       </div>
       
-      <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-        <Link href={`/audit?project=${project.id}`} className="w-full sm:w-auto">
-          <Button size="sm" variant="outline" className="w-full sm:w-auto">
-            <BarChart3 className="h-4 w-4 mr-1" />
-            View
+      <div className="flex items-center gap-2">
+        <Link href={`/audit?project=${project.id}`} className="flex-1">
+          <Button size="sm" variant="outline" className="btn-secondary w-full text-xs h-8">
+            <BarChart3 className="h-3 w-3 mr-1" />
+            View Results
           </Button>
         </Link>
         
         <Button
           size="sm"
-          variant="outline"
+          variant="ghost"
           onClick={() => router.push(`/projects/edit/${project.id}`)}
           disabled={isRunning}
           title={isRunning 
             ? 'Cannot edit project while it is running' 
             : 'Edit project details'
           }
+          className="h-8 w-8 p-0 rounded-lg"
         >
-          <Edit className="h-3 w-3 mr-1" />
-          Edit
+          <Edit className="h-3 w-3" />
         </Button>
       </div>
     </div>
@@ -131,11 +139,15 @@ function ProjectCard({ project }: { project: AuditProject }) {
 function EmptyState() {
   return (
     <div className="text-center py-8">
-      <Globe className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-      <p className="text-muted-foreground">No projects yet</p>
+      <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+        <Globe className="h-8 w-8 text-slate-400" />
+      </div>
+      <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">No projects yet</h3>
+      <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Create your first audit project to get started</p>
       <Link href="/projects">
-        <Button className="mt-4 w-full sm:w-auto">
-          Add Your First Projects
+        <Button size="sm" className="btn-primary w-full">
+          <Plus className="h-3 w-3 mr-1" />
+          Create Project
         </Button>
       </Link>
     </div>
@@ -144,17 +156,11 @@ function EmptyState() {
 
 function ProjectList({ projects }: { projects: AuditProject[] }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {projects.map((project) => (
         <ProjectCard key={project.id} project={project} />
       ))}
-      <div className="text-center pt-4">
-        <Link href="/projects">
-          <Button variant="outline" className="w-full sm:w-auto">
-            View All Projects
-          </Button>
-        </Link>
-      </div>
+     
     </div>
   );
 }
@@ -162,17 +168,26 @@ function ProjectList({ projects }: { projects: AuditProject[] }) {
 // Main component
 export function RecentProjects({ projects }: RecentProjectsProps) {
   return (
-    <Card className="w-full mt-16">
-      <CardHeader>
-        <CardTitle>Recent Projects</CardTitle>
-        <CardDescription>Your latest audit projects</CardDescription>
+    <Card className="h-full">
+      <CardHeader className="pb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg">
+            <Globe className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+          </div>
+          <div>
+            <CardTitle className="text-lg">Recent Projects</CardTitle>
+            <CardDescription className="text-sm">Your latest audit projects</CardDescription>
+          </div>
+        </div>
       </CardHeader>
-      <CardContent>
-        {projects.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <ProjectList projects={projects} />
-        )}
+      <CardContent className="pt-0 flex-1 overflow-hidden">
+        <div className="h-[500px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent">
+          {projects.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <ProjectList projects={projects} />
+          )}
+        </div>
       </CardContent>
     </Card>
   );

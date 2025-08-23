@@ -733,7 +733,7 @@ export function AuditMain() {
   // ============================================================================
 
   if (loading) {
-    return <AuditMainSkeleton />;
+    return <></>;
   }
 
   return (

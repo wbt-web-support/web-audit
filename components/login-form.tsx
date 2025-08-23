@@ -136,7 +136,7 @@ export function LoginForm({
           <SocialAuth />
 
           {/* Sign Up Link */}
-          <div className="text-center pt-4 border-t border-[var(--color-border-light)] dark:border-[var(--color-border-darkMode)]">
+          <div className="text-center pt-4 border-t border-border-light dark:border-border-darkMode">
             <p className="text-sm text-slate-600 dark:text-slate-400">
               Don't have an account?{" "}
               <Link 
