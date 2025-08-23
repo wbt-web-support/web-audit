@@ -80,8 +80,6 @@ interface AnalyzedPage {
   overallStatus: string;
 }
 
-
-
 interface PageStatus {
   pageId: string;
   status: 'pending' | 'analyzing' | 'completed' | 'failed' | 'timeout' | 'error';
@@ -89,8 +87,6 @@ interface PageStatus {
   error?: string;
   lastChecked?: number;
 }
-
-
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -116,10 +112,10 @@ const isPageAnalyzing = (page: AnalyzedPage, analyzingPages: Set<string>): boole
  */
 const getStatusBadge = (status: string) => {
   const variants = {
-    pass: 'bg-emerald-500 dark:bg-emerald-600 text-white w-full text-center justify-center',
-    warning: 'bg-amber-500 dark:bg-amber-600 text-white w-full text-center justify-center',
-    fail: 'bg-red-500 dark:bg-red-600 text-white w-full text-center justify-center',
-    pending: 'bg-muted text-muted-foreground w-full text-center justify-center'
+    pass: 'bg-emerald-100 text-emerald-700 w-full text-center justify-center',
+    warning: 'bg-amber-100 text-amber-700 w-full text-center justify-center',
+    fail: 'bg-red-100 text-red-700 w-full text-center justify-center',
+    pending: 'bg-slate-100 text-slate-600 w-full text-center justify-center'
   };
 
   const statusLabels = {
@@ -130,15 +126,11 @@ const getStatusBadge = (status: string) => {
   };
 
   return (
-    <Badge className={variants[status as keyof typeof variants] || 'bg-muted text-muted-foreground'}>
+    <Badge className={variants[status as keyof typeof variants] || 'bg-slate-100 text-slate-600'}>
       {statusLabels[status as keyof typeof statusLabels] || status.toUpperCase()}
     </Badge>
   );
 };
-
-
-
-
 
 // ============================================================================
 // MAIN COMPONENT
@@ -156,7 +148,6 @@ export function AuditMain() {
   
   // Local state
   const [projects, setProjects] = useState<AuditProject[]>([]);
-
   const [analyzingPages, setAnalyzingPages] = useState<Set<string>>(new Set());
   const [deletingPages, setDeletingPages] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
@@ -171,6 +162,7 @@ export function AuditMain() {
   const [scoreRange, setScoreRange] = useState({ min: 0, max: 100 });
   const [sortField, setSortField] = useState<'title' | 'status' | 'score'>('title');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  
   // Refs
   const crawlingStartedRef = useRef(false);
 
@@ -204,8 +196,6 @@ export function AuditMain() {
     
     return () => clearInterval(interval);
   }, [currentSession?.isCrawling, currentSession?.backgroundCrawling, projects, dispatch, selectedProjectId]);
-
-
 
   // ============================================================================
   // DATA FETCHING
@@ -258,43 +248,43 @@ export function AuditMain() {
    * Fetch analyzed pages with timeout handling
    */
   const fetchAnalyzedPages = async (projectId: string, retryCount: number) => {
-        try {
-          const controller = new AbortController();
+    try {
+      const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
           
       const resultsResponse = await fetch(`/api/audit-projects/${projectId}/results`, {
-            signal: controller.signal
-          });
+        signal: controller.signal
+      });
           
-          clearTimeout(timeoutId);
-          const resultsData = await resultsResponse.json();
+      clearTimeout(timeoutId);
+      const resultsData = await resultsResponse.json();
 
-          if (resultsResponse.ok && resultsData.pageResults) {
-            const pages = resultsData.pageResults.map((pageResult: any) => {
-              const results = pageResult.results;
-              const analysisTypes = ['grammar_analysis', 'content_analysis', 'seo_analysis', 'performance_analysis', 'accessibility_analysis', 'ui_quality_analysis', 'image_relevance_analysis', 'context_analysis'];
-              const completedAnalyses = results ? analysisTypes.filter(type => results[type]).length : 0;
-              
-              return {
-                page: pageResult.page,
-                project: {
+      if (resultsResponse.ok && resultsData.pageResults) {
+        const pages = resultsData.pageResults.map((pageResult: any) => {
+          const results = pageResult.results;
+          const analysisTypes = ['grammar_analysis', 'content_analysis', 'seo_analysis', 'performance_analysis', 'accessibility_analysis', 'ui_quality_analysis', 'image_relevance_analysis', 'context_analysis'];
+          const completedAnalyses = results ? analysisTypes.filter(type => results[type]).length : 0;
+          
+          return {
+            page: pageResult.page,
+            project: {
               id: projectId,
               base_url: projects[0]?.base_url || '',
               status: projects[0]?.status || 'pending'
-                },
-                resultCount: completedAnalyses,
-                overallScore: results?.overall_score || 0,
-                overallStatus: results?.overall_status || 'pending'
-              };
-            });
+            },
+            resultCount: completedAnalyses,
+            overallScore: results?.overall_score || 0,
+            overallStatus: results?.overall_status || 'pending'
+          };
+        });
         
         dispatch(updateAnalyzedPages({ projectId, pages }));
         updateAnalyzingPagesState(pages);
-          }
-        } catch (error: any) {
+      }
+    } catch (error: any) {
       if (error?.name === 'AbortError' && retryCount < 2) {
-              setTimeout(() => fetchData(retryCount + 1), 2000);
-              return;
+        setTimeout(() => fetchData(retryCount + 1), 2000);
+        return;
       }
       
       dispatch(updateAnalyzedPages({ projectId, pages: [] }));
@@ -307,19 +297,19 @@ export function AuditMain() {
   const pollCrawlStatus = async () => {
     if (!projects[0]?.id) return;
     
-      try {
-        const res = await fetch(`/api/audit-projects/${projects[0].id}/crawl-status`);
-        const data = await res.json();
-        
-        if (!data.is_crawling) {
-          dispatch(completeCrawling({ projectId: projects[0].id }));
-          fetchData();
-          return;
-        }
-        
+    try {
+      const res = await fetch(`/api/audit-projects/${projects[0].id}/crawl-status`);
+      const data = await res.json();
+      
+      if (!data.is_crawling) {
+        dispatch(completeCrawling({ projectId: projects[0].id }));
+        fetchData();
+        return;
+      }
+      
       // Update live counts
-        dispatch(updateLiveCounts({
-          projectId: projects[0].id,
+      dispatch(updateLiveCounts({
+        projectId: projects[0].id,
         imageCount: data.project.total_images || 0,
         linkCount: data.project.total_links || 0,
         internalLinks: data.project.internal_links || 0,
@@ -328,42 +318,42 @@ export function AuditMain() {
       }));
       
       // Update project data
-        setProjects(prev => prev.map(p => 
-          p.id === projects[0].id 
-            ? { 
-                ...p, 
-                pages_crawled: data.project.pages_crawled,
-                total_pages: data.project.total_pages
-              }
-            : p
-        ));
-        
+      setProjects(prev => prev.map(p => 
+        p.id === projects[0].id 
+          ? { 
+              ...p, 
+              pages_crawled: data.project.pages_crawled,
+              total_pages: data.project.total_pages
+            }
+          : p
+      ));
+      
       // Update crawled pages
-        if (data.recent_pages && data.recent_pages.length > 0) {
-          const crawledPages = data.recent_pages.map((page: any) => ({
-            page: {
-              id: page.id,
-              url: page.url,
-              title: page.title || 'Untitled',
-              status_code: page.status_code,
+      if (data.recent_pages && data.recent_pages.length > 0) {
+        const crawledPages = data.recent_pages.map((page: any) => ({
+          page: {
+            id: page.id,
+            url: page.url,
+            title: page.title || 'Untitled',
+            status_code: page.status_code,
             analysis_status: 'pending'
-            },
-            project: {
-              id: projects[0]?.id || selectedProjectId,
-              base_url: projects[0]?.base_url || '',
-              status: projects[0]?.status || 'crawling'
-            },
+          },
+          project: {
+            id: projects[0]?.id || selectedProjectId,
+            base_url: projects[0]?.base_url || '',
+            status: projects[0]?.status || 'crawling'
+          },
           resultCount: 0,
-            overallScore: 0,
-            overallStatus: 'pending'
-          }));
-          
+          overallScore: 0,
+          overallStatus: 'pending'
+        }));
+        
         dispatch(updateCrawledPages({ projectId: projects[0].id, pages: data.recent_pages }));
-          dispatch(updateAnalyzedPages({ projectId: projects[0].id, pages: crawledPages }));
-        }
-      } catch (error) {
-        console.error('Crawl status polling error:', error);
+        dispatch(updateAnalyzedPages({ projectId: projects[0].id, pages: crawledPages }));
       }
+    } catch (error) {
+      console.error('Crawl status polling error:', error);
+    }
   };
 
   /**
@@ -438,7 +428,6 @@ export function AuditMain() {
         const errorMessage = data.error || 'Failed to start crawling';
         setError(errorMessage);
         dispatch(stopCrawling({ projectId }));
-        // toast.error(errorMessage);
         return;
       }
 
@@ -478,7 +467,6 @@ export function AuditMain() {
         setError(data.error || 'Failed to stop process');
         dispatch(startCrawling({ projectId }));
         toast.dismiss(stopToast);
-        // toast.error(data.error || 'Failed to stop process');
         return;
       }
 
@@ -501,10 +489,6 @@ export function AuditMain() {
   // ANALYSIS OPERATIONS
   // ============================================================================
 
-
-
-
-
   /**
    * Analyze a single page with improved performance and state management
    */
@@ -513,8 +497,6 @@ export function AuditMain() {
 
     setAnalyzingPages(prev => new Set(prev).add(pageId));
     setError('');
-    
-    // const analysisToast = toast.loading('Starting analysis...');
     
     let timeoutId: NodeJS.Timeout | undefined;
     let pollInterval: NodeJS.Timeout | undefined;
@@ -544,7 +526,6 @@ export function AuditMain() {
       }
 
       // Analysis completed successfully
-      // toast.dismiss(analysisToast);
       toast.success('Analysis completed successfully!');
       
       // Remove from analyzing pages
@@ -560,13 +541,11 @@ export function AuditMain() {
     } catch (error: any) {
       if (timeoutId) clearTimeout(timeoutId);
       if (pollInterval) clearInterval(pollInterval);
-      // toast.dismiss(analysisToast);
       
       if (error.name === 'AbortError') {
         toast.error('Analysis timed out. Please try again.');
         setError('Analysis timed out after 5 minutes');
       } else {
-        // toast.error(error.message || 'Analysis failed');
         setError(error.message || 'Failed to start analysis');
       }
       
@@ -737,12 +716,13 @@ export function AuditMain() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800">
-      <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8 space-y-4 sm:space-y-8">
+    <div className="min-h-screen bg-slate-50">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
+        
         {/* Back Button */}
-        <div className="mb-2 sm:mb-4">
+        <div className="mb-6">
           <BackButton href="/projects" id={`audit-session-${selectedProjectId || 'default'}`}>
-            Back to Projects
+            ← Back to Projects
           </BackButton>
         </div>
         
@@ -761,52 +741,56 @@ export function AuditMain() {
         />
 
         {/* Error Display */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-          <div className="flex items-center gap-2 text-red-700">
-            <XCircle className="h-4 w-4" />
-            <span className="text-sm">{error}</span>
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-6">
+            <div className="flex items-center gap-2 text-red-700">
+              <XCircle className="h-4 w-4" />
+              <span className="text-sm">{error}</span>
+            </div>
           </div>
-        </div>
-      )}
-
-        {/* Process Status */}
-      {(currentSession?.currentAction || currentSession?.isCrawling || currentSession?.backgroundCrawling || projects[0]?.status === 'crawling') && (
-          <ProcessStatusCard currentSession={currentSession} />
         )}
 
-     
+        {/* Process Status */}
+        {(currentSession?.currentAction || currentSession?.isCrawling || currentSession?.backgroundCrawling || projects[0]?.status === 'crawling') && (
+          <div className="mb-6">
+            <ProcessStatusCard currentSession={currentSession} />
+          </div>
+        )}
 
         {/* Project Metrics */}
-      {projects.length > 0 && projects[0] && (
-          <ProjectMetrics 
-            project={projects[0]}
-            currentSession={currentSession}
-            onToggleImageAnalysis={(show) => dispatch(toggleImageAnalysis({ projectId: projects[0].id, show }))}
-            onToggleLinksAnalysis={(show) => dispatch(toggleLinksAnalysis({ projectId: projects[0].id, show }))}
-          />
+        {projects.length > 0 && projects[0] && (
+          <div className="mb-6">
+            <ProjectMetrics 
+              project={projects[0]}
+              currentSession={currentSession}
+              onToggleImageAnalysis={(show) => dispatch(toggleImageAnalysis({ projectId: projects[0].id, show }))}
+              onToggleLinksAnalysis={(show) => dispatch(toggleLinksAnalysis({ projectId: projects[0].id, show }))}
+            />
+          </div>
         )}
 
         {/* Custom URLs */}
         {projects[0] && projects[0].custom_urls_analysis && Array.isArray(projects[0].custom_urls_analysis) && projects[0].custom_urls_analysis.length > 0 && (
-          <CustomUrlsCard customUrls={projects[0].custom_urls_analysis} />
+          <div className="mb-6">
+            <CustomUrlsCard customUrls={projects[0].custom_urls_analysis} />
+          </div>
         )}
 
         {/* Image Analysis */}
-   {currentSession?.showImageAnalysis && projects[0] && projects[0].all_image_analysis && Array.isArray(projects[0].all_image_analysis) && projects[0].all_image_analysis.length > 0 && (
-     <div id="image-analysis-table" className="animate-in slide-in-from-top-2 duration-300">
-       <ImageAnalysisTable images={projects[0].all_image_analysis} />
-     </div>
-   )}
-
-        {/* Links Analysis */}
-  {currentSession?.showLinksAnalysis && projects[0] && projects[0].all_links_analysis && Array.isArray(projects[0].all_links_analysis) && projects[0].all_links_analysis.length > 0 && (
-    <div id="links-analysis-table" className="animate-in slide-in-from-top-2 duration-300">
-      <LinksAnalysisTable links={projects[0].all_links_analysis} />
-    </div>
+        {currentSession?.showImageAnalysis && projects[0] && projects[0].all_image_analysis && Array.isArray(projects[0].all_image_analysis) && projects[0].all_image_analysis.length > 0 && (
+          <div id="image-analysis-table" className="mb-6 animate-in slide-in-from-top-2 duration-300">
+            <ImageAnalysisTable images={projects[0].all_image_analysis} />
+          </div>
         )}
 
-          {/* Pages Table */}
+        {/* Links Analysis */}
+        {currentSession?.showLinksAnalysis && projects[0] && projects[0].all_links_analysis && Array.isArray(projects[0].all_links_analysis) && projects[0].all_links_analysis.length > 0 && (
+          <div id="links-analysis-table" className="mb-6 animate-in slide-in-from-top-2 duration-300">
+            <LinksAnalysisTable links={projects[0].all_links_analysis} />
+          </div>
+        )}
+
+        {/* Pages Table */}
         <PagesTable 
           projects={projects}
           currentSession={currentSession}
@@ -835,7 +819,7 @@ export function AuditMain() {
           getStatusBadge={getStatusBadge}
           getAnalysisStatus={getAnalysisStatus}
         />
-  </div>
-</div>
+      </div>
+    </div>
   );
 }
