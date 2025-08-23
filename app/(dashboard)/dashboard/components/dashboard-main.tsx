@@ -1,13 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { XCircle, BarChart3, Plus, TrendingUp, Globe, Clock, CheckCircle } from "lucide-react";
 import { RecentProjects } from './recent-projects';
 import { ProjectForm } from '@/components/audit/project-form';
 import { DashboardSkeleton } from '@/components/skeletons';
+import { useDashboardStats } from '../hooks/use-dashboard-stats';
+import { PerformanceMonitor } from './performance-monitor';
 import type { AuditProject } from '@/lib/types/database';
+import React from 'react';
 
 /**
  * Dashboard statistics interface
@@ -30,42 +33,36 @@ export interface DashboardStats {
  * - Loading and error states
  */
 export function DashboardMain() {
-  // State management for dashboard data and UI states
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { stats, loading, error, refetch, isStale } = useDashboardStats();
+  const [minLoadingTime, setMinLoadingTime] = useState(true);
+  const [debouncedLoading, setDebouncedLoading] = useState(true);
 
-  // Fetch dashboard statistics on component mount
+  // Ensure minimum loading time to prevent flash
   useEffect(() => {
-    fetchDashboardStats();
-  }, []);
-
-  /**
-   * Fetches dashboard statistics from the API
-   * Handles loading states and error handling
-   */
-  const fetchDashboardStats = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const response = await fetch('/api/dashboard/stats');
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch dashboard stats');
-      }
-      
-      const data = await response.json();
-      setStats(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load dashboard');
-    } finally {
-      setLoading(false);
+    if (!loading && stats) {
+      const timer = setTimeout(() => {
+        setMinLoadingTime(false);
+      }, 300); // 300ms minimum loading time
+      return () => clearTimeout(timer);
     }
-  };
+  }, [loading, stats]);
 
-  // Loading state - show skeleton while fetching data
-  if (loading) {
+  // Debounce loading state to prevent flickering
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedLoading(loading);
+    }, 100); // 100ms debounce
+
+    return () => clearTimeout(timer);
+  }, [loading]);
+
+  // Loading state - show skeleton while fetching data OR when no stats yet
+  if (debouncedLoading || !stats || minLoadingTime) {
+    return <DashboardSkeleton />;
+  }
+
+  // Additional safety check - ensure we have all required data
+  if (!stats.totalProjects && !stats.recentProjects.length) {
     return <DashboardSkeleton />;
   }
 
@@ -77,7 +74,7 @@ export function DashboardMain() {
           <XCircle className="h-16 w-16 text-red-500 mx-auto mb-6" />
           <h2 className="text-xl font-semibold mb-2 text-slate-900">Something went wrong</h2>
           <p className="mb-6 text-slate-600">{error}</p>
-          <Button onClick={fetchDashboardStats} className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800">
+          <Button onClick={() => refetch(true)} className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800">
             Try Again
           </Button>
         </div>
@@ -85,20 +82,34 @@ export function DashboardMain() {
     );
   }
 
-  // Safety check - return null if no stats data
+  // Safety check - return skeleton if no stats data (shouldn't happen now)
   if (!stats) {
-    return null;
+    return <DashboardSkeleton />;
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 transition-opacity duration-300 ease-in-out">
       <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         
         {/* Dashboard Header Section */}
         <DashboardHeader />
         
-        {/* Statistics Cards */}
-        <StatsCards stats={stats} />
+        {/* Statistics Cards - Show immediately if cached, with loading overlay if refreshing */}
+        <div className="relative">
+          {loading && stats && (
+            <div className="absolute inset-0 bg-white/50 backdrop-blur-sm rounded-lg z-10 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+            </div>
+          )}
+          {isStale && (
+            <div className="absolute top-2 right-2 z-20">
+              <div className="px-2 py-1 bg-amber-100 text-amber-800 text-xs rounded-full">
+                Data may be stale
+              </div>
+            </div>
+          )}
+          <StatsCards stats={stats} loading={debouncedLoading} />
+        </div>
         
         {/* Main Content Grid */}
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
@@ -113,10 +124,23 @@ export function DashboardMain() {
           
           {/* Recent Projects - Takes 50% of the space */}
           <div className="space-y-6">
-            <RecentProjects projects={stats.recentProjects} />
+            <RecentProjects 
+              projects={stats.recentProjects} 
+              loading={debouncedLoading}
+            />
           </div>
           
         </div>
+        
+        {/* Performance Monitor */}
+        <PerformanceMonitor 
+          loading={loading}
+          error={error}
+          onLoadComplete={() => {
+            // Optional: Log performance metrics
+            console.log('Dashboard load completed');
+          }}
+        />
         
       </div>
     </div>
@@ -150,8 +174,9 @@ function DashboardHeader() {
 
 /**
  * Statistics cards component displaying key metrics
+ * Memoized to prevent unnecessary re-renders
  */
-function StatsCards({ stats }: { stats: DashboardStats }) {
+const StatsCards = React.memo(({ stats, loading }: { stats: DashboardStats, loading: boolean }) => {
   const statCards = [
     {
       title: "Total Projects",
@@ -167,15 +192,15 @@ function StatsCards({ stats }: { stats: DashboardStats }) {
       icon: Clock,
       color: "bg-amber-50",
       iconColor: "text-amber-600",
-      description: "Currently running"
+      description: "Currently running projects"
     },
     {
-      title: "Pages Analyzed",
+      title: "Total Pages Analyzed",
       value: stats.totalPagesAnalyzed,
       icon: CheckCircle,
       color: "bg-emerald-50",
       iconColor: "text-emerald-600",
-      description: "Total pages processed"
+      description: "All pages processed"
     },
     {
       title: "Average Score",
@@ -199,9 +224,15 @@ function StatsCards({ stats }: { stats: DashboardStats }) {
                   <p className="text-sm font-medium text-slate-600 mb-1">
                     {stat.title}
                   </p>
-                  <p className="text-2xl font-bold text-slate-900 mb-1">
-                    {stat.value}
-                  </p>
+                  <div className="mb-1">
+                    {loading ? (
+                      <div className="h-8 w-16 bg-slate-200 rounded animate-pulse"></div>
+                    ) : (
+                      <p className="text-2xl font-bold text-slate-900">
+                        {stat.value}
+                      </p>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-500">
                     {stat.description}
                   </p>
@@ -216,4 +247,6 @@ function StatsCards({ stats }: { stats: DashboardStats }) {
       })}
     </div>
   );
-} 
+});
+
+StatsCards.displayName = 'StatsCards'; 

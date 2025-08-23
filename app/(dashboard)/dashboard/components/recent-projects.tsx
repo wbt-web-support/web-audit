@@ -19,6 +19,7 @@ interface AuditProject {
 
 interface RecentProjectsProps {
   projects: AuditProject[];
+  loading?: boolean;
 }
 
 // Status configuration
@@ -88,7 +89,7 @@ function StatusIcon({ status }: { status: string }) {
   );
 }
 
-function ProjectCard({ project }: { project: AuditProject }) {
+export function ProjectCard({ project }: { project: AuditProject }) {
   const router = useRouter();
   const isRunning = isProjectRunning(project.status);
 
@@ -166,7 +167,7 @@ function ProjectList({ projects }: { projects: AuditProject[] }) {
 }
 
 // Main component
-export function RecentProjects({ projects }: RecentProjectsProps) {
+export function RecentProjects({ projects, loading = false }: RecentProjectsProps) {
   return (
     <Card className="h-full">
       <CardHeader className="pb-4">
@@ -182,7 +183,27 @@ export function RecentProjects({ projects }: RecentProjectsProps) {
       </CardHeader>
       <CardContent className="pt-0 flex-1 overflow-hidden">
         <div className="h-[500px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent">
-          {projects.length === 0 ? (
+          {loading ? (
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="animate-pulse">
+                  <div className="p-4 border border-slate-200 rounded-lg bg-white">
+                    <div className="flex items-start gap-3 mb-3">
+                      <div className="w-8 h-8 bg-slate-200 rounded-lg"></div>
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+                        <div className="h-3 bg-slate-200 rounded w-1/2"></div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="h-8 bg-slate-200 rounded flex-1"></div>
+                      <div className="w-8 h-8 bg-slate-200 rounded"></div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : projects.length === 0 ? (
             <EmptyState />
           ) : (
             <ProjectList projects={projects} />

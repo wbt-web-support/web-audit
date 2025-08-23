@@ -1268,7 +1268,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 ">
               {/* Back Button - Top Left */}
         <div className="mb-4">
           <BackButton href={project ? `/audit?project=${project.id}` : "/audit"} id={`page-detail-${pageId || 'default'}`}>

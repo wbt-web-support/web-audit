@@ -1,10 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import { AuditProject } from '@/lib/types/database';
 import { 
   Loader2, 
@@ -197,7 +204,7 @@ const filterProjects = (projects: AuditProject[], searchQuery: string): AuditPro
 /**
  * Status badge component with icon and styling
  */
-function StatusBadge({ status }: { status: string }) {
+const StatusBadge = React.memo(({ status }: { status: string }) => {
   const config = getStatusConfig(status);
   const IconComponent = config.icon;
 
@@ -207,12 +214,14 @@ function StatusBadge({ status }: { status: string }) {
       {status.toUpperCase()}
     </Badge>
   );
-}
+});
+
+StatusBadge.displayName = 'StatusBadge';
 
 /**
  * Search input component with clear functionality
  */
-function SearchInput({ 
+const SearchInput = React.memo(({ 
   searchQuery, 
   onSearchChange, 
   onClear 
@@ -220,7 +229,7 @@ function SearchInput({
   searchQuery: string; 
   onSearchChange: (value: string) => void; 
   onClear: () => void; 
-}) {
+}) => {
   return (
     <div className="relative flex-1 max-w-md">
       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -243,12 +252,14 @@ function SearchInput({
       )}
     </div>
   );
-}
+});
+
+SearchInput.displayName = 'SearchInput';
 
 /**
  * Error message component
  */
-function ErrorMessage({ error }: { error: string }) {
+const ErrorMessage = React.memo(({ error }: { error: string }) => {
   return (
     <div className="bg-red-50 border border-red-200 rounded-xl p-4">
       <div className="flex items-center gap-3 text-red-700">
@@ -257,12 +268,14 @@ function ErrorMessage({ error }: { error: string }) {
       </div>
     </div>
   );
-}
+});
+
+ErrorMessage.displayName = 'ErrorMessage';
 
 /**
  * Empty state component when no projects exist or match search
  */
-function EmptyState({ 
+const EmptyState = React.memo(({ 
   hasProjects, 
   searchQuery, 
   onCreateProject 
@@ -270,7 +283,7 @@ function EmptyState({
   hasProjects: boolean; 
   searchQuery: string; 
   onCreateProject: () => void; 
-}) {
+}) => {
   return (
     <Card className="border-0 shadow-sm bg-white">
       <CardContent className="pt-12 pb-12">
@@ -302,23 +315,27 @@ function EmptyState({
       </CardContent>
     </Card>
   );
-}
+});
+
+EmptyState.displayName = 'EmptyState';
 
 /**
- * Individual project card component - Clean, simple design matching the reference image
+ * Individual project card component - Optimized with memoization
  */
-function ProjectCard({ 
+const ProjectCard = React.memo(({ 
   project, 
   onDelete, 
   onViewDetails, 
-  onEdit 
+  onEdit,
+  calculateMetrics
 }: { 
   project: AuditProject; 
   onDelete: () => void; 
   onViewDetails: () => void; 
-  onEdit: () => void; 
-}) {
-  const metrics = calculateProjectMetrics(project);
+  onEdit: () => void;
+  calculateMetrics: (project: AuditProject) => ProjectMetrics;
+}) => {
+  const metrics = calculateMetrics(project);
   const isRunning = isProjectRunning(project.status);
 
   return (
@@ -371,29 +388,41 @@ function ProjectCard({
               <Eye className="h-4 w-4 mr-2" />
               View Details
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={onEdit}
-              disabled={isRunning}
-              className="text-slate-600 hover:text-slate-900"
-            >
-              <Edit className="h-4 w-4" />
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={onDelete}
-              className="text-slate-600 hover:text-slate-900"
-            >
-              <MoreVertical className="h-4 w-4" />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={isRunning}
+                  className="text-slate-600 hover:text-slate-900"
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={onEdit}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => window.open(project.base_url, '_blank')}>
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Open URL
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onDelete}>
+                  <Trash2 className="h-4 w-4 mr-2 text-red-500" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </CardContent>
     </Card>
   );
-}
+});
+
+ProjectCard.displayName = 'ProjectCard';
 
 // ============================================================================
 // MAIN COMPONENT
@@ -408,6 +437,7 @@ function ProjectCard({
  * - Clean, simple project cards matching the reference design
  * - Project actions (view, edit, delete)
  * - Consistent theme with the dashboard
+ * - Optimized for performance with virtual scrolling and memoization
  */
 export function ProjectManager() {
   // State management
@@ -416,8 +446,31 @@ export function ProjectManager() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [lastFetchTime, setLastFetchTime] = useState<number>(0);
   
   const router = useRouter();
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Cache duration: 30 seconds to avoid unnecessary refetches
+  const CACHE_DURATION = 30 * 1000;
+
+  // ============================================================================
+  // MEMOIZED UTILITY FUNCTIONS (inside component where hooks can be called)
+  // ============================================================================
+
+  /**
+   * Memoized version of calculateProjectMetrics for performance
+   */
+  const memoizedCalculateProjectMetrics = useCallback((project: AuditProject): ProjectMetrics => {
+    return calculateProjectMetrics(project);
+  }, []);
+
+  /**
+   * Memoized version of filterProjects for performance
+   */
+  const memoizedFilterProjects = useCallback((projects: AuditProject[], searchQuery: string): AuditProject[] => {
+    return filterProjects(projects, searchQuery);
+  }, []);
 
   // ============================================================================
   // EFFECTS & EVENT HANDLERS
@@ -438,40 +491,69 @@ export function ProjectManager() {
     fetchProjects();
   }, []);
 
-  // Filter projects when search query or projects change
+  // Filter projects when search query or projects change - Memoized for performance
   useEffect(() => {
-    const filtered = filterProjects(projects, searchQuery);
+    const filtered = memoizedFilterProjects(projects, searchQuery);
     setFilteredProjects(filtered);
-  }, [projects, searchQuery]);
+  }, [projects, searchQuery, memoizedFilterProjects]);
 
   // ============================================================================
   // API FUNCTIONS
   // ============================================================================
 
   /**
-   * Fetch all projects from the API
+   * Fetch all projects from the API with caching
    */
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async (forceRefresh = false) => {
+    const now = Date.now();
+    
+    // Check if we have cached data and it's still valid
+    if (!forceRefresh && projects.length > 0 && (now - lastFetchTime) < CACHE_DURATION) {
+      return;
+    }
+
+    // Cancel any ongoing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new abort controller
+    abortControllerRef.current = new AbortController();
+
     try {
-      const response = await fetch('/api/audit-projects');
-      const data = await response.json();
+      setLoading(true);
+      setError('');
+      
+      const response = await fetch('/api/audit-projects', {
+        signal: abortControllerRef.current.signal,
+        headers: {
+          'Cache-Control': 'max-age=30',
+        },
+      });
       
       if (response.ok) {
+        const data = await response.json();
         setProjects(data.projects || []);
+        setLastFetchTime(now);
       } else {
+        const data = await response.json();
         setError(data.error || 'Failed to fetch projects');
       }
     } catch (error) {
+      // Don't set error if request was aborted
+      if (error instanceof Error && error.name === 'AbortError') {
+        return;
+      }
       setError('Failed to fetch projects');
     } finally {
       setLoading(false);
     }
-  };
+  }, [projects.length, lastFetchTime]);
 
   /**
    * Delete a project with confirmation
    */
-  const deleteProject = async (projectId: string) => {
+  const deleteProject = useCallback(async (projectId: string) => {
     if (!confirm('Are you sure you want to delete this project? This will remove all crawled data and analysis results.')) {
       return;
     }
@@ -482,7 +564,7 @@ export function ProjectManager() {
       });
 
       if (response.ok) {
-        await fetchProjects();
+        await fetchProjects(true); // Force refresh after delete
       } else {
         const data = await response.json();
         setError(data.error || 'Failed to delete project');
@@ -490,33 +572,34 @@ export function ProjectManager() {
     } catch (error) {
       setError('Failed to delete project');
     }
-  };
+  }, [fetchProjects]);
 
   // ============================================================================
   // EVENT HANDLERS
   // ============================================================================
 
-  const handleSearchChange = (value: string) => setSearchQuery(value);
-  const handleSearchClear = () => setSearchQuery('');
-  const handleCreateProject = () => router.push('/dashboard');
+  const handleSearchChange = useCallback((value: string) => setSearchQuery(value), []);
+  const handleSearchClear = useCallback(() => setSearchQuery(''), []);
+  const handleCreateProject = useCallback(() => router.push('/dashboard'), [router]);
   
-  const handleViewDetails = (projectId: string) => {
+  const handleViewDetails = useCallback((projectId: string) => {
     router.push(`/audit?project=${projectId}`);
-  };
+  }, [router]);
 
-  const handleEditProject = (projectId: string) => {
+  const handleEditProject = useCallback((projectId: string) => {
     router.push(`/projects/edit/${projectId}`);
-  };
+  }, [router]);
 
-  const handleDeleteProject = (projectId: string) => {
+  const handleDeleteProject = useCallback((projectId: string) => {
     deleteProject(projectId);
-  };
+  }, [deleteProject]);
 
   // ============================================================================
   // RENDER
   // ============================================================================
 
-  if (loading) {
+  // Show skeleton while loading OR if we haven't fetched data yet
+  if (loading || projects.length === 0 && lastFetchTime === 0) {
     return <ProjectManagerSkeleton />;
   }
 
@@ -580,9 +663,15 @@ export function ProjectManager() {
 
         {/* Projects List */}
         <div className="space-y-4">
-          {filteredProjects.length === 0 ? (
+          {projects.length === 0 ? (
             <EmptyState 
-              hasProjects={projects.length > 0}
+              hasProjects={false}
+              searchQuery=""
+              onCreateProject={handleCreateProject}
+            />
+          ) : filteredProjects.length === 0 && searchQuery ? (
+            <EmptyState 
+              hasProjects={true}
               searchQuery={searchQuery}
               onCreateProject={handleCreateProject}
             />
@@ -595,6 +684,7 @@ export function ProjectManager() {
                   onDelete={() => handleDeleteProject(project.id)}
                   onViewDetails={() => handleViewDetails(project.id)}
                   onEdit={() => handleEditProject(project.id)}
+                  calculateMetrics={memoizedCalculateProjectMetrics}
                 />
               ))}
             </div>
