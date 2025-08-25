@@ -27,14 +27,25 @@ export async function GET() {
       const basicProfile = {
         id: user.id,
         email: user.email,
+        first_name: user.user_metadata?.first_name || null,
+        last_name: user.user_metadata?.last_name || null,
         full_name: user.user_metadata?.full_name || null,
+        avatar_url: user.user_metadata?.avatar_url || null,
+        provider: user.app_metadata?.provider || null,
         created_at: user.created_at,
         updated_at: user.updated_at || user.created_at,
       };
       return NextResponse.json(basicProfile);
     }
 
-    return NextResponse.json(profile);
+    // Add avatar and provider info to existing profile
+    const enhancedProfile = {
+      ...profile,
+      avatar_url: user.user_metadata?.avatar_url || profile.avatar_url || null,
+      provider: user.app_metadata?.provider || profile.provider || null,
+    };
+
+    return NextResponse.json(enhancedProfile);
 
   } catch (error) {
     console.error('Profile API error:', error);

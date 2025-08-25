@@ -1,35 +1,47 @@
-import type { Metadata } from "next";
-import { Geist } from "next/font/google";
-import "./globals.css";
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
 import { Providers } from './providers';
+import { ThemeProvider } from 'next-themes';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
-const defaultUrl = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : "http://localhost:3000";
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(defaultUrl),
-  title: "Web Audit - Comprehensive Website Analysis Tool",
-  description:
-    "Professional website auditing platform with SEO analysis, content quality checks, performance monitoring, and detailed reporting for web optimization.",
+  title: 'Web Audit - Professional Website Analysis',
+  description: 'Comprehensive website audit and analysis tool for SEO, performance, and user experience optimization.',
 };
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  display: "swap",
-  subsets: ["latin"],
-});
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.className} antialiased`}>
+      <body className={inter.className}>
         <Providers>
-          {children}
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            {children}
+            <ToastContainer
+              position="bottom-right"
+              autoClose={5000}
+              hideProgressBar={false}
+              newestOnTop={false}
+              closeOnClick={false}
+              rtl={false}
+              pauseOnFocusLoss
+              draggable
+              pauseOnHover
+              theme="dark"
+            />
+          </ThemeProvider>
         </Providers>
       </body>
     </html>

@@ -1,33 +1,26 @@
-"use client"
+'use client';
 
-import { ThemeProvider } from "next-themes";
-import { ToastContainer } from "react-toastify";
 import { Provider } from 'react-redux';
-import { store } from './stores/store';
+import { getStore } from '@/lib/store/store';
+import { useEffect, useState } from 'react';
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  const [mounted, setMounted] = useState(false);
+  const [store, setStore] = useState<ReturnType<typeof getStore>>(undefined);
+
+  useEffect(() => {
+    setMounted(true);
+    setStore(getStore());
+  }, []);
+
+  // Prevent hydration mismatch by not rendering until client-side
+  if (!mounted || !store) {
+    return <div style={{ visibility: 'hidden' }}>{children}</div>;
+  }
+
   return (
     <Provider store={store}>
-      <ThemeProvider
-        attribute="class"
-        defaultTheme="system"
-        enableSystem
-        disableTransitionOnChange
-      >
-        {children}
-      </ThemeProvider>
-      <ToastContainer
-        position="bottom-right"
-        autoClose={5000}
-        hideProgressBar={false}
-        newestOnTop={false}
-        closeOnClick={false}
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        theme="dark"
-      />
+      {children}
     </Provider>
   );
 } 

@@ -1,68 +1,31 @@
 import { CheckCircle, Star, ArrowRight, Zap, Shield, Users, Globe2 } from "lucide-react";
 import Link from "next/link";
+import { getPricingConfig, getPlanDisplayPrice } from '@/lib/pricing';
+import { BillingToggle } from '@/components/ui/billing-toggle';
+import { useState } from 'react';
 
 export default function PricingPage() {
-  const plans = [
-    {
-      name: "Starter",
-      price: "$29",
-      period: "per month",
-      description: "Perfect for small businesses and personal websites",
-      features: [
-        "Up to 10 website audits per month",
-        "Basic SEO analysis",
-        "Mobile responsiveness check",
-        "Page speed insights",
-        "Content quality analysis",
-        "Basic reporting",
-        "Email support"
-      ],
-      popular: false,
-      cta: "Start Free Trial",
-      href: "/auth/sign-up"
-    },
-    {
-      name: "Professional",
-      price: "$79",
-      period: "per month",
-      description: "Ideal for growing businesses and agencies",
-      features: [
-        "Up to 50 website audits per month",
-        "Advanced SEO analysis",
-        "Multi-device testing",
-        "Image optimization analysis",
-        "Link analysis & broken link detection",
-        "Social media preview analysis",
-        "Custom instructions support",
-        "Priority email support",
-        "API access"
-      ],
-      popular: true,
-      cta: "Start Free Trial",
-      href: "/auth/sign-up"
-    },
-    {
-      name: "Enterprise",
-      price: "$199",
-      period: "per month",
-      description: "For large organizations and enterprise clients",
-      features: [
-        "Unlimited website audits",
-        "Full website crawling (up to 100 pages)",
-        "Advanced security analysis",
-        "Brand consistency verification",
-        "Custom reporting templates",
-        "White-label reports",
-        "Dedicated account manager",
-        "Phone & priority support",
-        "Custom integrations",
-        "Team collaboration tools"
-      ],
-      popular: false,
-      cta: "Contact Sales",
-      href: "/auth/sign-up"
+  const [billingPeriod, setBillingPeriod] = useState('month');
+  const { plans: basePlans, currency, locale } = getPricingConfig();
+
+  // Calculate prices based on billing period
+  const yearlyDiscountPercent = parseInt(process.env.NEXT_PUBLIC_YEARLY_DISCOUNT_PERCENT || '20');
+  const getPlanPrice = (basePrice: number, period: string) => {
+    if (period === 'year' || period === 'yearly' || period === 'annual') {
+      // Apply yearly discount for yearly billing
+      const discountMultiplier = (100 - yearlyDiscountPercent) / 100;
+      return Math.round(basePrice * 12 * discountMultiplier);
     }
-  ];
+    return basePrice;
+  };
+
+  const plans = basePlans.map(plan => ({
+    ...plan,
+    price: getPlanPrice(plan.price, billingPeriod),
+    period: billingPeriod === 'year' || billingPeriod === 'yearly' || billingPeriod === 'annual' 
+      ? 'per year' 
+      : 'per month'
+  }));
 
   const features = [
     {
@@ -138,6 +101,15 @@ export default function PricingPage() {
             <p className="text-xl text-muted-foreground mb-8 leading-relaxed">
               Choose the perfect plan for your website auditing needs. All plans include a 14-day free trial.
             </p>
+            
+            {/* Billing Toggle */}
+                         <BillingToggle
+               billingPeriod={billingPeriod}
+               onBillingPeriodChange={setBillingPeriod}
+               showYearlyDiscount={true}
+               yearlyDiscountPercent={yearlyDiscountPercent}
+               className="mb-8"
+             />
           </div>
         </div>
       </section>
@@ -148,7 +120,7 @@ export default function PricingPage() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
             {plans.map((plan, index) => (
               <div
-                key={index}
+                key={plan.id}
                 className={`relative bg-white dark:bg-slate-800 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border-2 ${
                   plan.popular 
                     ? 'border-blue-500 scale-105' 
@@ -168,7 +140,7 @@ export default function PricingPage() {
                   <div className="text-center mb-8">
                     <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
                     <div className="mb-4">
-                      <span className="text-4xl font-bold">{plan.price}</span>
+                      <span className="text-4xl font-bold">{getPlanDisplayPrice(plan)}</span>
                       <span className="text-muted-foreground ml-2">{plan.period}</span>
                     </div>
                     <p className="text-muted-foreground">{plan.description}</p>

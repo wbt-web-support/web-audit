@@ -834,7 +834,7 @@ export function AuditMain() {
 
         {/* Process Status */}
         {(currentSession?.currentAction || currentSession?.isCrawling || currentSession?.backgroundCrawling || projects[0]?.status === 'crawling') && (
-          <div className="mb-6">
+          <div className="mb-6 mt-4">
             <ProcessStatusCard currentSession={currentSession} />
           </div>
         )}
@@ -863,7 +863,7 @@ export function AuditMain() {
 
         {/* Project Metrics */}
         {projects.length > 0 && projects[0] && (
-          <div className="mb-6">
+          <div className="mb-6 mt-6">
             <ProjectMetrics 
               project={projects[0]}
               currentSession={currentSession}

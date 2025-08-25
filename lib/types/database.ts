@@ -1,10 +1,45 @@
 export type UserProfile = {
   id: string;
   email: string;
+  first_name: string | null;
+  last_name: string | null;
   full_name: string | null;
   created_at: string;
   updated_at: string;
 };
+
+// Subscription types
+export type PlanName = 'Enterprise' | 'Professional' | 'Starter';
+export type BillingCycle = 'monthly' | 'yearly';
+
+export interface UserSubscription {
+  id: string;
+  user_id: string;
+  plan_name: PlanName;
+  billing_cycle: BillingCycle;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateSubscriptionRequest {
+  plan_name: PlanName;
+  billing_cycle: BillingCycle;
+  activate_immediately?: boolean;
+}
+
+export interface SwitchActivePlanRequest {
+  subscription_id: string;
+}
+
+export interface SubscriptionResponse {
+  success: boolean;
+  data?: UserSubscription | UserSubscription[];
+  message?: string;
+  error?: string;
+}
 
 export type AuditProjectStatus = 'pending' | 'crawling' | 'analyzing' | 'completed' | 'failed';
 

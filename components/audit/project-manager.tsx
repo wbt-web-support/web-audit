@@ -258,43 +258,7 @@ const CrawlingProgressIndicator = React.memo(({
     : 0;
 
   return (
-    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-      <div className="flex items-center gap-2 mb-2">
-        <Activity className="h-4 w-4 text-blue-600 animate-pulse" />
-        <span className="text-sm font-medium text-blue-700">Live Crawling Progress</span>
-        <div className="flex items-center gap-1 ml-auto">
-          <Wifi className="h-3 w-3 text-blue-600" />
-          <span className="text-xs text-blue-600">Live</span>
-        </div>
-      </div>
-      
-      <div className="space-y-2">
-        {/* Progress Bar */}
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs text-blue-600">
-            <span>Pages Crawled</span>
-            <span>{currentProgress.pages_crawled} / {currentProgress.total_pages}</span>
-          </div>
-          <Progress value={progressPercentage} className="h-2" />
-        </div>
-        
-        {/* Live Stats */}
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <div className="text-center p-2 bg-blue-100 rounded">
-            <div className="font-semibold text-blue-700">{currentProgress.total_images}</div>
-            <div className="text-blue-600">Images</div>
-          </div>
-          <div className="text-center p-2 bg-blue-100 rounded">
-            <div className="font-semibold text-blue-700">{currentProgress.total_links}</div>
-            <div className="text-blue-600">Links</div>
-          </div>
-          <div className="text-center p-2 bg-blue-100 rounded">
-            <div className="font-semibold text-blue-700">{currentProgress.internal_links}</div>
-            <div className="text-blue-600">Internal</div>
-          </div>
-        </div>
-      </div>
-    </div>
+  <></>
   );
 });
 
@@ -455,7 +419,16 @@ const ProjectCard = React.memo(({
                 </div>
                 <div className="flex items-center gap-2">
                   <BarChart3 className="h-4 w-4" />
-                  <span>{metrics.pagesCrawled} pages crawled • {metrics.pagesAnalyzed} analyzed</span>
+                  <span>
+                    {isRunning ? (
+                      <span className="text-slate-500">
+                        <span className="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse mr-2"></span>
+                        Processing...
+                      </span>
+                    ) : (
+                      `${metrics.pagesCrawled} pages crawled • ${metrics.pagesAnalyzed} analyzed`
+                    )}
+                  </span>
                 </div>
               </div>
             </div>

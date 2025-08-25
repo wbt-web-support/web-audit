@@ -64,7 +64,7 @@ export function LoginForm({
   };
 
   return (
-    <div className={cn("w-full", className)} {...props}>
+    <div className={cn("w-full max-w-2xl mx-auto", className)} {...props}>
       <div className="card p-8">
         <form onSubmit={handleLogin} className="space-y-6">
           {/* Email Field */}

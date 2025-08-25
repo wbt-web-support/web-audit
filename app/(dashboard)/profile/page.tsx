@@ -1,19 +1,31 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { User, Calendar, Mail, Globe, BarChart3, Clock, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 import { AuditProject } from '@/lib/types/database';
+import { getPricingConfig, PricingPlan } from '@/lib/pricing';
+import {
+  ProfileHeader,
+  ProfileStats,
+  RecentProjects,
+  SubscriptionTab,
+  SecurityTab,
+  BillingTab,
+  HelpTab,
+  StatusMessage
+} from '@/components/profile';
+
 
 interface UserProfile {
   id: string;
   email: string;
+  first_name: string | null;
+  last_name: string | null;
   full_name: string | null;
   created_at: string;
   updated_at: string;
+  avatar_url?: string | null;
+  provider?: string | null;
 }
 
 interface ProfileStats {
@@ -23,16 +35,113 @@ interface ProfileStats {
   averageScore: number;
 }
 
+interface SubscriptionPlan {
+  name: string;
+  price: string;
+  period: string;
+  features: string[];
+  current: boolean;
+  popular?: boolean;
+}
+
+interface BillingHistoryItem {
+  id: string;
+  date: string;
+  amount: string;
+  amount_numeric: number;
+  status: 'completed' | 'pending' | 'failed' | 'refunded';
+  description: string;
+  plan_name: string;
+  billing_period: string;
+  invoice_url?: string;
+  payment_method?: string;
+}
+
+interface BillingHistoryResponse {
+  billingHistory: BillingHistoryItem[];
+  totalSpent: number;
+  totalPayments: number;
+}
+
+interface UserPlan {
+  id: string;
+  planId: string;
+  planName: string;
+  isActive: boolean;
+  purchasedAt: string;
+  expiresAt?: string;
+}
+
 export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [projects, setProjects] = useState<AuditProject[]>([]);
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('grid');
+  const [activeTab, setActiveTab] = useState('overview');
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [passwordLoading, setPasswordLoading] = useState(false);
+
+  const [subscription, setSubscription] = useState<SubscriptionPlan | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<string>('professional');
+  const [billingPeriod, setBillingPeriod] = useState('month');
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [showCancelMessage, setShowCancelMessage] = useState(false);
+  const [billingHistory, setBillingHistory] = useState<BillingHistoryItem[]>([]);
+  const [billingHistoryLoading, setBillingHistoryLoading] = useState(false);
+  const [billingStats, setBillingStats] = useState({ totalSpent: 0, totalPayments: 0, lastPaymentDate: 'Never' });
+  const [userPlans, setUserPlans] = useState<UserPlan[]>([]);
+  const { plans: basePlans } = getPricingConfig();
+
+  // Calculate prices based on billing period
+  const yearlyDiscountPercent = parseInt(process.env.NEXT_PUBLIC_YEARLY_DISCOUNT_PERCENT || '20');
+  const getPlanPrice = (basePrice: number, period: string) => {
+    if (period === 'year' || period === 'yearly' || period === 'annual') {
+      // Apply yearly discount for yearly billing
+      const discountMultiplier = (100 - yearlyDiscountPercent) / 100;
+      return Math.round(basePrice * 12 * discountMultiplier);
+    }
+    return basePrice;
+  };
+
+  const plans = basePlans.map(plan => ({
+    ...plan,
+    price: getPlanPrice(plan.price, billingPeriod),
+    period: billingPeriod === 'year' || billingPeriod === 'yearly' || billingPeriod === 'annual' 
+      ? 'per year' 
+      : 'per month'
+  }));
 
   useEffect(() => {
     fetchProfileData();
+    
+    // Check for success/cancel messages in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('success') === 'true') {
+      setShowSuccessMessage(true);
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      // Refresh subscription data after successful payment
+      setTimeout(() => {
+        fetchProfileData();
+      }, 1000);
+    } else if (urlParams.get('canceled') === 'true') {
+      setShowCancelMessage(true);
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, []);
+
+  // Fetch billing history when billing tab is selected
+  useEffect(() => {
+    if (activeTab === 'billing') {
+      fetchBillingHistory();
+    }
+  }, [activeTab]);
 
   const fetchProfileData = async () => {
     try {
@@ -56,6 +165,31 @@ export default function ProfilePage() {
         const statsData = await statsResponse.json();
         setStats(statsData);
       }
+
+      // Fetch subscription data
+      const subscriptionResponse = await fetch('/api/profile/subscription');
+      console.log('Subscription response status:', subscriptionResponse.status);
+      
+      if (subscriptionResponse.ok) {
+        const subscriptionData = await subscriptionResponse.json();
+        console.log('Subscription data:', subscriptionData);
+        setSubscription(subscriptionData);
+        // Set selected plan based on current subscription
+        if (subscriptionData.name && subscriptionData.name !== 'Free') {
+          setSelectedPlan(subscriptionData.name.toLowerCase());
+        }
+      } else {
+        console.error('Failed to fetch subscription:', await subscriptionResponse.text());
+      }
+
+      // Fetch user plans data
+      const userPlansResponse = await fetch('/api/profile/user-plans');
+      if (userPlansResponse.ok) {
+        const userPlansData = await userPlansResponse.json();
+        setUserPlans(userPlansData);
+      } else {
+        console.error('Failed to fetch user plans:', await userPlansResponse.text());
+      }
     } catch (error) {
       console.error('Error fetching profile data:', error);
     } finally {
@@ -63,33 +197,89 @@ export default function ProfilePage() {
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'crawling':
-      case 'analyzing':
-        return <Clock className="h-4 w-4 text-blue-500" />;
-      case 'failed':
-        return <XCircle className="h-4 w-4 text-red-500" />;
-      default:
-        return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+  const fetchBillingHistory = async () => {
+    setBillingHistoryLoading(true);
+    try {
+      const response = await fetch('/api/profile/billing-history');
+      if (response.ok) {
+        const data = await response.json();
+        setBillingHistory(data.billingHistory || data);
+        
+        // Calculate stats if not provided by API
+        if (data.totalSpent !== undefined && data.totalPayments !== undefined) {
+          setBillingStats({ 
+            totalSpent: data.totalSpent, 
+            totalPayments: data.totalPayments,
+            lastPaymentDate: data.lastPaymentDate || 'Never'
+          });
+        } else {
+          // Fallback calculation
+          const completedPayments = (data.billingHistory || data).filter((item: BillingHistoryItem) => item.status === 'completed');
+          const totalSpent = completedPayments.reduce((sum: number, item: BillingHistoryItem) => sum + item.amount_numeric, 0);
+          const totalPayments = completedPayments.length;
+          
+          // Calculate last payment date for fallback
+          const lastPayment = completedPayments.length > 0 
+            ? completedPayments.sort((a: BillingHistoryItem, b: BillingHistoryItem) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+            : null;
+          const lastPaymentDate = lastPayment 
+            ? new Date(lastPayment.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+            : 'Never';
+          
+          setBillingStats({ totalSpent, totalPayments, lastPaymentDate });
+        }
+      } else {
+        console.error('Failed to fetch billing history');
+      }
+    } catch (error) {
+      console.error('Error fetching billing history:', error);
+    } finally {
+      setBillingHistoryLoading(false);
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-green-100 text-green-800';
-      case 'crawling':
-      case 'analyzing':
-        return 'bg-blue-100 text-blue-800';
-      case 'failed':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-yellow-100 text-yellow-800';
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      alert('New passwords do not match');
+      return;
+    }
+    
+    setPasswordLoading(true);
+    try {
+      const response = await fetch('/api/profile/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        alert('Password updated successfully');
+        setPasswordForm({
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: ''
+        });
+      } else {
+        alert(data.error || 'Failed to update password');
+      }
+    } catch (error) {
+      alert('Failed to update password');
+    } finally {
+      setPasswordLoading(false);
     }
   };
+
+
+
+
 
   if (loading) {
     return (
@@ -108,204 +298,78 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground mb-2">Profile</h1>
-        <p className="text-muted-foreground">Manage your account and view your projects</p>
-      </div>
+    <div className="w-full px-4 py-8">
+      {/* Status Messages */}
+      {showSuccessMessage && (
+        <StatusMessage
+          type="success"
+          message="Payment Successful!"
+          description="Your subscription has been updated successfully. You now have access to all premium features."
+          onClose={() => setShowSuccessMessage(false)}
+        />
+      )}
 
-      {/* Profile Info */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card>
-          <CardHeader className="flex flex-row items-center space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
-            <Globe className="h-4 w-4 text-muted-foreground ml-auto" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalProjects || 0}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats?.activeProjects || 0} active
-            </p>
-          </CardContent>
-        </Card>
+      {showCancelMessage && (
+        <StatusMessage
+          type="cancel"
+          message="Payment Cancelled"
+          description="Your payment was cancelled. You can try again anytime."
+          onClose={() => setShowCancelMessage(false)}
+        />
+      )}
 
-        <Card>
-          <CardHeader className="flex flex-row items-center space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pages Analyzed</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground ml-auto" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalPagesAnalyzed || 0}</div>
-            <p className="text-xs text-muted-foreground">
-              Across all projects
-            </p>
-          </CardContent>
-        </Card>
+      {/* Profile Header */}
+      <ProfileHeader profile={profile} subscription={subscription} />
 
-        <Card>
-          <CardHeader className="flex flex-row items-center space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Average Score</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground ml-auto" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.averageScore || 0}%</div>
-            <p className="text-xs text-muted-foreground">
-              Overall performance
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="subscription">Subscription</TabsTrigger>
+          <TabsTrigger value="security">Security</TabsTrigger>
+          <TabsTrigger value="billing">Billing</TabsTrigger>
+          <TabsTrigger value="help">Help</TabsTrigger>
+        </TabsList>
 
-      {/* User Details */}
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <User className="h-5 w-5" />
-            User Information
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-center gap-2">
-              <Mail className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Email:</span>
-              <span className="font-medium">{profile?.email}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <User className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Name:</span>
-              <span className="font-medium">{profile?.full_name || 'Not provided'}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Member since:</span>
-              <span className="font-medium">
-                {profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Unknown'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Last updated:</span>
-              <span className="font-medium">
-                {profile?.updated_at ? new Date(profile.updated_at).toLocaleDateString() : 'Unknown'}
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        {/* Overview Tab */}
+        <TabsContent value="overview" className="space-y-6">
+          <ProfileStats stats={stats} />
+          <RecentProjects projects={projects} />
+        </TabsContent>
 
-      {/* Projects Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Your Projects</CardTitle>
-          <CardDescription>
-            View and manage your web audit projects
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-2 mb-6">
-              <TabsTrigger value="grid">Grid View</TabsTrigger>
-              <TabsTrigger value="table">Table View</TabsTrigger>
-            </TabsList>
+        {/* Subscription Tab */}
+        <TabsContent value="subscription" className="space-y-6">
+          <SubscriptionTab
+            plans={plans}
+            billingPeriod={billingPeriod}
+            onBillingPeriodChange={setBillingPeriod}
+          />
+        </TabsContent>
 
-            <TabsContent value="grid" className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {projects.map((project) => (
-                  <Card key={project.id} className="hover:shadow-md transition-shadow">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
-                        <CardTitle className="text-sm font-medium line-clamp-2">
-                          {project.company_name || project.base_url}
-                        </CardTitle>
-                        {getStatusIcon(project.status)}
-                      </div>
-                      <CardDescription className="text-xs text-muted-foreground line-clamp-1">
-                        {project.base_url}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">Status:</span>
-                          <Badge className={getStatusColor(project.status)}>
-                            {project.status}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">Pages:</span>
-                          <span>{project.pages_analyzed}/{project.total_pages}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">Created:</span>
-                          <span>{new Date(project.created_at).toLocaleDateString()}</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </TabsContent>
+        {/* Security Tab */}
+        <TabsContent value="security" className="space-y-6">
+          <SecurityTab
+            onPasswordChange={handlePasswordChange}
+            passwordForm={passwordForm}
+            setPasswordForm={setPasswordForm}
+            passwordLoading={passwordLoading}
+          />
+        </TabsContent>
 
-            <TabsContent value="table" className="space-y-4">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left py-3 px-4 font-medium">Project</th>
-                      <th className="text-left py-3 px-4 font-medium">URL</th>
-                      <th className="text-left py-3 px-4 font-medium">Status</th>
-                      <th className="text-left py-3 px-4 font-medium">Pages</th>
-                      <th className="text-left py-3 px-4 font-medium">Created</th>
-                      <th className="text-left py-3 px-4 font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {projects.map((project) => (
-                      <tr key={project.id} className="border-b border-border hover:bg-muted/50">
-                        <td className="py-3 px-4">
-                          <div className="font-medium">
-                            {project.company_name || 'Unnamed Project'}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="text-muted-foreground max-w-xs truncate">
-                            {project.base_url}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            {getStatusIcon(project.status)}
-                            <Badge className={getStatusColor(project.status)}>
-                              {project.status}
-                            </Badge>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          {project.pages_analyzed}/{project.total_pages}
-                        </td>
-                        <td className="py-3 px-4 text-muted-foreground">
-                          {new Date(project.created_at).toLocaleDateString()}
-                        </td>
-                        <td className="py-3 px-4">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => window.location.href = `/audit/${project.id}`}
-                          >
-                            View
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+        {/* Billing Tab */}
+        <TabsContent value="billing" className="space-y-6">
+          <BillingTab
+            billingHistory={billingHistory}
+            billingHistoryLoading={billingHistoryLoading}
+            billingStats={billingStats}
+            onRefresh={fetchBillingHistory}
+          />
+        </TabsContent>
+
+        {/* Help Tab */}
+        <TabsContent value="help" className="space-y-6">
+          <HelpTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
