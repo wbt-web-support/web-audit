@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { XCircle, BarChart3, Plus, TrendingUp, Globe, Clock, CheckCircle } from "lucide-react";
@@ -25,6 +25,18 @@ export interface DashboardStats {
   recentProjects: AuditProject[];
 }
 
+// Cache for dashboard data to prevent unnecessary re-fetches
+const dashboardCache = {
+  data: null as DashboardStats | null,
+  timestamp: 0,
+  isValid: () => {
+    const now = Date.now();
+    const cacheAge = now - dashboardCache.timestamp;
+    // Cache is valid for 5 minutes
+    return dashboardCache.data && cacheAge < 5 * 60 * 1000;
+  }
+};
+
 /**
  * Main dashboard component that displays:
  * - Dashboard header with title and description
@@ -38,39 +50,63 @@ export function DashboardMain() {
   const { stats, loading, error, refetch, isStale } = useDashboardStats();
   const [minLoadingTime, setMinLoadingTime] = useState(true);
   const [debouncedLoading, setDebouncedLoading] = useState(true);
+  const hasInitialized = useRef(false);
   
   // Auto-project creation hook
   const { websiteUrl, isCreating, hasAttempted } = useAutoProjectCreation({
     onProjectCreated: useCallback((projectId: string) => {
       console.log('Auto-created project:', projectId);
-      // Optionally refresh stats after project creation
+      // Invalidate cache when new project is created
+      dashboardCache.data = null;
+      dashboardCache.timestamp = 0;
       refetch(true);
     }, [refetch])
   });
 
+  // Cache the stats data when it's loaded
+  useEffect(() => {
+    if (stats && !loading) {
+      dashboardCache.data = stats;
+      dashboardCache.timestamp = Date.now();
+      hasInitialized.current = true;
+    }
+  }, [stats, loading]);
+
+  // Use cached data if available and valid, otherwise use fresh data
+  const displayStats = useMemo(() => {
+    if (dashboardCache.isValid() && !loading) {
+      return dashboardCache.data;
+    }
+    return stats;
+  }, [stats, loading]);
+
   // Ensure minimum loading time to prevent flash
   useEffect(() => {
-    if (!loading && stats) {
+    if (!loading && displayStats) {
       const timer = setTimeout(() => {
         setMinLoadingTime(false);
-      }, 200); // Reduced from 300ms
+      }, 150); // Reduced from 200ms
       return () => clearTimeout(timer);
     }
-  }, [loading, stats]);
+  }, [loading, displayStats]);
 
   // Debounce loading state to prevent flickering
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedLoading(loading);
-    }, 50); // Reduced from 100ms
+    }, 30); // Reduced from 50ms
 
     return () => clearTimeout(timer);
   }, [loading]);
 
   // Memoize loading state to prevent unnecessary re-renders
   const isLoading = useMemo(() => {
+    // Don't show loading if we have cached data and it's the first load
+    if (hasInitialized.current && dashboardCache.isValid() && !loading) {
+      return false;
+    }
     return debouncedLoading || minLoadingTime;
-  }, [debouncedLoading, minLoadingTime]);
+  }, [debouncedLoading, minLoadingTime, loading]);
 
   // Performance monitor callback - must be defined before any returns
   const handleLoadComplete = useCallback(() => {
@@ -118,7 +154,7 @@ export function DashboardMain() {
   }
 
   // Safety check - return skeleton if no stats data (shouldn't happen now)
-  if (!stats) {
+  if (!displayStats) {
     return <DashboardSkeleton />;
   }
 
@@ -150,7 +186,7 @@ export function DashboardMain() {
         
         {/* Statistics Cards - Show immediately if cached, with loading overlay if refreshing */}
         <div className="relative">
-          {loading && stats && (
+          {loading && displayStats && (
             <div className="absolute inset-0 bg-white/50 backdrop-blur-sm rounded-lg z-10 flex items-center justify-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
             </div>
@@ -162,7 +198,7 @@ export function DashboardMain() {
               </div>
             </div>
           )}
-          <StatsCards stats={stats} loading={debouncedLoading} />
+          <StatsCards stats={displayStats} loading={debouncedLoading} />
         </div>
         
         {/* Main Content Grid */}
@@ -172,14 +208,14 @@ export function DashboardMain() {
           <div className="space-y-6">
             <ProjectForm 
               mode="create" 
-              projects={stats.recentProjects}
+              projects={displayStats.recentProjects}
             />
           </div>
           
           {/* Recent Projects - Takes 50% of the space */}
           <div className="space-y-6">
             <RecentProjects 
-              projects={stats.recentProjects} 
+              projects={displayStats.recentProjects} 
               loading={debouncedLoading}
             />
           </div>

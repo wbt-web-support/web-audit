@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { DashboardStats } from '../components/dashboard-main';
+import { cacheUtils, CACHE_KEYS } from '@/lib/cache';
 
 interface UseDashboardStatsReturn {
   stats: DashboardStats | null;
@@ -18,11 +19,24 @@ export function useDashboardStats(): UseDashboardStatsReturn {
   const [error, setError] = useState<string | null>(null);
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const hasInitialized = useRef(false);
 
   const fetchStats = useCallback(async (force = false) => {
     const now = Date.now();
     
-    // Check if we have cached data and it's still valid
+    // Check global cache first
+    if (!force && !hasInitialized.current) {
+      const cachedStats = cacheUtils.getDashboardStats();
+      if (cachedStats) {
+        setStats(cachedStats as DashboardStats);
+        setLastFetchTime(now);
+        setLoading(false);
+        hasInitialized.current = true;
+        return;
+      }
+    }
+    
+    // Check if we have local cached data and it's still valid
     if (!force && stats && (now - lastFetchTime) < CACHE_DURATION) {
       return;
     }
@@ -51,8 +65,13 @@ export function useDashboardStats(): UseDashboardStatsReturn {
       }
       
       const data = await response.json();
+      
+      // Update both local state and global cache
       setStats(data);
       setLastFetchTime(now);
+      cacheUtils.setDashboardStats(data);
+      hasInitialized.current = true;
+      
     } catch (err) {
       // Don't set error if request was aborted
       if (err instanceof Error && err.name === 'AbortError') {
