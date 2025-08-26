@@ -47,29 +47,24 @@ export function DashboardMain() {
     }
   });
 
-  // Ensure minimum loading time to prevent flash
+  // Reduce minimum loading time for better perceived performance
   useEffect(() => {
     if (!loading && stats) {
       const timer = setTimeout(() => {
         setMinLoadingTime(false);
-      }, 300); // 300ms minimum loading time
+      }, 150); // Reduced from 300ms to 150ms
       return () => clearTimeout(timer);
     }
   }, [loading, stats]);
 
-  // Debounce loading state to prevent flickering
+  // Reduce debounce time for more responsive loading states
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedLoading(loading);
-    }, 100); // 100ms debounce
+    }, 50); // Reduced from 100ms to 50ms
 
     return () => clearTimeout(timer);
   }, [loading]);
-
-  // Loading state - show skeleton while fetching data
-  if (debouncedLoading || minLoadingTime) {
-    return <DashboardSkeleton />;
-  }
 
   // Show auto-project creation loading state
   if (isCreating) {
@@ -103,6 +98,11 @@ export function DashboardMain() {
         </div>
       </div>
     );
+  }
+
+  // Loading state - show skeleton while fetching data
+  if (debouncedLoading || minLoadingTime) {
+    return <DashboardSkeleton />;
   }
 
   // Safety check - return skeleton if no stats data (shouldn't happen now)
@@ -220,7 +220,7 @@ function DashboardHeader() {
  * Memoized to prevent unnecessary re-renders
  */
 const StatsCards = React.memo(({ stats, loading }: { stats: DashboardStats, loading: boolean }) => {
-  const statCards = [
+  const statCards = useMemo(() => [
     {
       title: "Total Projects",
       value: stats.totalProjects || 0,
@@ -253,7 +253,7 @@ const StatsCards = React.memo(({ stats, loading }: { stats: DashboardStats, load
       iconColor: "text-purple-600",
       description: "Overall performance"
     }
-  ];
+  ], [stats]);
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

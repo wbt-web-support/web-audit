@@ -8,11 +8,12 @@ interface TrialInitializerProps {
 
 export function TrialInitializer({ children }: TrialInitializerProps) {
   const [isInitialized, setIsInitialized] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // Start as false to not block render
 
   useEffect(() => {
     const initializeTrial = async () => {
       try {
+        setIsLoading(true);
         // Use API endpoint to initialize trial
         const response = await fetch('/api/profile/initialize-trial', {
           method: 'POST',
@@ -37,21 +38,17 @@ export function TrialInitializer({ children }: TrialInitializerProps) {
       }
     };
 
-    // Add a small delay to ensure auth is ready
-    const timer = setTimeout(() => {
-      initializeTrial();
-    }, 100);
-
-    return () => clearTimeout(timer);
+    // Initialize in background without blocking render
+    initializeTrial();
   }, []);
 
-  // Show loading state while initializing
-  if (isLoading) {
+  // Show children immediately, only show loading if explicitly loading
+  if (isLoading && !isInitialized) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-sm text-muted-foreground">Setting up your account...</p>
+      <div className="fixed top-4 right-4 z-50 bg-blue-50 border border-blue-200 rounded-lg p-3 shadow-lg">
+        <div className="flex items-center gap-2">
+          <div className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+          <p className="text-sm text-blue-800">Setting up account...</p>
         </div>
       </div>
     );

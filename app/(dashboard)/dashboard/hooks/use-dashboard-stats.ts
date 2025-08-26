@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { DashboardStats } from '../components/dashboard-main';
+import { CACHE_KEYS, CACHE_DURATIONS, saveToCache, loadFromCache, clearCache } from '@/lib/utils/cache-utils';
 
 interface UseDashboardStatsReturn {
   stats: DashboardStats | null;
@@ -9,21 +10,20 @@ interface UseDashboardStatsReturn {
   isStale: boolean;
 }
 
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes (matching Redis TTL)
-const STALE_DURATION = 10 * 60 * 1000; // 10 minutes
-
 export function useDashboardStats(): UseDashboardStatsReturn {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const isInitialized = useRef(false);
 
   const fetchStats = useCallback(async (force = false) => {
     const now = Date.now();
     
     // Check if we have cached data and it's still valid
-    if (!force && stats && (now - lastFetchTime) < CACHE_DURATION) {
+    if (!force && stats && (now - lastFetchTime) < CACHE_DURATIONS.MEDIUM) {
+      setLoading(false);
       return;
     }
 
@@ -42,7 +42,7 @@ export function useDashboardStats(): UseDashboardStatsReturn {
       const response = await fetch('/api/dashboard/stats', {
         signal: abortControllerRef.current.signal,
         headers: {
-          'Cache-Control': 'max-age=30',
+          'Cache-Control': 'max-age=300',
         },
       });
       
@@ -53,6 +53,9 @@ export function useDashboardStats(): UseDashboardStatsReturn {
       const data = await response.json();
       setStats(data);
       setLastFetchTime(now);
+      
+      // Save to localStorage for instant loading on tab switch
+      saveToCache(CACHE_KEYS.DASHBOARD_STATS, data);
     } catch (err) {
       // Don't set error if request was aborted
       if (err instanceof Error && err.name === 'AbortError') {
@@ -64,9 +67,24 @@ export function useDashboardStats(): UseDashboardStatsReturn {
     }
   }, [stats, lastFetchTime]);
 
-  // Initial fetch
+  // Initial load - try cache first, then fetch fresh data
   useEffect(() => {
-    fetchStats();
+    if (isInitialized.current) return;
+    isInitialized.current = true;
+
+    // Try to load from cache first for instant display
+    const cachedStats = loadFromCache<DashboardStats>(CACHE_KEYS.DASHBOARD_STATS);
+    if (cachedStats) {
+      setStats(cachedStats);
+      setLastFetchTime(Date.now());
+      setLoading(false);
+      
+      // Fetch fresh data in background
+      fetchStats(true).catch(console.error);
+    } else {
+      // No cache, fetch fresh data
+      fetchStats();
+    }
     
     // Cleanup function to abort ongoing requests
     return () => {
@@ -76,26 +94,29 @@ export function useDashboardStats(): UseDashboardStatsReturn {
     };
   }, [fetchStats]);
 
-  // Auto-refresh stale data in background
+  // Auto-refresh stale data in background (less frequent)
   useEffect(() => {
     if (!stats) return;
 
     const interval = setInterval(() => {
       const now = Date.now();
-      if ((now - lastFetchTime) > STALE_DURATION) {
+      if ((now - lastFetchTime) > CACHE_DURATIONS.LONG) {
         // Fetch in background without showing loading state
         fetchStats(true).catch(console.error);
       }
-    }, 10000); // Check every 10 seconds
+    }, 30000); // Check every 30 seconds
 
     return () => clearInterval(interval);
   }, [stats, lastFetchTime, fetchStats]);
 
   const refetch = useCallback(async (force = false) => {
+    if (force) {
+      clearCache(CACHE_KEYS.DASHBOARD_STATS); // Clear cache on force refresh
+    }
     await fetchStats(force);
   }, [fetchStats]);
 
-  const isStale = Date.now() - lastFetchTime > STALE_DURATION;
+  const isStale = Date.now() - lastFetchTime > CACHE_DURATIONS.LONG;
 
   return {
     stats,

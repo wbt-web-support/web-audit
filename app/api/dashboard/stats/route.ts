@@ -10,43 +10,50 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Fetch statistics
-    const { data: projects } = await supabase
-      .from('audit_projects')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
+    // Use Promise.all to fetch data in parallel for better performance
+    const [projectsResponse, auditResultsResponse] = await Promise.all([
+      // Fetch projects with optimized query
+      supabase
+        .from('audit_projects')
+        .select('id, status, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5), // Only fetch recent projects for dashboard
 
-    const { data: auditResults } = await supabase
-      .from('audit_results')
-      .select(`
-        *,
-        scraped_pages!inner(
-          audit_project_id,
-          audit_projects!inner(
-            user_id
-          )
-        )
-      `)
-      .eq('scraped_pages.audit_projects.user_id', user.id);
+      // Fetch audit results count with optimized query
+      supabase
+        .from('audit_results')
+        .select('overall_score', { count: 'exact', head: true })
+        .eq('scraped_pages.audit_projects.user_id', user.id)
+    ]);
 
-    // Calculate statistics
-    const totalProjects = projects?.length || 0;
-    const activeProjects = projects?.filter(s => s.status === 'crawling' || s.status === 'analyzing').length || 0;
-    const totalPagesAnalyzed = auditResults?.length || 0;
-    const averageScore = auditResults && auditResults.length > 0
+    const projects = projectsResponse.data || [];
+    const auditResults = auditResultsResponse.data || [];
+
+    // Calculate statistics efficiently
+    const totalProjects = projects.length;
+    const activeProjects = projects.filter(p => p.status === 'crawling' || p.status === 'analyzing').length;
+    const totalPagesAnalyzed = auditResults.length;
+    const averageScore = auditResults.length > 0
       ? Math.round(auditResults.reduce((sum, r) => sum + (r.overall_score || 0), 0) / auditResults.length)
       : 0;
 
-    const recentProjects = projects?.slice(0, 5) || [];
+    const recentProjects = projects.slice(0, 5);
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       totalProjects,
       activeProjects,
       totalPagesAnalyzed,
       averageScore,
       recentProjects,
     });
+
+    // Add caching headers for better performance
+    response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+    response.headers.set('CDN-Cache-Control', 'public, max-age=300');
+    response.headers.set('Vercel-CDN-Cache-Control', 'public, max-age=300');
+
+    return response;
 
   } catch (error) {
     console.error('Dashboard stats error:', error);

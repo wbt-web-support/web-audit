@@ -3,13 +3,10 @@
 import { useEffect, useState } from 'react';
 import { PricingPlan } from '@/lib/pricing';
 import { SubscriptionManager } from '@/components/subscriptions/SubscriptionManager';
-import { useAppDispatch, useAppSelector } from '@/app/stores/hooks';
-import { setSubscriptions, setLoading, setError } from '@/app/stores/subscriptionSlice';
-import { setProfile } from '@/app/stores/userProfileSlice';
 import { calculateTrialStatus, calculateTrialStatusFromDatabase } from '@/lib/utils/trialUtils';
-import { TrialCountdown } from '@/components/ui/trial-countdown';
 import { TrialDaysCard } from '@/components/ui/trial-days-card';
 import { useTrialInitialization } from '@/lib/hooks/useTrialInitialization';
+import { useSubscriptionData } from '@/lib/hooks/useSubscriptionData';
 
 interface SubscriptionTabProps {
   plans: PricingPlan[];
@@ -23,12 +20,16 @@ export function SubscriptionTab({
   onBillingPeriodChange
 }: SubscriptionTabProps) {
   const [mounted, setMounted] = useState(false);
-  const [profileLoading, setProfileLoading] = useState(false);
   
-  // Always call hooks unconditionally
-  const dispatch = useAppDispatch();
-  const subscriptionState = useAppSelector(state => state.subscription);
-  const userProfileState = useAppSelector(state => state.userProfile);
+  // Use the cached subscription data hook
+  const { 
+    subscriptions, 
+    userProfile, 
+    isLoading, 
+    error, 
+    refetch, 
+    isStale 
+  } = useSubscriptionData();
   
   // Initialize trial for new users
   const { isInitializing } = useTrialInitialization();
@@ -36,11 +37,6 @@ export function SubscriptionTab({
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  // Only use Redux data after component is mounted to prevent hydration issues
-  const subscriptions = mounted ? subscriptionState?.subscriptions || [] : [];
-  const isLoading = mounted ? subscriptionState?.isLoading || false : false;
-  const userProfile = mounted ? userProfileState?.profile || null : null;
 
   // Get free trial days from environment variable
   const freeTrialDays = parseInt(process.env.NEXT_PUBLIC_FREE_TRIAL_DAYS || '14');
@@ -56,104 +52,44 @@ export function SubscriptionTab({
   const hasActiveSubscription = subscriptions.some((sub: any) => sub.is_active);
   const showTrialBanner = trialStatus && !hasActiveSubscription;
 
-  // Fetch subscriptions on component mount (only after mounted)
-  useEffect(() => {
-    if (!mounted) return;
+  // Show stale data indicator
+  if (isStale && mounted) {
+    console.log('Subscription data may be stale, refreshing in background...');
+  }
 
-    const fetchSubscriptions = async () => {
-      try {
-        dispatch(setLoading(true));
-        const response = await fetch('/api/subscriptions');
-        
-        if (!response.ok) {
-          let errorData;
-          try {
-            errorData = await response.json();
-          } catch (jsonError) {
-            const textResponse = await response.text();
-            console.error('Failed to parse error response:', textResponse);
-            throw new Error('Failed to fetch subscriptions');
-          }
-          throw new Error(errorData.error || 'Failed to fetch subscriptions');
-        }
+  // Show error state
+  if (error && mounted) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-red-100 rounded-lg">
+              <svg className="h-5 w-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-medium text-red-900">
+                Failed to load subscription data
+              </h3>
+              <p className="text-sm text-red-700 mt-1">
+                {error}
+              </p>
+              <button 
+                onClick={() => refetch(true)}
+                className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-        let data;
-        try {
-          data = await response.json();
-        } catch (jsonError) {
-          console.error('Failed to parse subscriptions response:', jsonError);
-          const textResponse = await response.text();
-          console.error('Response text:', textResponse);
-          throw new Error('Failed to parse subscriptions response');
-        }
-        dispatch(setSubscriptions(data.data || []));
-      } catch (error) {
-        dispatch(setError(error instanceof Error ? error.message : 'Failed to fetch subscriptions'));
-        console.error('Error fetching subscriptions:', error);
-      } finally {
-        dispatch(setLoading(false));
-      }
-    };
-
-    const fetchUserProfile = async () => {
-      try {
-        setProfileLoading(true);
-        const response = await fetch('/api/profile');
-        
-        if (response.ok) {
-          let data;
-          try {
-            data = await response.json();
-          } catch (jsonError) {
-            console.error('Failed to parse JSON response:', jsonError);
-            const textResponse = await response.text();
-            console.error('Response text:', textResponse);
-            return;
-          }
-          
-          const profile = data.data || data; // Handle both {data: profile} and direct profile
-          
-          // Check if profile exists
-          if (profile) {
-            // If profile has database trial data, use it directly
-            if (profile.trial_end_date) {
-              const trialStatus = calculateTrialStatusFromDatabase(profile);
-              const profileWithTrial = {
-                ...profile,
-                trial_days_remaining: trialStatus.trialDaysRemaining
-              };
-              dispatch(setProfile(profileWithTrial));
-            } 
-            // Fallback to calculating from creation date if no database trial data
-            else if (profile.created_at) {
-              const trialStatus = calculateTrialStatus(profile.created_at, freeTrialDays);
-              const profileWithTrial = {
-                ...profile,
-                trial_start_date: profile.created_at,
-                trial_end_date: trialStatus.trialEndDate.toISOString(),
-                is_trial_active: trialStatus.isTrialActive,
-                trial_days_remaining: trialStatus.trialDaysRemaining
-              };
-              dispatch(setProfile(profileWithTrial));
-            } else {
-              console.warn('Profile data is missing or incomplete:', profile);
-            }
-          }
-        } else {
-          console.error('Failed to fetch user profile:', response.status);
-        }
-      } catch (error) {
-        console.error('Error fetching user profile:', error);
-      } finally {
-        setProfileLoading(false);
-      }
-    };
-
-    fetchSubscriptions();
-    fetchUserProfile();
-  }, [dispatch, mounted, freeTrialDays]);
-
-  if (isLoading || profileLoading || isInitializing) {
+  // Show loading state only if no cached data is available
+  if (isLoading && mounted && subscriptions.length === 0) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-center py-12">
@@ -165,6 +101,18 @@ export function SubscriptionTab({
 
   return (
     <div className="space-y-6">
+      {/* Stale data indicator */}
+      {isStale && mounted && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></div>
+            <span className="text-sm text-amber-800">
+              Data may be stale, refreshing in background...
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Simple Trial Notification */}
       <TrialDaysCard />
 

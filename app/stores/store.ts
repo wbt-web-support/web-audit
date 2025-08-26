@@ -5,27 +5,26 @@ import homeReducer from './homeSlice';
 import userProfileReducer from './userProfileSlice';
 import subscriptionReducer from './subscriptionSlice';
 
-// Create store only on client side to prevent SSR issues
+// Create a singleton store instance
 let store: ReturnType<typeof configureStore> | undefined;
 
-export const getStore = () => {
-  if (typeof window === 'undefined') {
-    // Server-side: return undefined to prevent SSR issues
-    console.log('getStore: Server-side, returning undefined');
-    return undefined;
-  }
+const makeStore = () => {
+  return configureStore({
+    reducer: {
+      dashboardForm: dashboardFormReducer,
+      audit: auditReducer,
+      home: homeReducer,
+      userProfile: userProfileReducer,
+      subscription: subscriptionReducer,
+    },
+  });
+};
 
+export const getStore = () => {
+  // Always create a store (works on both server and client)
   if (!store) {
     console.log('getStore: Creating new store');
-    store = configureStore({
-      reducer: {
-        dashboardForm: dashboardFormReducer,
-        audit: auditReducer,
-        home: homeReducer,
-        userProfile: userProfileReducer,
-        subscription: subscriptionReducer,
-      },
-    });
+    store = makeStore();
     console.log('getStore: Store created with reducers:', Object.keys(store.getState() as any));
   } else {
     console.log('getStore: Returning existing store with reducers:', Object.keys(store.getState() as any));

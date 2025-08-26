@@ -38,7 +38,7 @@ export function useTrialInitialization() {
 
     // Initialize trial when component mounts
     initializeTrial();
-  }, [dispatch]);
+  }, []); // Remove dispatch from dependencies to prevent infinite loops
 
   return { isInitializing };
 }
