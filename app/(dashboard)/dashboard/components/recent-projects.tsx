@@ -6,6 +6,7 @@ import { Globe, Clock, CheckCircle, AlertTriangle, XCircle, Edit, BarChart3, Plu
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
+import React, { useMemo, useCallback } from 'react';
 
 // Types
 interface AuditProject {
@@ -22,7 +23,7 @@ interface RecentProjectsProps {
   loading?: boolean;
 }
 
-// Status configuration
+// Status configuration - moved outside component to prevent recreation
 const STATUS_CONFIG = {
   completed: {
     icon: CheckCircle,
@@ -56,7 +57,7 @@ const STATUS_CONFIG = {
   }
 } as const;
 
-// Utility functions
+// Utility functions - moved outside component
 const getStatusConfig = (status: string) => {
   return STATUS_CONFIG[status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pending;
 };
@@ -72,7 +73,7 @@ const isProjectRunning = (status: string) => {
 };
 
 // Sub-components
-function StatusIcon({ status }: { status: string }) {
+const StatusIcon = React.memo(({ status }: { status: string }) => {
   const config = getStatusConfig(status);
   const IconComponent = config.icon;
   
@@ -87,11 +88,22 @@ function StatusIcon({ status }: { status: string }) {
       />
     </div>
   );
-}
+});
 
-export function ProjectCard({ project }: { project: AuditProject }) {
+StatusIcon.displayName = 'StatusIcon';
+
+const ProjectCard = React.memo(({ project }: { project: AuditProject }) => {
   const router = useRouter();
   const isRunning = isProjectRunning(project.status);
+
+  const handleEditClick = useCallback(() => {
+    router.push(`/projects/edit/${project.id}`);
+  }, [router, project.id]);
+
+  const projectStats = useMemo(() => 
+    formatProjectStats(project.pages_crawled, project.pages_analyzed), 
+    [project.pages_crawled, project.pages_analyzed]
+  );
 
   return (
     <div className={cn(
@@ -106,7 +118,7 @@ export function ProjectCard({ project }: { project: AuditProject }) {
             {project.base_url}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            {formatProjectStats(project.pages_crawled, project.pages_analyzed)}
+            {projectStats}
           </p>
         </div>
       </div>
@@ -122,7 +134,7 @@ export function ProjectCard({ project }: { project: AuditProject }) {
         <Button
           size="sm"
           variant="ghost"
-          onClick={() => router.push(`/projects/edit/${project.id}`)}
+          onClick={handleEditClick}
           disabled={isRunning}
           title={isRunning 
             ? 'Cannot edit project while it is running' 
@@ -135,9 +147,14 @@ export function ProjectCard({ project }: { project: AuditProject }) {
       </div>
     </div>
   );
-}
+});
 
-function EmptyState() {
+ProjectCard.displayName = 'ProjectCard';
+
+// Export ProjectCard for use in other components
+export { ProjectCard };
+
+const EmptyState = React.memo(() => {
   return (
     <div className="text-center py-8">
       <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
@@ -153,21 +170,62 @@ function EmptyState() {
       </Link>
     </div>
   );
-}
+});
 
-function ProjectList({ projects }: { projects: AuditProject[] }) {
+EmptyState.displayName = 'EmptyState';
+
+const ProjectList = React.memo(({ projects }: { projects: AuditProject[] }) => {
   return (
     <div className="space-y-3">
       {projects.map((project) => (
         <ProjectCard key={project.id} project={project} />
       ))}
-     
     </div>
   );
-}
+});
+
+ProjectList.displayName = 'ProjectList';
+
+const LoadingSkeleton = React.memo(() => {
+  return (
+    <div className="space-y-3">
+      {[...Array(5)].map((_, i) => (
+        <div key={i} className="animate-pulse">
+          <div className="p-4 border border-slate-200 rounded-lg bg-white">
+            <div className="flex items-start gap-3 mb-3">
+              <div className="w-8 h-8 bg-slate-200 rounded-lg"></div>
+              <div className="flex-1 space-y-2">
+                <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+                <div className="h-3 bg-slate-200 rounded w-1/2"></div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <div className="h-8 bg-slate-200 rounded flex-1"></div>
+              <div className="w-8 h-8 bg-slate-200 rounded"></div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+});
+
+LoadingSkeleton.displayName = 'LoadingSkeleton';
 
 // Main component
-export function RecentProjects({ projects, loading = false }: RecentProjectsProps) {
+export const RecentProjects = React.memo(({ projects, loading = false }: RecentProjectsProps) => {
+  const content = useMemo(() => {
+    if (loading) {
+      return <LoadingSkeleton />;
+    }
+    
+    if (projects.length === 0) {
+      return <EmptyState />;
+    }
+    
+    return <ProjectList projects={projects} />;
+  }, [loading, projects]);
+
   return (
     <Card className="h-full">
       <CardHeader className="pb-4">
@@ -183,33 +241,11 @@ export function RecentProjects({ projects, loading = false }: RecentProjectsProp
       </CardHeader>
       <CardContent className="pt-0 flex-1 overflow-hidden">
         <div className="h-[500px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent">
-          {loading ? (
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="animate-pulse">
-                  <div className="p-4 border border-slate-200 rounded-lg bg-white">
-                    <div className="flex items-start gap-3 mb-3">
-                      <div className="w-8 h-8 bg-slate-200 rounded-lg"></div>
-                      <div className="flex-1 space-y-2">
-                        <div className="h-4 bg-slate-200 rounded w-3/4"></div>
-                        <div className="h-3 bg-slate-200 rounded w-1/2"></div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <div className="h-8 bg-slate-200 rounded flex-1"></div>
-                      <div className="w-8 h-8 bg-slate-200 rounded"></div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : projects.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <ProjectList projects={projects} />
-          )}
+          {content}
         </div>
       </CardContent>
     </Card>
   );
-} 
+});
+
+RecentProjects.displayName = 'RecentProjects'; 

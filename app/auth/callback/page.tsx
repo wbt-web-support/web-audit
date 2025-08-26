@@ -22,6 +22,53 @@ export default function AuthCallback() {
         }
 
         if (data.session) {
+          // Get user data to check if profile needs to be updated
+          const { data: { user }, error: userError } = await supabase.auth.getUser();
+          
+          if (user && !userError) {
+            // Check if this is a new user or OAuth user that needs profile update
+            const { data: profile, error: profileError } = await supabase
+              .from('user_profiles')
+              .select('*')
+              .eq('id', user.id)
+              .single();
+
+            // If profile doesn't exist or needs update, create/update it
+            if (profileError || !profile) {
+              const userMetadata = user.user_metadata;
+              const fullName = userMetadata?.full_name || userMetadata?.name || '';
+              const firstName = userMetadata?.first_name || userMetadata?.given_name || '';
+              const lastName = userMetadata?.last_name || userMetadata?.family_name || '';
+
+              // Extract first and last name from full name if not provided separately
+              let finalFirstName = firstName;
+              let finalLastName = lastName;
+              
+              if (!firstName && !lastName && fullName) {
+                const nameParts = fullName.split(' ');
+                finalFirstName = nameParts[0] || '';
+                finalLastName = nameParts.slice(1).join(' ') || '';
+              }
+
+              // Insert or update user profile
+              const { error: upsertError } = await supabase
+                .from('user_profiles')
+                .upsert({
+                  id: user.id,
+                  email: user.email || '',
+                  full_name: fullName,
+                  first_name: finalFirstName,
+                  last_name: finalLastName,
+                }, {
+                  onConflict: 'id'
+                });
+
+              if (upsertError) {
+                console.error("Profile upsert error:", upsertError);
+              }
+            }
+          }
+
           // Get the next parameter from the URL
           const next = searchParams.get("next") || "/dashboard";
           router.push(next);

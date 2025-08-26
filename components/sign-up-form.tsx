@@ -17,6 +17,8 @@ export function SignUpForm({
   className,
   ...props
 }: React.ComponentPropsWithoutRef<"div">) {
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
@@ -36,7 +38,7 @@ export function SignUpForm({
     }
   }, [searchParams, dispatch]);
 
-    const handleSignUp = async (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     const supabase = createClient();
     setIsLoading(true);
@@ -44,6 +46,12 @@ export function SignUpForm({
 
     if (password !== repeatPassword) {
       setError("Passwords do not match");
+      setIsLoading(false);
+      return;
+    }
+
+    if (!firstName.trim() || !lastName.trim()) {
+      setError("First name and last name are required");
       setIsLoading(false);
       return;
     }
@@ -57,20 +65,26 @@ export function SignUpForm({
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/confirm?next=${websiteParam ? '/audit' : '/dashboard'}`,
+          data: {
+            full_name: `${firstName.trim()} ${lastName.trim()}`,
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
+          },
         },
       });
-             if (error) throw error;
-       console.log("sign up success going to sign up success page");
-       
-       // Check if there's a stored website URL for auto-project creation
-       const storedUrl = searchParams.get('website');
-       if (storedUrl) {
-         // Store the website URL in Redux for later use after email confirmation
-         // The user will be redirected to audit after confirming email
-         router.push("/auth/sign-up-success");
-       } else {
-         router.push("/auth/sign-up-success");
-       }
+      
+      if (error) throw error;
+      console.log("sign up success going to sign up success page");
+      
+      // Check if there's a stored website URL for auto-project creation
+      const storedUrl = searchParams.get('website');
+      if (storedUrl) {
+        // Store the website URL in Redux for later use after email confirmation
+        // The user will be redirected to audit after confirming email
+        router.push("/auth/sign-up-success");
+      } else {
+        router.push("/auth/sign-up-success");
+      }
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
@@ -82,6 +96,47 @@ export function SignUpForm({
     <div className={cn("w-full", className)} {...props}>
       <div className="card p-8">
         <form onSubmit={handleSignUp} className="space-y-6">
+          {/* Name Fields */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* First Name Field */}
+            <div className="space-y-2">
+              <Label htmlFor="firstName" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                First Name *
+              </Label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  id="firstName"
+                  type="text"
+                  placeholder="Enter your first name"
+                  required
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className="pl-10 h-12 input-field"
+                />
+              </div>
+            </div>
+
+            {/* Last Name Field */}
+            <div className="space-y-2">
+              <Label htmlFor="lastName" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Last Name *
+              </Label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  id="lastName"
+                  type="text"
+                  placeholder="Enter your last name"
+                  required
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  className="pl-10 h-12 input-field"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Email Field */}
           <div className="space-y-2">
             <Label htmlFor="email" className="text-sm font-medium text-slate-700 dark:text-slate-300">

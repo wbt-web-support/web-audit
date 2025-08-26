@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { XCircle, BarChart3, Plus, TrendingUp, Globe, Clock, CheckCircle } from "lucide-react";
@@ -34,17 +34,18 @@ export interface DashboardStats {
  * - Loading and error states
  */
 export function DashboardMain() {
+  // ALL HOOKS MUST BE CALLED AT THE TOP - NO CONDITIONAL HOOKS
   const { stats, loading, error, refetch, isStale } = useDashboardStats();
   const [minLoadingTime, setMinLoadingTime] = useState(true);
   const [debouncedLoading, setDebouncedLoading] = useState(true);
   
   // Auto-project creation hook
   const { websiteUrl, isCreating, hasAttempted } = useAutoProjectCreation({
-    onProjectCreated: (projectId) => {
+    onProjectCreated: useCallback((projectId: string) => {
       console.log('Auto-created project:', projectId);
       // Optionally refresh stats after project creation
       refetch(true);
-    }
+    }, [refetch])
   });
 
   // Ensure minimum loading time to prevent flash
@@ -52,7 +53,7 @@ export function DashboardMain() {
     if (!loading && stats) {
       const timer = setTimeout(() => {
         setMinLoadingTime(false);
-      }, 300); // 300ms minimum loading time
+      }, 200); // Reduced from 300ms
       return () => clearTimeout(timer);
     }
   }, [loading, stats]);
@@ -61,13 +62,24 @@ export function DashboardMain() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedLoading(loading);
-    }, 100); // 100ms debounce
+    }, 50); // Reduced from 100ms
 
     return () => clearTimeout(timer);
   }, [loading]);
 
+  // Memoize loading state to prevent unnecessary re-renders
+  const isLoading = useMemo(() => {
+    return debouncedLoading || minLoadingTime;
+  }, [debouncedLoading, minLoadingTime]);
+
+  // Performance monitor callback - must be defined before any returns
+  const handleLoadComplete = useCallback(() => {
+    console.log('Dashboard load completed');
+  }, []);
+
+  // NOW WE CAN HAVE CONDITIONAL RENDERING
   // Loading state - show skeleton while fetching data
-  if (debouncedLoading || minLoadingTime) {
+  if (isLoading) {
     return <DashboardSkeleton />;
   }
 
@@ -174,15 +186,14 @@ export function DashboardMain() {
           
         </div>
         
-        {/* Performance Monitor */}
-        <PerformanceMonitor 
-          loading={loading}
-          error={error}
-          onLoadComplete={() => {
-            // Optional: Log performance metrics
-            console.log('Dashboard load completed');
-          }}
-        />
+        {/* Performance Monitor - Only show in development */}
+        {process.env.NODE_ENV === 'development' && (
+          <PerformanceMonitor 
+            loading={loading}
+            error={error}
+            onLoadComplete={handleLoadComplete}
+          />
+        )}
         
       </div>
     </div>
@@ -193,7 +204,7 @@ export function DashboardMain() {
  * Dashboard header component with title, icon, and description
  * Separated for better component organization
  */
-function DashboardHeader() {
+const DashboardHeader = React.memo(() => {
   return (
     <div className="mb-8">
       {/* Title and Icon */}
@@ -212,7 +223,9 @@ function DashboardHeader() {
       </div>
     </div>
   );
-}
+});
+
+DashboardHeader.displayName = 'DashboardHeader';
 
 /**
  * Statistics cards component displaying key metrics
@@ -220,7 +233,8 @@ function DashboardHeader() {
  * Memoized to prevent unnecessary re-renders
  */
 const StatsCards = React.memo(({ stats, loading }: { stats: DashboardStats, loading: boolean }) => {
-  const statCards = [
+  // Memoize stat cards to prevent recreation on every render
+  const statCards = useMemo(() => [
     {
       title: "Total Projects",
       value: stats.totalProjects || 0,
@@ -253,7 +267,7 @@ const StatsCards = React.memo(({ stats, loading }: { stats: DashboardStats, load
       iconColor: "text-purple-600",
       description: "Overall performance"
     }
-  ];
+  ], [stats]);
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

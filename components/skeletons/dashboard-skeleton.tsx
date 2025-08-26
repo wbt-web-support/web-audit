@@ -1,151 +1,122 @@
-import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import React from 'react';
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { BarChart3, Globe, Clock, CheckCircle, TrendingUp } from "lucide-react";
+
+// Optimized skeleton components with better performance
+const StatCardSkeleton = React.memo(() => (
+  <Card className="border-0 shadow-sm bg-white">
+    <CardContent className="p-6">
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <div className="h-4 bg-slate-200 rounded w-24 mb-2 animate-pulse"></div>
+          <div className="h-8 bg-slate-200 rounded w-16 mb-1 animate-pulse"></div>
+          <div className="h-3 bg-slate-200 rounded w-20 animate-pulse"></div>
+        </div>
+        <div className="w-12 h-12 bg-slate-200 rounded-lg ml-4 animate-pulse"></div>
+      </div>
+    </CardContent>
+  </Card>
+));
+
+StatCardSkeleton.displayName = 'StatCardSkeleton';
+
+const ProjectCardSkeleton = React.memo(() => (
+  <div className="p-4 border border-slate-200 rounded-lg bg-white animate-pulse">
+    <div className="flex items-start gap-3 mb-3">
+      <div className="w-8 h-8 bg-slate-200 rounded-lg"></div>
+      <div className="flex-1 space-y-2">
+        <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+        <div className="h-3 bg-slate-200 rounded w-1/2"></div>
+      </div>
+    </div>
+    <div className="flex gap-2">
+      <div className="h-8 bg-slate-200 rounded flex-1"></div>
+      <div className="w-8 h-8 bg-slate-200 rounded"></div>
+    </div>
+  </div>
+));
+
+ProjectCardSkeleton.displayName = 'ProjectCardSkeleton';
+
+const FormSkeleton = React.memo(() => (
+  <Card className="h-full">
+    <CardHeader className="pb-4">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-slate-200 rounded-lg animate-pulse"></div>
+        <div className="space-y-2">
+          <div className="h-6 bg-slate-200 rounded w-32 animate-pulse"></div>
+          <div className="h-4 bg-slate-200 rounded w-48 animate-pulse"></div>
+        </div>
+      </div>
+    </CardHeader>
+    <CardContent className="space-y-4">
+      <div className="space-y-2">
+        <div className="h-4 bg-slate-200 rounded w-20 animate-pulse"></div>
+        <div className="h-10 bg-slate-200 rounded animate-pulse"></div>
+      </div>
+      <div className="space-y-2">
+        <div className="h-4 bg-slate-200 rounded w-24 animate-pulse"></div>
+        <div className="h-10 bg-slate-200 rounded animate-pulse"></div>
+      </div>
+      <div className="h-10 bg-slate-200 rounded animate-pulse"></div>
+    </CardContent>
+  </Card>
+));
+
+FormSkeleton.displayName = 'FormSkeleton';
+
+const ProjectsListSkeleton = React.memo(() => (
+  <Card className="h-full">
+    <CardHeader className="pb-4">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-slate-200 rounded-lg animate-pulse"></div>
+        <div className="space-y-2">
+          <div className="h-6 bg-slate-200 rounded w-32 animate-pulse"></div>
+          <div className="h-4 bg-slate-200 rounded w-48 animate-pulse"></div>
+        </div>
+      </div>
+    </CardHeader>
+    <CardContent className="pt-0">
+      <div className="space-y-3">
+        {[...Array(5)].map((_, i) => (
+          <ProjectCardSkeleton key={i} />
+        ))}
+      </div>
+    </CardContent>
+  </Card>
+));
+
+ProjectsListSkeleton.displayName = 'ProjectsListSkeleton';
 
 export function DashboardSkeleton() {
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         
-        {/* Header Section Skeleton */}
+        {/* Header Skeleton */}
         <div className="mb-8">
           <div className="flex items-center gap-4 mb-4">
-            <Skeleton className="h-14 w-14 rounded-xl" />
-            <div>
-              <Skeleton className="h-8 w-32 mb-2" />
-              <Skeleton className="h-4 w-64" />
+            <div className="p-3 bg-slate-200 rounded-xl w-14 h-14 animate-pulse"></div>
+            <div className="space-y-2">
+              <div className="h-9 bg-slate-200 rounded w-32 animate-pulse"></div>
+              <div className="h-5 bg-slate-200 rounded w-64 animate-pulse"></div>
             </div>
           </div>
         </div>
         
-        {/* Statistics Cards Skeleton */}
+        {/* Stats Cards Skeleton */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i} className="border-0 shadow-sm bg-white">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <Skeleton className="h-4 w-20 mb-1" />
-                    <Skeleton className="h-8 w-16 mb-1" />
-                    <Skeleton className="h-3 w-24" />
-                  </div>
-                  <Skeleton className="h-12 w-12 rounded-lg ml-4" />
-                </div>
-              </CardContent>
-            </Card>
+          {[...Array(4)].map((_, i) => (
+            <StatCardSkeleton key={i} />
           ))}
         </div>
         
         {/* Main Content Grid Skeleton */}
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-          
-          {/* Project Creation Form Skeleton - Takes 50% of the space */}
-          <div className="space-y-6">
-            <Card className="border-0 shadow-sm bg-white">
-              <CardHeader className="pb-4">
-                <div className="flex items-center gap-3">
-                  <Skeleton className="h-9 w-9 rounded-lg" />
-                  <div>
-                    <Skeleton className="h-6 w-32 mb-1" />
-                    <Skeleton className="h-4 w-48" />
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Form Fields Skeleton */}
-                <div className="space-y-4">
-                  <div>
-                    <Skeleton className="h-4 w-24 mb-2" />
-                    <Skeleton className="h-10 w-full" />
-                  </div>
-                  <div>
-                    <Skeleton className="h-4 w-32 mb-2" />
-                    <div className="flex gap-4">
-                      <Skeleton className="h-4 w-20" />
-                      <Skeleton className="h-4 w-20" />
-                    </div>
-                  </div>
-                  <div>
-                    <Skeleton className="h-4 w-28 mb-2" />
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {[1, 2, 3].map((i) => (
-                        <div key={i}>
-                          <Skeleton className="h-4 w-20 mb-2" />
-                          <Skeleton className="h-4 w-4" />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <Skeleton className="h-4 w-32 mb-2" />
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {[1, 2, 3].map((i) => (
-                        <div key={i}>
-                          <Skeleton className="h-4 w-20 mb-2" />
-                          <Skeleton className="h-4 w-4" />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <Skeleton className="h-10 w-32" />
-                
-                {/* What You'll Get Section */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Skeleton className="h-5 w-5 rounded-full" />
-                    <Skeleton className="h-5 w-32" />
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {[1, 2, 3, 4, 5, 6].map((i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <Skeleton className="h-2 w-2 rounded-full" />
-                        <Skeleton className="h-4 w-32" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-          
-          {/* Recent Projects Skeleton - Takes 50% of the space */}
-          <div className="space-y-6">
-            <Card className="border-0 shadow-sm bg-white">
-              <CardHeader className="pb-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Skeleton className="h-8 w-8 rounded-lg" />
-                    <div>
-                      <Skeleton className="h-5 w-28 mb-1" />
-                      <Skeleton className="h-3 w-36" />
-                    </div>
-                  </div>
-                  <Skeleton className="h-8 w-20" />
-                </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="space-y-3">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="p-4 border border-slate-200 rounded-lg">
-                      <div className="flex items-start gap-3 mb-3">
-                        <Skeleton className="h-8 w-8 rounded-lg" />
-                        <div className="flex-1">
-                          <Skeleton className="h-4 w-32 mb-1" />
-                          <Skeleton className="h-3 w-24" />
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Skeleton className="h-8 flex-1" />
-                        <Skeleton className="h-8 w-8" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-          
+          <FormSkeleton />
+          <ProjectsListSkeleton />
         </div>
+        
       </div>
     </div>
   );
