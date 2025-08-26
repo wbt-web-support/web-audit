@@ -41,7 +41,11 @@ import { HomeUrlDisplay } from "../components/home-url-display";
 
 export default function Home() {
   const dispatch = useAppDispatch();
-  const websiteUrl = useAppSelector((state) => state.home.websiteUrl);
+  const websiteUrl = useAppSelector((state: any) => {
+    console.log('Home: State received:', state);
+    console.log('Home: State.home:', state?.home);
+    return state?.home?.websiteUrl || '';
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {

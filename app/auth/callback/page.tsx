@@ -22,6 +22,7 @@ export default function AuthCallback() {
         }
 
         if (data.session) {
+          // Trial initialization will be handled by the TrialInitializer component
           // Get the next parameter from the URL
           const next = searchParams.get("next") || "/dashboard";
           router.push(next);

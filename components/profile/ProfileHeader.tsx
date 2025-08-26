@@ -3,8 +3,11 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, Shield, Crown, Star, Zap } from 'lucide-react';
-import { useAppSelector } from '@/lib/store/hooks';
+import { useAppSelector } from '@/app/stores/hooks';
 import { useEffect, useState } from 'react';
+import { useTrialStatus } from '@/lib/hooks/useTrialStatus';
+import { formatTrialDaysRemaining } from '@/lib/utils/trialUtils';
+import { TrialCountdown } from '@/components/ui/trial-countdown';
 
 interface UserProfile {
   id: string;
@@ -37,6 +40,7 @@ export function ProfileHeader({ profile, subscription }: ProfileHeaderProps) {
   
   // Always call hooks unconditionally
   const subscriptionState = useAppSelector(state => state.subscription);
+  const { isTrialActive, trialDaysRemaining, isTrialExpired, hasActiveSubscription } = useTrialStatus();
   
   useEffect(() => {
     setMounted(true);
@@ -109,9 +113,13 @@ export function ProfileHeader({ profile, subscription }: ProfileHeaderProps) {
   };
 
   return (
-    <Card className="mb-8">
-      <CardContent className="p-6">
-        <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
+    <div className="space-y-4">
+      {/* Trial Countdown - Compact */}
+      <TrialCountdown variant="compact" className="mb-4" />
+      
+      <Card className="mb-8">
+        <CardContent className="p-6">
+          <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
           {/* User Avatar */}
           <div className="relative">
             {profile?.avatar_url ? (
@@ -194,14 +202,24 @@ export function ProfileHeader({ profile, subscription }: ProfileHeaderProps) {
               <>
                 <Badge className="bg-gradient-to-r from-gray-500 to-gray-600 text-white px-3 py-1">
                   <Crown className="h-4 w-4" />
-                  <span className="ml-1">Free Plan</span>
+                  <span className="ml-1">
+                    {isTrialActive ? 'Free Trial' : 'Free Plan'}
+                  </span>
                 </Badge>
-                <p className="text-sm text-muted-foreground">No active subscription</p>
+                <p className="text-sm text-muted-foreground">
+                  {isTrialActive 
+                    ? `${formatTrialDaysRemaining(trialDaysRemaining)}`
+                    : isTrialExpired 
+                      ? 'Trial expired'
+                      : 'No active subscription'
+                  }
+                </p>
               </>
             )}
           </div>
         </div>
       </CardContent>
     </Card>
+    </div>
   );
 }

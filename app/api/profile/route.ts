@@ -10,10 +10,22 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Fetch user profile from user_profiles table
+    // Fetch user profile from user_profiles table with all trial data
     const { data: profile, error: profileError } = await supabase
       .from('user_profiles')
-      .select('*')
+      .select(`
+        *,
+        trial_start_date,
+        trial_end_date,
+        is_trial_active,
+        active_plan_name,
+        active_plan_start_date,
+        active_plan_end_date,
+        is_subscription_active,
+        current_plan_id,
+        current_plan_name,
+        subscription_status
+      `)
       .eq('id', user.id)
       .single();
 
@@ -35,7 +47,7 @@ export async function GET() {
         created_at: user.created_at,
         updated_at: user.updated_at || user.created_at,
       };
-      return NextResponse.json(basicProfile);
+      return NextResponse.json({ data: basicProfile });
     }
 
     // Add avatar and provider info to existing profile
@@ -45,7 +57,7 @@ export async function GET() {
       provider: user.app_metadata?.provider || profile.provider || null,
     };
 
-    return NextResponse.json(enhancedProfile);
+    return NextResponse.json({ data: enhancedProfile });
 
   } catch (error) {
     console.error('Profile API error:', error);

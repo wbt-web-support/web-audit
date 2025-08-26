@@ -1,7 +1,7 @@
 'use client';
 
 import { Provider } from 'react-redux';
-import { getStore } from '@/lib/store/store';
+import { getStore } from './stores/store';
 import { useEffect, useState } from 'react';
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -9,8 +9,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [store, setStore] = useState<ReturnType<typeof getStore>>(undefined);
 
   useEffect(() => {
+    console.log('Providers: useEffect triggered');
     setMounted(true);
-    setStore(getStore());
+    const newStore = getStore();
+    console.log('Providers: Store from getStore:', newStore);
+    setStore(newStore);
   }, []);
 
   // Prevent hydration mismatch by not rendering until client-side

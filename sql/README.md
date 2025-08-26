@@ -1,75 +1,69 @@
-# Database Setup Instructions
+# Database Migrations
 
-To set up the database tables for the Web Audit application, follow these steps:
+This directory contains SQL migrations for the web-audit application.
 
-## Prerequisites
+## Migration Order
 
-1. Make sure you have a Supabase project created
-2. Have your Supabase project's connection details ready
+Apply migrations in numerical order:
 
-## Setting Up the Tables
+1. `01_user_profiles.sql` - Creates user profiles table
+2. `02_audit_sessions.sql` - Creates audit sessions table
+3. `03_content_analysis_cache.sql` - Creates content analysis cache table
+4. `04_add_crawl_type.sql` - Adds crawl type to audit sessions
+5. `05_restructure_audit_results.sql` - Restructures audit results
+6. `06_add_website_info_to_sessions.sql` - Adds website info to sessions
+7. `07_add_page_analysis_status.sql` - Adds page analysis status
+8. `07_add_tags_analysis_to_audit_results.sql` - Adds tags analysis
+9. `08_add_custom_urls_analysis_to_audit_projects.sql` - Adds custom URLs analysis
+10. `09_add_social_meta_analysis_to_audit_results.sql` - Adds social meta analysis
+11. `10_add_all_image_analysis_to_audit_projects.sql` - Adds image analysis
+12. `11_performance_optimization.sql` - Performance optimizations
+13. `12_rls_policies.sql` - Row Level Security policies
+14. `13_add_stopped_status_to_analysis.sql` - Adds stopped status
+15. `14_social_auth_profiles.sql` - Social auth profiles
+16. `15_add_instructions_to_audit_projects.sql` - Adds instructions
+17. `16_add_first_last_name_to_user_profiles.sql` - Adds first/last name
+18. `17_user_subscriptions.sql` - Creates user subscriptions table
+19. `18_add_subscription_fields_to_user_profiles.sql` - Adds subscription fields
+20. `19_create_billing_history_table.sql` - Creates billing history
+21. `20_updated_user_subscriptions.sql` - Updates user subscriptions
+22. `21_add_subscription_fields_to_user_profiles.sql` - Adds more subscription fields
+23. `22_auto_initialize_trial_for_new_users.sql` - Auto-initializes trial for new users
+24. `23_fix_user_profile_trial_initialization.sql` - **FIXES TRIAL INITIALIZATION ISSUE**
 
-1. Go to your Supabase Dashboard
-2. Navigate to the SQL Editor
-3. Run the SQL scripts in the following order:
+## Important: Migration 23
 
-### 1. User Profiles Table (01_user_profiles.sql)
-This creates the user profiles table and sets up automatic profile creation when users sign up.
+Migration 23 (`23_fix_user_profile_trial_initialization.sql`) fixes the issue where user profiles were not getting trial data initialized properly after login/signup. This migration:
 
-### 2. Audit Projects Tables (02_audit_projects.sql)
-This creates:
-- `audit_projects` - Main table for audit projects
-- `scraped_pages` - Stores scraped page data
-- `audit_results` - Stores analysis results for each page
+1. Updates the `handle_new_user()` function to properly set trial data
+2. Ensures all required columns exist before updating
+3. Updates existing user profiles that don't have trial data
+4. Fixes the database trigger to work correctly
 
-### 3. Content Analysis Caching (03_content_analysis_cache.sql)
-This adds:
-- Performance indexes for cached AI analysis results
-- Optimizations for content analysis lookups
-- Support for storing and retrieving cached Gemini API responses
+### How to Apply
 
-### 4. Add Content Audit Type (04_add_content_audit_type.sql)
-This adds:
-- 'content' to the audit_type constraint
-- Support for content analysis caching
+Run this migration in your Supabase SQL editor:
 
-### 5. Restructure Audit Results (05_restructure_audit_results.sql) ⚠️ **BREAKING CHANGE**
-This completely restructures the audit_results table for better performance:
-- **Single entry per page** instead of multiple rows per audit type
-- Separate JSONB fields for each analysis type (`grammar_analysis`, `seo_analysis`, etc.)
-- Added `page_name` field for easy identification
-- Overall score and status fields
-- **Note**: This will drop the existing audit_results table and recreate it
-
-### 6. Add Instructions and Custom Fields (15_add_instructions_to_audit_projects.sql)
-This adds support for custom instructions and additional audit features:
-- `instructions` - Custom instructions to apply during page analysis
-- `custom_urls` - Custom URLs to check during audit
-- `stripe_key_urls` - Stripe key URLs to check during audit
-
-## Important Notes
-
-- All tables have Row Level Security (RLS) enabled
-- Users can only access their own data
-- The `user_profiles` table is automatically populated when a user signs up
-- Make sure to run the scripts in order as there are foreign key dependencies
-- Content analysis results are cached in the `audit_results` table with `audit_type='content'` to avoid repeated AI API calls
-- Cached analysis can be refreshed by users when needed via the UI
-
-## Environment Variables
-
-Ensure you have the following environment variables set in your `.env.local` file:
-
-```
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-GEMINI_API_KEY=your_gemini_api_key
+```sql
+-- Copy and paste the contents of 23_fix_user_profile_trial_initialization.sql
 ```
 
-## Verifying the Setup
+### What it fixes
 
-After running the SQL scripts, you can verify the setup by:
+- `trial_start_date` - When the trial started
+- `trial_end_date` - When the trial expires (14 days from signup)
+- `active_plan_name` - Set to "Free Trial"
+- `active_plan_start_date` - When the active plan started
+- `active_plan_end_date` - When the active plan expires
+- `is_trial_active` - Set to true for new users
+- `is_subscription_active` - Set to false for trial users
 
-1. Going to the Table Editor in Supabase Dashboard
-2. Checking that all tables are created with the correct columns
-3. Verifying that RLS policies are enabled on all tables 
+### After applying
+
+After applying this migration, new users who sign up (both manual and Google OAuth) will automatically have their trial data initialized with:
+- 14-day free trial
+- Proper trial start and end dates
+- Active plan information
+- Trial status flags
+
+Existing users without trial data will also be updated with the appropriate trial information. 

@@ -149,7 +149,7 @@ export default function ProfilePage() {
       const profileResponse = await fetch('/api/profile');
       if (profileResponse.ok) {
         const profileData = await profileResponse.json();
-        setProfile(profileData);
+        setProfile(profileData.data || profileData); // Handle both {data: profile} and direct profile
       }
 
       // Fetch projects data

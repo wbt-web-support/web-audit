@@ -1,3 +1,5 @@
+"use client";
+
 import { CheckCircle, Star, ArrowRight, Zap, Shield, Users, Globe2 } from "lucide-react";
 import Link from "next/link";
 import { getPricingConfig, getPlanDisplayPrice } from '@/lib/pricing';
@@ -99,7 +101,7 @@ export default function PricingPage() {
               <span className="text-gradient block">Pricing</span>
             </h1>
             <p className="text-xl text-muted-foreground mb-8 leading-relaxed">
-              Choose the perfect plan for your website auditing needs. All plans include a 14-day free trial.
+              Choose the perfect plan for your website auditing needs. All plans include a {process.env.NEXT_PUBLIC_FREE_TRIAL_DAYS || '14'}-day free trial.
             </p>
             
             {/* Billing Toggle */}

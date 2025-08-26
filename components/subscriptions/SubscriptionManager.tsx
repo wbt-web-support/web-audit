@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { UserSubscription, PlanName, BillingCycle } from '@/lib/types/database';
+import { PlanName, BillingCycle } from '@/lib/types/database';
+import { UserSubscription } from '@/app/stores/subscriptionSlice';
 import { PricingPlan, getPlanById } from '@/lib/pricing';
 import { toast } from 'react-toastify';
 import { Crown, Check, Clock, Calendar, Zap, Star, ArrowRight, CreditCard, Shield, Users, Zap as ZapIcon } from 'lucide-react';
-import { useAppDispatch, useAppSelector } from '@/lib/store/hooks';
-import { setActiveSubscription, addSubscription, setLoading, setError } from '@/lib/store/slices/subscriptionSlice';
+import { useAppDispatch, useAppSelector } from '@/app/stores/hooks';
+import { setActiveSubscription, addSubscription, setLoading, setError } from '@/app/stores/subscriptionSlice';
 
 interface SubscriptionManagerProps {
   plans: PricingPlan[];
