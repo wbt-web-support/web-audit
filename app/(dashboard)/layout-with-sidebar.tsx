@@ -17,6 +17,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { LogoutButton } from '@/components/logout-button';
+import { SimpleThemeSwitcher } from '@/components/simple-theme-switcher';
 import React from 'react';
 
 interface SidebarLayoutProps {
@@ -187,9 +188,10 @@ const Sidebar = React.memo(({
           })}
         </nav>
 
-        {/* Bottom Section - Logout */}
+        {/* Bottom Section - Theme Switcher and Logout */}
         <div className="border-t p-4 flex-shrink-0">
-          <div className="flex items-center justify-center">
+          <div className="flex items-center justify-end">
+            <SimpleThemeSwitcher />
             <LogoutButton />
           </div>
         </div>
