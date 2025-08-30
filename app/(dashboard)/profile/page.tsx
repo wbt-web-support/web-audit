@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,19 +25,23 @@ import {
   Star,
   Lock,
   Eye,
-  EyeOff
+  EyeOff,
+  MessageSquare
 } from 'lucide-react';
 import { ProfileSkeleton } from '@/components/skeletons';
 import { useProfileData } from '@/lib/hooks';
 import { AuditProject } from '@/lib/types/database';
-import { QuickHelpAccordion } from '@/components/support/quick-help-accordion';
 import { TicketSystem } from '@/components/support/ticket-system';
+import { QuickHelpAccordion } from '@/components/support/quick-help-accordion';
 
 export default function ProfilePage() {
   const { data, loading, error, refetch } = useProfileData();
   const { profile, projects, stats } = data;
+  const searchParams = useSearchParams();
   
-  const [activeTab, setActiveTab] = useState('profile');
+  // Get active tab from URL or default to profile
+  const urlTab = searchParams.get('tab') || 'profile';
+  const [activeTab, setActiveTab] = useState(urlTab);
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -53,10 +58,17 @@ export default function ProfilePage() {
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   
-  // Update fullName when profile data loads
-  if (profile && fullName !== profile.full_name) {
-    setFullName(profile.full_name || '');
-  }
+  // Update fullName when profile data loads using useEffect
+  useEffect(() => {
+    if (profile && fullName !== profile.full_name) {
+      setFullName(profile.full_name || '');
+    }
+  }, [profile, fullName]);
+  
+  // Sync activeTab with URL when it changes
+  useEffect(() => {
+    setActiveTab(urlTab);
+  }, [urlTab]);
   
   // Check if form has been modified
   const isFormDirty = fullName !== (profile?.full_name || '');
@@ -242,28 +254,24 @@ export default function ProfilePage() {
         <p className="text-muted-foreground">Manage your profile, plans, billing, and get support</p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 mb-8">
-          <TabsTrigger value="profile" className="flex items-center gap-2">
-            <User className="h-4 w-4" />
-            Profile
-          </TabsTrigger>
-          <TabsTrigger value="plans" className="flex items-center gap-2">
-            <Crown className="h-4 w-4" />
-            Plans
-          </TabsTrigger>
-          <TabsTrigger value="billing" className="flex items-center gap-2">
-            <CreditCard className="h-4 w-4" />
-            Billing
-          </TabsTrigger>
-          <TabsTrigger value="security" className="flex items-center gap-2">
-            <Shield className="h-4 w-4" />
-            Security
-          </TabsTrigger>
-          <TabsTrigger value="support" className="flex items-center gap-2">
-            <HelpCircle className="h-4 w-4" />
-            Help & Support
-          </TabsTrigger>
+      <Tabs value={activeTab} onValueChange={(value) => {
+        setActiveTab(value);
+        // Update URL to keep sidebar navigation in sync
+        const url = new URL(window.location.href);
+        if (value === 'profile') {
+          url.searchParams.delete('tab');
+        } else {
+          url.searchParams.set('tab', value);
+        }
+        window.history.pushState({}, '', url.toString());
+      }} className="w-full">
+        
+        <TabsList className="hidden  w-full grid-cols-5">
+          <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsTrigger value="plans">Plans</TabsTrigger>
+          <TabsTrigger value="billing">Billing</TabsTrigger>
+          <TabsTrigger value="security">Security</TabsTrigger>
+          <TabsTrigger value="support">Support</TabsTrigger>
         </TabsList>
 
         {/* Profile Tab */}
@@ -312,163 +320,165 @@ export default function ProfilePage() {
 
           {/* Profile Form */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Personal Information
-              </CardTitle>
-              <CardDescription>
-                Update your personal information and account details
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="fullName">Full Name</Label>
-                  <Input 
-                    id="fullName" 
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Enter your full name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email Address</Label>
-                  <Input 
-                    id="email" 
-                    value={profile?.email || ''} 
-                    placeholder="Enter your email"
-                    disabled
-                  />
-                </div>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <User className="h-5 w-5" />
+            Personal Information
+          </CardTitle>
+          <CardDescription>
+            Update your personal information and account details
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label htmlFor="fullName">Full Name</Label>
+              <Input 
+                id="fullName" 
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Enter your full name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address</Label>
+              <Input 
+                id="email" 
+                value={profile?.email || ''} 
+                placeholder="Enter your email"
+                disabled
+              />
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label>Member Since</Label>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Calendar className="h-4 w-4" />
+                {profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Unknown'}
               </div>
-              
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <div className="space-y-2">
-                   <Label>Member Since</Label>
-                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                     <Calendar className="h-4 w-4" />
-                     {profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Unknown'}
-                   </div>
-                 </div>
-                 <div className="space-y-2">
-                   <Label>Last Updated</Label>
-                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                     <Calendar className="h-4 w-4" />
-                     {profile?.updated_at ? new Date(profile.updated_at).toLocaleDateString() : 'Unknown'}
-                   </div>
-                 </div>
-               </div>
-
-               {/* Authentication Method */}
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <div className="space-y-2">
-                   <Label>Sign-in Method</Label>
-                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                     {profile?.auth_method === 'google' ? (
-                       <>
-                         <Globe className="h-4 w-4 text-blue-500" />
-                         <span>Google Account</span>
-                       </>
-                     ) : (
-                       <>
-                         <Mail className="h-4 w-4 text-gray-500" />
-                         <span>Email & Password</span>
-                       </>
-                     )}
-                   </div>
-                 </div>
-                 <div className="space-y-2">
-                   <Label>Password Status</Label>
-                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                     {profile?.has_password ? (
-                       <>
-                         <Lock className="h-4 w-4 text-green-500" />
-                         <span>Password Set</span>
-                       </>
-                     ) : (
-                       <>
-                         <Lock className="h-4 w-4 text-yellow-500" />
-                         <span>No Password</span>
-                       </>
-                     )}
-                   </div>
-                 </div>
-               </div>
-
-              {saveMessage && (
-                <div className={`p-3 rounded-md ${
-                  saveMessage.type === 'success' 
-                    ? 'bg-green-50 border border-green-200 text-green-800' 
-                    : 'bg-red-50 border border-red-200 text-red-800'
-                }`}>
-                  {saveMessage.text}
-                </div>
-              )}
-              
-              <div className="flex gap-4">
-                <Button 
-                  onClick={handleSaveProfile}
-                  disabled={isSaving || !isFormDirty}
-                >
-                  {isSaving ? 'Saving...' : 'Save Changes'}
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => {
-                    setFullName(profile?.full_name || '');
-                    setSaveMessage(null);
-                  }}
-                  disabled={isSaving}
-                >
-                  Cancel
-                </Button>
+            </div>
+            <div className="space-y-2">
+              <Label>Last Updated</Label>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Calendar className="h-4 w-4" />
+                {profile?.updated_at ? new Date(profile.updated_at).toLocaleDateString() : 'Unknown'}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
+
+          {/* Authentication Method */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label>Sign-in Method</Label>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                {profile?.auth_method === 'google' ? (
+                  <>
+                    <Globe className="h-4 w-4 text-blue-500" />
+                    <span>Google Account</span>
+                  </>
+                ) : (
+                  <>
+                    <Mail className="h-4 w-4 text-gray-500" />
+                    <span>Email & Password</span>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Password Status</Label>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                {profile?.has_password ? (
+                  <>
+                    <Lock className="h-4 w-4 text-green-500" />
+                    <span>Password Set</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="h-4 w-4 text-yellow-500" />
+                    <span>No Password</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {saveMessage && (
+            <div className={`p-3 rounded-md ${
+              saveMessage.type === 'success' 
+                ? 'bg-green-50 border border-green-200 text-green-800' 
+                : 'bg-red-50 border border-red-200 text-red-800'
+            }`}>
+              {saveMessage.text}
+            </div>
+          )}
+          
+          <div className="flex gap-4">
+            <Button 
+              onClick={handleSaveProfile}
+              disabled={isSaving || !isFormDirty}
+            >
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setFullName(profile?.full_name || '');
+                setSaveMessage(null);
+              }}
+              disabled={isSaving}
+            >
+              Cancel
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+          
 
           {/* Recent Projects */}
           <Card>
-            <CardHeader>
-              <CardTitle>Recent Projects</CardTitle>
-              <CardDescription>
-                Your latest web audit projects
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {projects.slice(0, 6).map((project) => (
-                  <Card key={project.id} className="hover:shadow-md transition-shadow">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
-                        <CardTitle className="text-sm font-medium line-clamp-2">
-                          {project.company_name || project.base_url}
-                        </CardTitle>
-                        {getStatusIcon(project.status)}
-                      </div>
-                      <CardDescription className="text-xs text-muted-foreground line-clamp-1">
-                        {project.base_url}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">Status:</span>
-                          <Badge className={getStatusColor(project.status)}>
-                            {project.status}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">Pages:</span>
-                          <span>{project.pages_analyzed}/{project.total_pages}</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+        <CardHeader>
+          <CardTitle>Recent Projects</CardTitle>
+          <CardDescription>
+            Your latest web audit projects
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {projects.slice(0, 6).map((project) => (
+              <Card key={project.id} className="hover:shadow-md transition-shadow">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <CardTitle className="text-sm font-medium line-clamp-2">
+                      {project.company_name || project.base_url}
+                    </CardTitle>
+                    {getStatusIcon(project.status)}
+                  </div>
+                  <CardDescription className="text-xs text-muted-foreground line-clamp-1">
+                    {project.base_url}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Status:</span>
+                      <Badge className={getStatusColor(project.status)}>
+                        {project.status}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Pages:</span>
+                      <span>{project.pages_analyzed}/{project.total_pages}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+                  </CardContent>
+        </Card>
         </TabsContent>
 
         {/* Plans Tab */}
@@ -657,239 +667,238 @@ export default function ProfilePage() {
               </div>
             </CardContent>
           </Card>
-                 </TabsContent>
+        </TabsContent>
 
-         {/* Security Tab */}
-         <TabsContent value="security" className="space-y-6">
-           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-             {/* Password Management */}
-             <Card>
-               <CardHeader>
-                 <CardTitle className="flex items-center gap-2">
-                   <Lock className="h-5 w-5" />
-                   Password Management
-                 </CardTitle>
-                 <CardDescription>
-                   Update your password to keep your account secure
-                 </CardDescription>
-               </CardHeader>
-                               <CardContent className="space-y-4">
-                  {/* Show current password field only for email/password users */}
-                  {!profile?.auth_method && (
-                    <div className="space-y-2">
-                      <Label htmlFor="currentPassword">Current Password</Label>
-                      <div className="relative">
-                        <Input 
-                          id="currentPassword" 
-                          type={showPassword ? "text" : "password"}
-                          placeholder="Enter current password"
-                          value={currentPassword}
-                          onChange={(e) => setCurrentPassword(e.target.value)}
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                          onClick={() => setShowPassword(!showPassword)}
-                        >
-                          {showPassword ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Show OAuth info for Google users */}
-                  {profile?.auth_method === 'google' && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                      <div className="flex items-center gap-2 text-blue-800">
-                        <Globe className="h-4 w-4" />
-                        <span className="text-sm font-medium">Google Account</span>
-                      </div>
-                      <p className="text-xs text-blue-700 mt-1">
-                        You're signed in with Google. You can set a password to also sign in with email and password.
-                      </p>
-                    </div>
-                  )}
-                 
-                 <div className="space-y-2">
-                   <Label htmlFor="newPassword">New Password</Label>
-                   <div className="relative">
-                     <Input 
-                       id="newPassword" 
-                       type={showNewPassword ? "text" : "password"}
-                       placeholder="Enter new password"
-                       value={newPassword}
-                       onChange={(e) => setNewPassword(e.target.value)}
-                     />
-                     <Button
-                       type="button"
-                       variant="ghost"
-                       size="sm"
-                       className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                       onClick={() => setShowNewPassword(!showNewPassword)}
-                     >
-                       {showNewPassword ? (
-                         <EyeOff className="h-4 w-4" />
-                       ) : (
-                         <Eye className="h-4 w-4" />
-                       )}
-                     </Button>
-                   </div>
-                   {newPassword && (
-                     <div className="text-xs text-muted-foreground">
-                       {newPassword.length < 6 ? (
-                         <span className="text-red-500">Password too short (minimum 6 characters)</span>
-                       ) : newPassword.length < 8 ? (
-                         <span className="text-yellow-500">Password strength: Weak</span>
-                       ) : newPassword.length < 12 ? (
-                         <span className="text-blue-500">Password strength: Medium</span>
-                       ) : (
-                         <span className="text-green-500">Password strength: Strong</span>
-                       )}
-                     </div>
-                   )}
-                 </div>
-                 
-                 <div className="space-y-2">
-                   <Label htmlFor="confirmPassword">Confirm New Password</Label>
-                   <div className="relative">
-                     <Input 
-                       id="confirmPassword" 
-                       type={showConfirmPassword ? "text" : "password"}
-                       placeholder="Confirm new password"
-                       value={confirmPassword}
-                       onChange={(e) => setConfirmPassword(e.target.value)}
-                     />
-                     <Button
-                       type="button"
-                       variant="ghost"
-                       size="sm"
-                       className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                     >
-                       {showConfirmPassword ? (
-                         <EyeOff className="h-4 w-4" />
-                       ) : (
-                         <Eye className="h-4 w-4" />
-                       )}
-                     </Button>
-                   </div>
-                   {confirmPassword && newPassword && (
-                     <div className="text-xs">
-                       {confirmPassword === newPassword ? (
-                         <span className="text-green-500">✓ Passwords match</span>
-                       ) : (
-                         <span className="text-red-500">✗ Passwords do not match</span>
-                       )}
-                     </div>
-                   )}
-                 </div>
-
-                 {passwordMessage && (
-                   <div className={`p-3 rounded-md ${
-                     passwordMessage.type === 'success' 
-                       ? 'bg-green-50 border border-green-200 text-green-800' 
-                       : 'bg-red-50 border border-red-200 text-red-800'
-                   }`}>
-                     {passwordMessage.text}
-                   </div>
-                 )}
-                 
-                                   <div className="flex gap-4">
-                    <Button 
-                      onClick={handleChangePassword}
-                      disabled={
-                        isChangingPassword || 
-                        (!profile?.auth_method && !currentPassword) || 
-                        !newPassword || 
-                        !confirmPassword || 
-                        newPassword !== confirmPassword || 
-                        newPassword.length < 6
-                      }
-                    >
-                      {isChangingPassword ? 'Updating...' : profile?.auth_method === 'google' ? 'Set Password' : 'Update Password'}
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      onClick={handleResetPasswordForm}
-                      disabled={isChangingPassword}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                 
-                                   <div className="text-center pt-2 space-y-2">
-                    <Button 
-                      variant="link" 
-                      className="text-sm text-muted-foreground hover:text-foreground"
-                      onClick={() => window.location.href = '/auth/forgot-password'}
-                    >
-                      Forgot your password?
-                    </Button>
-                    
-                   
-                  </div>
-               </CardContent>
-             </Card>
-
-
-           </div>
-
-
-         </TabsContent>
-
-         {/* Help & Support Tab */}
-        <TabsContent value="support" className="space-y-6">
+        {/* Security Tab */}
+        <TabsContent value="security" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Quick Help Accordion */}
-            <QuickHelpAccordion />
-
-            {/* Contact Support */}
+            {/* Password Management */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Mail className="h-5 w-5" />
-                  Contact Support
+                  <Lock className="h-5 w-5" />
+                  Password Management
                 </CardTitle>
+                <CardDescription>
+                  Update your password to keep your account secure
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <div className="p-4 border rounded-lg">
-                    <div className="font-medium">Email Support</div>
-                    <div className="text-sm text-muted-foreground">support@webaudit.com</div>
-                    <div className="text-xs text-muted-foreground mt-1">Response within 24 hours</div>
+                {/* Show current password field only for email/password users */}
+                {!profile?.auth_method && (
+                  <div className="space-y-2">
+                    <Label htmlFor="currentPassword">Current Password</Label>
+                    <div className="relative">
+                      <Input 
+                        id="currentPassword" 
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Enter current password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
                   </div>
-                  <div className="p-4 border rounded-lg">
-                    <div className="font-medium">Live Chat</div>
-                    <div className="text-sm text-muted-foreground">Available during business hours</div>
-                    <div className="text-xs text-muted-foreground mt-1">Mon-Fri, 9AM-6PM EST</div>
+                )}
+
+                {/* Show OAuth info for Google users */}
+                {profile?.auth_method === 'google' && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="flex items-center gap-2 text-blue-800">
+                      <Globe className="h-4 w-4" />
+                      <span className="text-sm font-medium">Google Account</span>
+                    </div>
+                    <p className="text-xs text-blue-700 mt-1">
+                      You're signed in with Google. You can set a password to also sign in with email and password.
+                    </p>
                   </div>
-                  <div className="p-4 border rounded-lg">
-                    <div className="font-medium">Documentation</div>
-                    <div className="text-sm text-muted-foreground">Comprehensive guides and tutorials</div>
-                    <div className="text-xs text-muted-foreground mt-1">Always available</div>
+                )}
+                
+                <div className="space-y-2">
+                  <Label htmlFor="newPassword">New Password</Label>
+                  <div className="relative">
+                    <Input 
+                      id="newPassword" 
+                      type={showNewPassword ? "text" : "password"}
+                      placeholder="Enter new password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                    >
+                      {showNewPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
                   </div>
+                  {newPassword && (
+                    <div className="text-xs text-muted-foreground">
+                      {newPassword.length < 6 ? (
+                        <span className="text-red-500">Password too short (minimum 6 characters)</span>
+                      ) : newPassword.length < 8 ? (
+                        <span className="text-red-500">Password strength: Weak</span>
+                      ) : newPassword.length < 12 ? (
+                        <span className="text-blue-500">Password strength: Medium</span>
+                      ) : (
+                        <span className="text-green-500">Password strength: Strong</span>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <Button className="w-full">Contact Support</Button>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                  <div className="relative">
+                    <Input 
+                      id="newPassword" 
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="Confirm new password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                  {confirmPassword && newPassword && (
+                    <div className="text-xs">
+                      {confirmPassword === newPassword ? (
+                        <span className="text-green-500">✓ Passwords match</span>
+                      ) : (
+                        <span className="text-red-500">✗ Passwords do not match</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {passwordMessage && (
+                  <div className={`p-3 rounded-md ${
+                    passwordMessage.type === 'success' 
+                      ? 'bg-green-50 border border-green-200 text-green-800' 
+                      : 'bg-red-50 border border-red-200 text-red-800'
+                  }`}>
+                    {passwordMessage.text}
+                  </div>
+                )}
+                
+                <div className="flex gap-4">
+                  <Button 
+                    onClick={handleChangePassword}
+                    disabled={
+                      isChangingPassword || 
+                      (!profile?.auth_method && !currentPassword) || 
+                      !newPassword || 
+                      !confirmPassword || 
+                      newPassword !== confirmPassword || 
+                      newPassword.length < 6
+                    }
+                  >
+                    {isChangingPassword ? 'Updating...' : profile?.auth_method === 'google' ? 'Set Password' : 'Update Password'}
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={handleResetPasswordForm}
+                    disabled={isChangingPassword}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+                
+                <div className="text-center pt-2 space-y-2">
+                  <Button 
+                    variant="link" 
+                    className="text-sm text-muted-foreground hover:text-foreground"
+                    onClick={() => window.location.href = '/auth/forgot-password'}
+                  >
+                    Forgot your password?
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
 
-          {/* Ticket System */}
+        {/* Help & Support Tab */}
+        <TabsContent value="support" className="space-y-6">
+          {/* Support Ticket System */}
           <Card>
             <CardHeader>
-              <CardTitle>Support Tickets</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5" />
+                Support Tickets
+              </CardTitle>
               <CardDescription>
-                Create and manage support tickets for personalized assistance
+                Create and manage support tickets for technical issues, feature requests, or general inquiries
               </CardDescription>
             </CardHeader>
             <CardContent>
               <TicketSystem />
+            </CardContent>
+          </Card>
+
+          {/* Quick Help */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <HelpCircle className="h-5 w-5" />
+                Quick Help
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <QuickHelpAccordion />
+            </CardContent>
+          </Card>
+
+          {/* Contact Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="h-5 w-5" />
+                Contact Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 border rounded-lg">
+                  <div className="font-medium">Email Support</div>
+                  <div className="text-sm text-muted-foreground">support@webaudit.com</div>
+                  <div className="text-xs text-muted-foreground mt-1">Response within 24 hours</div>
+                </div>
+                <div className="p-4 border rounded-lg">
+                  <div className="font-medium">Business Hours</div>
+                  <div className="text-sm text-muted-foreground">Mon-Fri, 9AM-6PM EST</div>
+                  <div className="text-xs text-muted-foreground mt-1">Available for urgent issues</div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

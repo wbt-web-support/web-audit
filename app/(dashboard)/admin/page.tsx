@@ -233,11 +233,7 @@ export default function AdminPage() {
   return (
     <div className="w-full px-6 py-8 bg-gray-50 min-h-screen">
       {/* Header */}
-      
-
-      <div className="w-full">
-        {/* Page Header */}
-        <div className="mb-8">
+      <div className="mb-8">
           {/* Breadcrumb Navigation */}
           {activeTab !== 'overview' && (
             <div className="mb-4">
@@ -313,7 +309,7 @@ export default function AdminPage() {
           )}
         </div>
       </div>
-    </div>
+    
   );
 }
 

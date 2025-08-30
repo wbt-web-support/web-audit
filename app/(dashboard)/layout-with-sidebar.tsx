@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   LayoutDashboard,
   Globe,
@@ -12,7 +12,11 @@ import {
   BarChart3,
   PenIcon,
   Menu,
-  X
+  X,
+  Crown,
+  CreditCard,
+  Shield,
+  HelpCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -39,6 +43,7 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
   // Memoize active state calculation
   const isActive = useCallback((href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard';
+    if (href === '/profile') return pathname.startsWith('/profile');
     return pathname.startsWith(href);
   }, [pathname]);
 
@@ -139,6 +144,9 @@ const Sidebar = React.memo(({
   sidebarOpen: boolean;
   onCloseSidebar: () => void;
 }) => {
+  const pathname = usePathname();
+  const isProfileActive = pathname.startsWith('/profile');
+  
   return (
     <div className={cn(
       "fixed inset-y-0 left-0 z-50 w-64 bg-white border-r transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 lg:flex-shrink-0 lg:sticky lg:top-0",
@@ -187,6 +195,14 @@ const Sidebar = React.memo(({
               />
             );
           })}
+          
+          {/* Profile Subtabs */}
+          {isProfileActive && (
+            <div className="mt-4 ml-4 space-y-1">
+              <ProfileSubtabs onCloseSidebar={onCloseSidebar} />
+            </div>
+          )}
+          
           <AdminNavigation onCloseSidebar={onCloseSidebar} />
         </nav>
 
@@ -203,6 +219,69 @@ const Sidebar = React.memo(({
 });
 
 Sidebar.displayName = 'Sidebar';
+
+// Memoized Profile Subtabs Component
+const ProfileSubtabs = React.memo(({ 
+  onCloseSidebar 
+}: { 
+  onCloseSidebar: () => void; 
+}) => {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  
+  const profileTabs = [
+    { name: 'Profile', href: '/profile', icon: User, tab: 'profile' },
+    { name: 'Plans', href: '/profile?tab=plans', icon: Crown, tab: 'plans' },
+    { name: 'Billing', href: '/profile?tab=billing', icon: CreditCard, tab: 'billing' },
+    { name: 'Security', href: '/profile?tab=security', icon: Shield, tab: 'security' },
+    { name: 'Support', href: '/profile?tab=support', icon: HelpCircle, tab: 'support' },
+  ];
+
+  const isActive = (href: string) => {
+    if (href === '/profile') {
+      // Check if we're on the main profile page without any tab parameter
+      return pathname === '/profile' && !searchParams.get('tab');
+    }
+    // For other tabs, check if the tab parameter matches
+    const tab = href.split('=')[1];
+    const currentTab = searchParams.get('tab');
+    return pathname.startsWith('/profile') && currentTab === tab;
+  };
+
+  return (
+    <>
+      {profileTabs.map((tab) => {
+        const Icon = tab.icon;
+        const active = isActive(tab.href);
+        return (
+          <Link
+            key={tab.name}
+            href={tab.href}
+            onClick={onCloseSidebar}
+            className={cn(
+              "group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+              active
+                ? "bg-blue-50 text-blue-600 border border-blue-200"
+                : "hover:bg-gray-50 text-gray-600"
+            )}
+          >
+            <Icon
+              className={cn(
+                "h-4 w-4 flex-shrink-0",
+                active
+                  ? "text-blue-600"
+                  : "text-gray-400 group-hover:text-gray-600"
+              )}
+            />
+            <span>{tab.name}</span>
+          </Link>
+        );
+      })}
+    </>
+  );
+});
+
+ProfileSubtabs.displayName = 'ProfileSubtabs';
 
 // Memoized Navigation Item Component
 const NavigationItem = React.memo(({ 
