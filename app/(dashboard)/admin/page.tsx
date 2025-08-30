@@ -66,17 +66,7 @@ interface SystemAlert {
   expires_at?: string;
 }
 
-interface SupportTicket {
-  id: string;
-  user_id: string;
-  user_email: string;
-  subject: string;
-  message: string;
-  status: 'open' | 'in_progress' | 'resolved' | 'closed';
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  created_at: string;
-  updated_at: string;
-}
+
 
 export default function AdminPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -115,19 +105,7 @@ export default function AdminPage() {
     }
   ]);
 
-  const [supportTickets] = useState<SupportTicket[]>([
-    {
-      id: '1',
-      user_id: 'user1',
-      user_email: 'user@example.com',
-      subject: 'Cannot access dashboard',
-      message: 'Getting 404 error when trying to access projects',
-      status: 'open',
-      priority: 'high',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }
-  ]);
+
 
   useEffect(() => {
     checkAccessAndFetchUsers();
@@ -322,7 +300,7 @@ export default function AdminPage() {
 
         {/* Support Tab */}
         <TabsContent value="support" className="space-y-6">
-          <SupportTickets tickets={supportTickets} />
+          <SupportTickets />
         </TabsContent>
       </Tabs>
     </div>

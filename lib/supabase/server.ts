@@ -3,6 +3,17 @@ import { cookies } from "next/headers";
 
 export async function createClient() {
   const cookieStore = await cookies();
+  
+  // Log cookies for debugging (be careful with sensitive data)
+  const allCookies = cookieStore.getAll();
+  const supabaseCookies = allCookies.filter(cookie => 
+    cookie.name.includes('supabase') || 
+    cookie.name.includes('sb-')
+  );
+  
+  console.log('Server client: Found Supabase cookies:', 
+    supabaseCookies.map(c => ({ name: c.name, value: c.value ? 'present' : 'missing' }))
+  );
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

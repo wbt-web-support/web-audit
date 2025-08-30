@@ -103,3 +103,34 @@ export type LegacyAuditResult = {
   details: Record<string, any> | null;
   created_at: string;
 }; 
+
+// Support Ticket Types
+export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+export type TicketPriority = 'low' | 'medium' | 'high' | 'urgent';
+
+export interface SupportTicket {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  category: string;
+  assigned_to: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TicketResponse {
+  id: string;
+  ticket_id: string;
+  message: string;
+  is_from_support: boolean;
+  author_name: string;
+  author_id: string | null;
+  created_at: string;
+}
+
+export interface TicketWithResponses extends SupportTicket {
+  responses: TicketResponse[];
+}

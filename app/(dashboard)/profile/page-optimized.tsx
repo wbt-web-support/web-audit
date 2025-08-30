@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,9 +28,6 @@ import {
 } from 'lucide-react';
 import { ProfileSkeleton } from '@/components/skeletons';
 import { useProfileData } from '@/lib/hooks';
-import { AuditProject } from '@/lib/types/database';
-import { QuickHelpAccordion } from '@/components/support/quick-help-accordion';
-import { TicketSystem } from '@/components/support/ticket-system';
 
 export default function ProfilePage() {
   const { data, loading, error, refetch } = useProfileData();
@@ -42,7 +39,7 @@ export default function ProfilePage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
   // Form state for profile updates
-  const [fullName, setFullName] = useState(profile?.full_name || '');
+  const [fullName, setFullName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   
@@ -54,9 +51,11 @@ export default function ProfilePage() {
   const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   
   // Update fullName when profile data loads
-  if (profile && fullName !== profile.full_name) {
-    setFullName(profile.full_name || '');
-  }
+  useEffect(() => {
+    if (profile?.full_name && fullName !== profile.full_name) {
+      setFullName(profile.full_name);
+    }
+  }, [profile?.full_name, fullName]);
   
   // Check if form has been modified
   const isFormDirty = fullName !== (profile?.full_name || '');
@@ -130,12 +129,6 @@ export default function ProfilePage() {
   const handleChangePassword = async () => {
     const isOAuthUser = profile?.auth_method === 'google';
     
-    console.log('Attempting password change:', { 
-      isOAuthUser, 
-      hasProfile: !!profile,
-      authMethod: profile?.auth_method 
-    });
-    
     // For OAuth users, only validate new password fields
     if (!isOAuthUser) {
       if (!currentPassword || !newPassword || !confirmPassword) {
@@ -163,8 +156,6 @@ export default function ProfilePage() {
     setPasswordMessage(null);
 
     try {
-      console.log('Sending password change request...');
-      
       const response = await fetch('/api/profile/change-password', {
         method: 'POST',
         headers: {
@@ -177,12 +168,8 @@ export default function ProfilePage() {
           isOAuthUser,
         }),
       });
-
-      console.log('Password change response status:', response.status);
       
       if (response.ok) {
-        const result = await response.json();
-        console.log('Password change success:', result);
         setPasswordMessage({ type: 'success', text: 'Password updated successfully!' });
         // Clear form
         setCurrentPassword('');
@@ -195,7 +182,6 @@ export default function ProfilePage() {
         }, 3000);
       } else {
         const errorData = await response.json();
-        console.error('Password change error response:', errorData);
         setPasswordMessage({ 
           type: 'error', 
           text: `${errorData.error || 'Failed to update password'}${errorData.details ? `: ${errorData.details}` : ''}` 
@@ -343,58 +329,58 @@ export default function ProfilePage() {
                 </div>
               </div>
               
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <div className="space-y-2">
-                   <Label>Member Since</Label>
-                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                     <Calendar className="h-4 w-4" />
-                     {profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Unknown'}
-                   </div>
-                 </div>
-                 <div className="space-y-2">
-                   <Label>Last Updated</Label>
-                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                     <Calendar className="h-4 w-4" />
-                     {profile?.updated_at ? new Date(profile.updated_at).toLocaleDateString() : 'Unknown'}
-                   </div>
-                 </div>
-               </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>Member Since</Label>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="h-4 w-4" />
+                    {profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Unknown'}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Last Updated</Label>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="h-4 w-4" />
+                    {profile?.updated_at ? new Date(profile.updated_at).toLocaleDateString() : 'Unknown'}
+                  </div>
+                </div>
+              </div>
 
-               {/* Authentication Method */}
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <div className="space-y-2">
-                   <Label>Sign-in Method</Label>
-                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                     {profile?.auth_method === 'google' ? (
-                       <>
-                         <Globe className="h-4 w-4 text-blue-500" />
-                         <span>Google Account</span>
-                       </>
-                     ) : (
-                       <>
-                         <Mail className="h-4 w-4 text-gray-500" />
-                         <span>Email & Password</span>
-                       </>
-                     )}
-                   </div>
-                 </div>
-                 <div className="space-y-2">
-                   <Label>Password Status</Label>
-                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                     {profile?.has_password ? (
-                       <>
-                         <Lock className="h-4 w-4 text-green-500" />
-                         <span>Password Set</span>
-                       </>
-                     ) : (
-                       <>
-                         <Lock className="h-4 w-4 text-yellow-500" />
-                         <span>No Password</span>
-                       </>
-                     )}
-                   </div>
-                 </div>
-               </div>
+              {/* Authentication Method */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>Sign-in Method</Label>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    {profile?.auth_method === 'google' ? (
+                      <>
+                        <Globe className="h-4 w-4 text-blue-500" />
+                        <span>Google Account</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="h-4 w-4 text-gray-500" />
+                        <span>Email & Password</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Password Status</Label>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    {profile?.has_password ? (
+                      <>
+                        <Lock className="h-4 w-4 text-green-500" />
+                        <span>Password Set</span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="h-4 w-4 text-yellow-500" />
+                        <span>No Password</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
 
               {saveMessage && (
                 <div className={`p-3 rounded-md ${
@@ -657,197 +643,214 @@ export default function ProfilePage() {
               </div>
             </CardContent>
           </Card>
-                 </TabsContent>
+        </TabsContent>
 
-         {/* Security Tab */}
-         <TabsContent value="security" className="space-y-6">
-           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-             {/* Password Management */}
-             <Card>
-               <CardHeader>
-                 <CardTitle className="flex items-center gap-2">
-                   <Lock className="h-5 w-5" />
-                   Password Management
-                 </CardTitle>
-                 <CardDescription>
-                   Update your password to keep your account secure
-                 </CardDescription>
-               </CardHeader>
-                               <CardContent className="space-y-4">
-                  {/* Show current password field only for email/password users */}
-                  {!profile?.auth_method && (
-                    <div className="space-y-2">
-                      <Label htmlFor="currentPassword">Current Password</Label>
-                      <div className="relative">
-                        <Input 
-                          id="currentPassword" 
-                          type={showPassword ? "text" : "password"}
-                          placeholder="Enter current password"
-                          value={currentPassword}
-                          onChange={(e) => setCurrentPassword(e.target.value)}
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                          onClick={() => setShowPassword(!showPassword)}
-                        >
-                          {showPassword ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
+        {/* Security Tab */}
+        <TabsContent value="security" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Password Management */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Lock className="h-5 w-5" />
+                  Password Management
+                </CardTitle>
+                <CardDescription>
+                  Update your password to keep your account secure
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Show current password field only for email/password users */}
+                {!profile?.auth_method && (
+                  <div className="space-y-2">
+                    <Label htmlFor="currentPassword">Current Password</Label>
+                    <div className="relative">
+                      <Input 
+                        id="currentPassword" 
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Enter current password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </Button>
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  {/* Show OAuth info for Google users */}
-                  {profile?.auth_method === 'google' && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                      <div className="flex items-center gap-2 text-blue-800">
-                        <Globe className="h-4 w-4" />
-                        <span className="text-sm font-medium">Google Account</span>
-                      </div>
-                      <p className="text-xs text-blue-700 mt-1">
-                        You're signed in with Google. You can set a password to also sign in with email and password.
-                      </p>
+                {/* Show OAuth info for Google users */}
+                {profile?.auth_method === 'google' && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="flex items-center gap-2 text-blue-800">
+                      <Globe className="h-4 w-4" />
+                      <span className="text-sm font-medium">Google Account</span>
                     </div>
-                  )}
-                 
-                 <div className="space-y-2">
-                   <Label htmlFor="newPassword">New Password</Label>
-                   <div className="relative">
-                     <Input 
-                       id="newPassword" 
-                       type={showNewPassword ? "text" : "password"}
-                       placeholder="Enter new password"
-                       value={newPassword}
-                       onChange={(e) => setNewPassword(e.target.value)}
-                     />
-                     <Button
-                       type="button"
-                       variant="ghost"
-                       size="sm"
-                       className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                       onClick={() => setShowNewPassword(!showNewPassword)}
-                     >
-                       {showNewPassword ? (
-                         <EyeOff className="h-4 w-4" />
-                       ) : (
-                         <Eye className="h-4 w-4" />
-                       )}
-                     </Button>
-                   </div>
-                   {newPassword && (
-                     <div className="text-xs text-muted-foreground">
-                       {newPassword.length < 6 ? (
-                         <span className="text-red-500">Password too short (minimum 6 characters)</span>
-                       ) : newPassword.length < 8 ? (
-                         <span className="text-yellow-500">Password strength: Weak</span>
-                       ) : newPassword.length < 12 ? (
-                         <span className="text-blue-500">Password strength: Medium</span>
-                       ) : (
-                         <span className="text-green-500">Password strength: Strong</span>
-                       )}
-                     </div>
-                   )}
-                 </div>
-                 
-                 <div className="space-y-2">
-                   <Label htmlFor="confirmPassword">Confirm New Password</Label>
-                   <div className="relative">
-                     <Input 
-                       id="confirmPassword" 
-                       type={showConfirmPassword ? "text" : "password"}
-                       placeholder="Confirm new password"
-                       value={confirmPassword}
-                       onChange={(e) => setConfirmPassword(e.target.value)}
-                     />
-                     <Button
-                       type="button"
-                       variant="ghost"
-                       size="sm"
-                       className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                     >
-                       {showConfirmPassword ? (
-                         <EyeOff className="h-4 w-4" />
-                       ) : (
-                         <Eye className="h-4 w-4" />
-                       )}
-                     </Button>
-                   </div>
-                   {confirmPassword && newPassword && (
-                     <div className="text-xs">
-                       {confirmPassword === newPassword ? (
-                         <span className="text-green-500">✓ Passwords match</span>
-                       ) : (
-                         <span className="text-red-500">✗ Passwords do not match</span>
-                       )}
-                     </div>
-                   )}
-                 </div>
-
-                 {passwordMessage && (
-                   <div className={`p-3 rounded-md ${
-                     passwordMessage.type === 'success' 
-                       ? 'bg-green-50 border border-green-200 text-green-800' 
-                       : 'bg-red-50 border border-red-200 text-red-800'
-                   }`}>
-                     {passwordMessage.text}
-                   </div>
-                 )}
-                 
-                                   <div className="flex gap-4">
-                    <Button 
-                      onClick={handleChangePassword}
-                      disabled={
-                        isChangingPassword || 
-                        (!profile?.auth_method && !currentPassword) || 
-                        !newPassword || 
-                        !confirmPassword || 
-                        newPassword !== confirmPassword || 
-                        newPassword.length < 6
-                      }
+                    <p className="text-xs text-blue-700 mt-1">
+                      You're signed in with Google. You can set a password to also sign in with email and password.
+                    </p>
+                  </div>
+                )}
+                
+                <div className="space-y-2">
+                  <Label htmlFor="newPassword">New Password</Label>
+                  <div className="relative">
+                    <Input 
+                      id="newPassword" 
+                      type={showNewPassword ? "text" : "password"}
+                      placeholder="Enter new password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
                     >
-                      {isChangingPassword ? 'Updating...' : profile?.auth_method === 'google' ? 'Set Password' : 'Update Password'}
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      onClick={handleResetPasswordForm}
-                      disabled={isChangingPassword}
-                    >
-                      Cancel
+                      {showNewPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
                     </Button>
                   </div>
-                 
-                                   <div className="text-center pt-2 space-y-2">
-                    <Button 
-                      variant="link" 
-                      className="text-sm text-muted-foreground hover:text-foreground"
-                      onClick={() => window.location.href = '/auth/forgot-password'}
+                  {newPassword && (
+                    <div className="text-xs text-muted-foreground">
+                      {newPassword.length < 6 ? (
+                        <span className="text-red-500">Password too short (minimum 6 characters)</span>
+                      ) : newPassword.length < 8 ? (
+                        <span className="text-yellow-500">Password strength: Weak</span>
+                      ) : newPassword.length < 12 ? (
+                        <span className="text-blue-500">Password strength: Medium</span>
+                      ) : (
+                        <span className="text-green-500">Password strength: Strong</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                  <div className="relative">
+                    <Input 
+                      id="confirmPassword" 
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="Confirm new password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     >
-                      Forgot your password?
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
                     </Button>
-                    
-                   
                   </div>
-               </CardContent>
-             </Card>
+                  {confirmPassword && newPassword && (
+                    <div className="text-xs">
+                      {confirmPassword === newPassword ? (
+                        <span className="text-green-500">✓ Passwords match</span>
+                      ) : (
+                        <span className="text-red-500">✗ Passwords do not match</span>
+                      )}
+                    </div>
+                  )}
+                </div>
 
+                {passwordMessage && (
+                  <div className={`p-3 rounded-md ${
+                    passwordMessage.type === 'success' 
+                      ? 'bg-green-50 border border-green-200 text-green-800' 
+                      : 'bg-red-50 border border-red-200 text-red-800'
+                  }`}>
+                    {passwordMessage.text}
+                  </div>
+                )}
+                
+                <div className="flex gap-4">
+                  <Button 
+                    onClick={handleChangePassword}
+                    disabled={
+                      isChangingPassword || 
+                      (!profile?.auth_method && !currentPassword) || 
+                      !newPassword || 
+                      !confirmPassword || 
+                      newPassword !== confirmPassword || 
+                      newPassword.length < 6
+                    }
+                  >
+                    {isChangingPassword ? 'Updating...' : profile?.auth_method === 'google' ? 'Set Password' : 'Update Password'}
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={handleResetPasswordForm}
+                    disabled={isChangingPassword}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+                
+                <div className="text-center pt-2 space-y-2">
+                  <Button 
+                    variant="link" 
+                    className="text-sm text-muted-foreground hover:text-foreground"
+                    onClick={() => window.location.href = '/auth/forgot-password'}
+                  >
+                    Forgot your password?
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
 
-           </div>
-
-
-         </TabsContent>
-
-         {/* Help & Support Tab */}
+        {/* Help & Support Tab */}
         <TabsContent value="support" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Quick Help Accordion */}
-            <QuickHelpAccordion />
+            {/* Quick Help */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <HelpCircle className="h-5 w-5" />
+                  Quick Help
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
+                    <div className="font-medium">How to create a new project?</div>
+                    <div className="text-sm text-muted-foreground">Learn how to start your first web audit</div>
+                  </div>
+                  <div className="p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
+                    <div className="font-medium">Understanding audit results</div>
+                    <div className="text-sm text-muted-foreground">Learn how to interpret your audit findings</div>
+                  </div>
+                  <div className="p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
+                    <div className="font-medium">Upgrading your plan</div>
+                    <div className="text-sm text-muted-foreground">Learn about our different plan options</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Contact Support */}
             <Card>
@@ -880,16 +883,38 @@ export default function ProfilePage() {
             </Card>
           </div>
 
-          {/* Ticket System */}
+          {/* FAQ Section */}
           <Card>
             <CardHeader>
-              <CardTitle>Support Tickets</CardTitle>
-              <CardDescription>
-                Create and manage support tickets for personalized assistance
-              </CardDescription>
+              <CardTitle>Frequently Asked Questions</CardTitle>
             </CardHeader>
             <CardContent>
-              <TicketSystem />
+              <div className="space-y-4">
+                <div className="border-b pb-4">
+                  <div className="font-medium mb-2">What is a web audit?</div>
+                  <div className="text-sm text-muted-foreground">
+                    A web audit is a comprehensive analysis of your website's performance, SEO, accessibility, and user experience to identify areas for improvement.
+                  </div>
+                </div>
+                <div className="border-b pb-4">
+                  <div className="font-medium mb-2">How long does an audit take?</div>
+                  <div className="text-sm text-muted-foreground">
+                    The duration depends on the size of your website. Small sites (under 50 pages) typically complete within 10-15 minutes, while larger sites may take 30-60 minutes.
+                  </div>
+                </div>
+                <div className="border-b pb-4">
+                  <div className="font-medium mb-2">Can I export my audit results?</div>
+                  <div className="text-sm text-muted-foreground">
+                    Yes, all audit results can be exported as PDF reports. Pro and Enterprise users can also export data in CSV format for further analysis.
+                  </div>
+                </div>
+                <div className="pb-4">
+                  <div className="font-medium mb-2">Is my data secure?</div>
+                  <div className="text-sm text-muted-foreground">
+                    Absolutely. We use industry-standard encryption and security measures to protect your data. We never share your information with third parties.
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

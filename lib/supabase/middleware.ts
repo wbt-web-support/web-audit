@@ -43,7 +43,23 @@ export async function updateProject(request: NextRequest) {
 
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
+
+  // Log authentication status for debugging
+  if (userError) {
+    console.error('Middleware auth error:', userError);
+  }
+
+  if (user) {
+    console.log('Middleware: User authenticated:', { 
+      id: user.id, 
+      email: user.email, 
+      provider: user.app_metadata?.provider 
+    });
+  } else {
+    console.log('Middleware: No user found');
+  }
 
   if (
     request.nextUrl.pathname !== "/" &&
