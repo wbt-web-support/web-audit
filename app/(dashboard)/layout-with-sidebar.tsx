@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { LogoutButton } from '@/components/logout-button';
 import { SimpleThemeSwitcher } from '@/components/simple-theme-switcher';
+import { AdminNavigation } from '@/components/admin-navigation';
 import React from 'react';
 
 interface SidebarLayoutProps {
@@ -186,6 +187,7 @@ const Sidebar = React.memo(({
               />
             );
           })}
+          <AdminNavigation onCloseSidebar={onCloseSidebar} />
         </nav>
 
         {/* Bottom Section - Theme Switcher and Logout */}

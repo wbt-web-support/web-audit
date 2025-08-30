@@ -4,6 +4,7 @@ export type UserProfile = {
   full_name: string | null;
   first_name: string | null;
   last_name: string | null;
+  role: 'user' | 'admin';
   created_at: string;
   updated_at: string;
 };

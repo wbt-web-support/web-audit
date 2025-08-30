@@ -28,6 +28,7 @@ export async function GET() {
         id: user.id,
         email: user.email,
         full_name: user.user_metadata?.full_name || null,
+        role: 'user', // Default role
         created_at: user.created_at,
         updated_at: user.updated_at || user.created_at,
       };
