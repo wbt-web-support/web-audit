@@ -266,7 +266,7 @@ export default function ProfilePage() {
         window.history.pushState({}, '', url.toString());
       }} className="w-full">
         
-        <TabsList className="hidden  w-full grid-cols-5">
+        <TabsList className="hidden -cols-5">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="plans">Plans</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>

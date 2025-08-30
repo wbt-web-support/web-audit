@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   Globe,
@@ -34,7 +34,14 @@ interface SidebarLayoutProps {
 export function SidebarLayout({ children }: SidebarLayoutProps) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [profileExpanded, setProfileExpanded] = useState(false);
+  const [profileExpanded, setProfileExpanded] = useState(pathname.startsWith('/profile'));
+
+  // Auto-expand profile section when on profile pages
+  useEffect(() => {
+    if (pathname.startsWith('/profile')) {
+      setProfileExpanded(true);
+    }
+  }, [pathname]);
 
   // Memoize navigation items to prevent recreation on every render
   const navigation = useMemo(() => [
@@ -225,7 +232,7 @@ const Sidebar = React.memo(({
           })}
           
           {/* Profile Subtabs - Only show when expanded */}
-          {profileExpanded && isProfileActive && (
+          {profileExpanded && (
             <div className="mt-2 ml-4 space-y-1">
               <ProfileSubtabs onCloseSidebar={onCloseSidebar} />
             </div>
@@ -263,17 +270,24 @@ const ProfileToggleItem = React.memo(({
   onCloseSidebar: () => void;
 }) => {
   const Icon = item.icon;
+  const router = useRouter();
   
   return (
     <div>
-      <button
-        onClick={onToggle}
+      <div
         className={cn(
-          "group w-full flex items-center justify-between gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200",
+          "group w-full flex items-center justify-between gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer",
           active
             ? "bg-blue-50 text-blue-600 border border-blue-200"
             : "hover:bg-gray-50 text-gray-600"
         )}
+        onClick={() => {
+          onCloseSidebar();
+          // Toggle the profile section
+          onToggle();
+          // Navigate to profile page
+          router.push(item.href);
+        }}
       >
         <div className="flex items-center gap-3">
           <Icon
@@ -286,12 +300,21 @@ const ProfileToggleItem = React.memo(({
           />
           <span>{item.name}</span>
         </div>
-        {expanded ? (
-          <ChevronDown className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />
-        )}
-      </button>
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onToggle();
+          }}
+          className="p-1 hover:bg-gray-100 rounded"
+        >
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />
+          )}
+        </button>
+      </div>
     </div>
   );
 });
