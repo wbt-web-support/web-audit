@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
 import { 
   Users, 
   UserCheck, 
@@ -69,11 +70,26 @@ interface SystemAlert {
 
 
 export default function AdminPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<'user' | 'admin' | null>(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  
+  // Get active tab from URL or default to overview
+  const activeTab = searchParams.get('tab') || 'overview';
+  
+  // Function to change tabs and update URL
+  const changeTab = (tab: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (tab === 'overview') {
+      params.delete('tab');
+    } else {
+      params.set('tab', tab);
+    }
+    router.push(`/admin?${params.toString()}`);
+  };
 
   // Mock data for charts and analytics
   const [analytics] = useState({
@@ -217,92 +233,86 @@ export default function AdminPage() {
   return (
     <div className="w-full px-6 py-8 bg-gray-50 min-h-screen">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-foreground mb-2">Admin Dashboard</h1>
-        <p className="text-muted-foreground text-lg">Complete system management and analytics</p>
+      
+
+      <div className="w-full">
+        {/* Page Header */}
+        <div className="mb-8">
+          {/* Breadcrumb Navigation */}
+          {activeTab !== 'overview' && (
+            <div className="mb-4">
+              <Button
+                variant="ghost"
+                onClick={() => changeTab('overview')}
+                className="text-blue-600 hover:text-blue-800 p-0 h-auto font-normal"
+              >
+                ← Back to Overview
+              </Button>
+            </div>
+          )}
+          
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            {activeTab === 'overview' && 'Admin Overview'}
+            {activeTab === 'users' && 'User Management'}
+            {activeTab === 'projects' && 'Project Analytics'}
+            {activeTab === 'analytics' && 'System Analytics'}
+            {activeTab === 'subscriptions' && 'Subscription Management'}
+            {activeTab === 'revenue' && 'Revenue Analytics'}
+            {activeTab === 'alerts' && 'System Alerts'}
+            {activeTab === 'support' && 'Support Tickets'}
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-2">
+            {activeTab === 'overview' && 'Monitor system performance and key metrics'}
+            {activeTab === 'users' && 'Manage user accounts and permissions'}
+            {activeTab === 'projects' && 'Track project performance and analytics'}
+            {activeTab === 'analytics' && 'View detailed system analytics and reports'}
+            {activeTab === 'subscriptions' && 'Manage user subscriptions and billing'}
+            {activeTab === 'revenue' && 'Track revenue metrics and financial data'}
+            {activeTab === 'alerts' && 'Monitor system alerts and notifications'}
+            {activeTab === 'support' && 'Handle support tickets and user requests'}
+          </p>
+        </div>
+
+        {/* Content based on active tab */}
+        <div className="space-y-6">
+          {activeTab === 'overview' && (
+            <OverviewTab analytics={analytics} users={users} />
+          )}
+          
+          {activeTab === 'users' && (
+            <UserManagement 
+              users={users}
+              adminUsers={adminUsers}
+              regularUsers={regularUsers}
+              onRefresh={checkAccessAndFetchUsers}
+            />
+          )}
+          
+          {activeTab === 'projects' && (
+            <ProjectAnalytics />
+          )}
+          
+          {activeTab === 'analytics' && (
+            <AnalyticsDashboard analytics={analytics} />
+          )}
+          
+          {activeTab === 'subscriptions' && (
+            <SubscriptionManagement />
+          )}
+          
+          {activeTab === 'revenue' && (
+            <RevenueAnalytics />
+          )}
+          
+          {activeTab === 'alerts' && (
+            <SystemAlerts alerts={systemAlerts} />
+          )}
+          
+          {activeTab === 'support' && (
+            <SupportTickets />
+          )}
+        </div>
       </div>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-7 mb-8">
-          <TabsTrigger value="overview" className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" />
-            Overview
-          </TabsTrigger>
-          <TabsTrigger value="users" className="flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            Users
-          </TabsTrigger>
-          <TabsTrigger value="projects" className="flex items-center gap-2">
-            <Globe className="h-4 w-4" />
-            Projects
-          </TabsTrigger>
-          <TabsTrigger value="analytics" className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4" />
-            Analytics
-          </TabsTrigger>
-          <TabsTrigger value="subscriptions" className="flex items-center gap-2">
-            <CreditCard className="h-4 w-4" />
-            Subscriptions
-          </TabsTrigger>
-          <TabsTrigger value="revenue" className="flex items-center gap-2">
-            <DollarSign className="h-4 w-4" />
-            Revenue
-          </TabsTrigger>
-          <TabsTrigger value="alerts" className="flex items-center gap-2">
-            <Bell className="h-4 w-4" />
-            Alerts
-          </TabsTrigger>
-          <TabsTrigger value="support" className="flex items-center gap-2">
-            <Ticket className="h-4 w-4" />
-            Support
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-6">
-          <OverviewTab analytics={analytics} users={users} />
-        </TabsContent>
-
-        {/* Users Tab */}
-        <TabsContent value="users" className="space-y-6">
-          <UserManagement 
-            users={users}
-            adminUsers={adminUsers}
-            regularUsers={regularUsers}
-            onRefresh={checkAccessAndFetchUsers}
-          />
-        </TabsContent>
-
-        {/* Projects Tab */}
-        <TabsContent value="projects" className="space-y-6">
-          <ProjectAnalytics />
-        </TabsContent>
-
-        {/* Analytics Tab */}
-        <TabsContent value="analytics" className="space-y-6">
-          <AnalyticsDashboard analytics={analytics} />
-        </TabsContent>
-
-        {/* Subscriptions Tab */}
-        <TabsContent value="subscriptions" className="space-y-6">
-          <SubscriptionManagement />
-        </TabsContent>
-
-        {/* Revenue Tab */}
-        <TabsContent value="revenue" className="space-y-6">
-          <RevenueAnalytics />
-        </TabsContent>
-
-        {/* Alerts Tab */}
-        <TabsContent value="alerts" className="space-y-6">
-          <SystemAlerts alerts={systemAlerts} />
-        </TabsContent>
-
-        {/* Support Tab */}
-        <TabsContent value="support" className="space-y-6">
-          <SupportTickets />
-        </TabsContent>
-      </Tabs>
     </div>
   );
 }
