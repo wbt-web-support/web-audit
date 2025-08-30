@@ -16,7 +16,9 @@ import {
   Crown,
   CreditCard,
   Shield,
-  HelpCircle
+  HelpCircle,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -32,6 +34,7 @@ interface SidebarLayoutProps {
 export function SidebarLayout({ children }: SidebarLayoutProps) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [profileExpanded, setProfileExpanded] = useState(false);
 
   // Memoize navigation items to prevent recreation on every render
   const navigation = useMemo(() => [
@@ -54,6 +57,10 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
 
   const closeSidebar = useCallback(() => {
     setSidebarOpen(false);
+  }, []);
+
+  const toggleProfile = useCallback(() => {
+    setProfileExpanded(prev => !prev);
   }, []);
 
   return (
@@ -80,6 +87,8 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
           isActive={isActive}
           sidebarOpen={sidebarOpen}
           onCloseSidebar={closeSidebar}
+          profileExpanded={profileExpanded}
+          onToggleProfile={toggleProfile}
         />
 
         {/* Main Content */}
@@ -137,12 +146,16 @@ const Sidebar = React.memo(({
   navigation, 
   isActive, 
   sidebarOpen, 
-  onCloseSidebar 
+  onCloseSidebar,
+  profileExpanded,
+  onToggleProfile
 }: { 
   navigation: Array<{ name: string; href: string; icon: any }>;
   isActive: (href: string) => boolean;
   sidebarOpen: boolean;
   onCloseSidebar: () => void;
+  profileExpanded: boolean;
+  onToggleProfile: () => void;
 }) => {
   const pathname = usePathname();
   const isProfileActive = pathname.startsWith('/profile');
@@ -186,6 +199,21 @@ const Sidebar = React.memo(({
           {navigation.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
+            
+            // Special handling for Profile item to make it toggleable
+            if (item.name === 'Profile') {
+              return (
+                <ProfileToggleItem
+                  key={item.name}
+                  item={item}
+                  active={active}
+                  expanded={profileExpanded}
+                  onToggle={onToggleProfile}
+                  onCloseSidebar={onCloseSidebar}
+                />
+              );
+            }
+            
             return (
               <NavigationItem 
                 key={item.name}
@@ -196,9 +224,9 @@ const Sidebar = React.memo(({
             );
           })}
           
-          {/* Profile Subtabs */}
-          {isProfileActive && (
-            <div className="mt-4 ml-4 space-y-1">
+          {/* Profile Subtabs - Only show when expanded */}
+          {profileExpanded && isProfileActive && (
+            <div className="mt-2 ml-4 space-y-1">
               <ProfileSubtabs onCloseSidebar={onCloseSidebar} />
             </div>
           )}
@@ -219,6 +247,56 @@ const Sidebar = React.memo(({
 });
 
 Sidebar.displayName = 'Sidebar';
+
+// New Profile Toggle Item Component
+const ProfileToggleItem = React.memo(({ 
+  item, 
+  active, 
+  expanded, 
+  onToggle, 
+  onCloseSidebar 
+}: { 
+  item: { name: string; href: string; icon: any };
+  active: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+  onCloseSidebar: () => void;
+}) => {
+  const Icon = item.icon;
+  
+  return (
+    <div>
+      <button
+        onClick={onToggle}
+        className={cn(
+          "group w-full flex items-center justify-between gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200",
+          active
+            ? "bg-blue-50 text-blue-600 border border-blue-200"
+            : "hover:bg-gray-50 text-gray-600"
+        )}
+      >
+        <div className="flex items-center gap-3">
+          <Icon
+            className={cn(
+              "h-5 w-5 flex-shrink-0",
+              active
+                ? "text-blue-600"
+                : "text-gray-400 group-hover:text-gray-600"
+            )}
+          />
+          <span>{item.name}</span>
+        </div>
+        {expanded ? (
+          <ChevronDown className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />
+        ) : (
+          <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />
+        )}
+      </button>
+    </div>
+  );
+});
+
+ProfileToggleItem.displayName = 'ProfileToggleItem';
 
 // Memoized Profile Subtabs Component
 const ProfileSubtabs = React.memo(({ 
