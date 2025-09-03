@@ -2,20 +2,18 @@
 
 import { useState } from "react";
 import { 
-  Globe2, 
   Search, 
   BarChart3, 
   Shield, 
   Zap, 
   CheckCircle, 
-  ArrowRight, 
+  ArrowRight,
   Star, 
   ChevronDown, 
   Play,
   Smartphone,
   Monitor,
   Tablet,
-  Target,
   FileText,
   Link as LinkIcon,
   Image,
@@ -38,6 +36,8 @@ import Link from "next/link";
 import { useAppDispatch, useAppSelector } from "./stores/hooks";
 import { setWebsiteUrl } from "./stores/homeSlice";
 import { HomeUrlDisplay } from "../components/home-url-display";
+import { Navbar } from "../components/navbar";
+import { CTASection } from "../components/cta-section";
 
 export default function Home() {
   const dispatch = useAppDispatch();
@@ -146,36 +146,8 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       <HomeUrlDisplay />
-      {/* Header */}
-      <header className="border-b border-slate-200 dark:border-slate-700 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Globe2 className="h-6 w-6" />
-            <span className="text-xl font-semibold">Website Audit</span>
-          </div>
-          <div className="flex items-center gap-6">
-            <Link 
-              href="/pricing"
-              className="text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200"
-            >
-              Pricing
-            </Link>
-            <Link 
-              href={websiteUrl ? `/auth/login?website=${encodeURIComponent(websiteUrl)}` : "/auth/login"}
-              className="text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200"
-            >
-              Sign In
-            </Link>
-            <Link 
-              href={websiteUrl ? `/auth/sign-up?website=${encodeURIComponent(websiteUrl)}` : "/auth/sign-up"}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors duration-200 shadow-sm hover:shadow-md"
-            >
-              Sign Up
-            </Link>
-          </div>
-        </div>
-      </header>
-
+      <Navbar websiteUrl={websiteUrl} />
+      
       {/* Hero Section */}
       <section className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
         <div className="container mx-auto px-4 text-center relative z-10">
@@ -391,42 +363,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-16 sm:py-20 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 dark:from-blue-800 dark:via-blue-900 dark:to-indigo-900 text-white relative overflow-hidden">
-        {/* Background Pattern */}
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/10"></div>
-        
-        <div className="container mx-auto px-4 text-center relative z-10">
-          <div className="max-w-4xl mx-auto">
-            <div className="mb-8">
-              <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-white/20 rounded-full mb-6">
-                <Target className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
-              </div>
-            </div>
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-6">
-              Ready to Transform Your Website?
-            </h2>
-            <p className="text-lg sm:text-xl mb-8 opacity-90">
-              Join thousands of businesses optimizing their online presence with AI-powered insights
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link 
-                href={websiteUrl ? `/auth/sign-up?website=${encodeURIComponent(websiteUrl)}` : "/auth/sign-up"}
-                className="bg-white text-blue-600 hover:bg-gray-100 inline-flex items-center justify-center px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg font-semibold rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl"
-              >
-                Start Free Audit Now
-                <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
-              </Link>
-              <Link 
-                href={websiteUrl ? `/auth/login?website=${encodeURIComponent(websiteUrl)}` : "/auth/login"}
-                className="inline-flex items-center justify-center px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg font-semibold border-2 border-white text-white rounded-lg hover:bg-white hover:text-blue-600 transition-all duration-300"
-              >
-                Sign In
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
+      <CTASection websiteUrl={websiteUrl} />
 
       {/* Footer */}
       <footer className="bg-slate-900 dark:bg-slate-950 text-white py-12 sm:py-16">

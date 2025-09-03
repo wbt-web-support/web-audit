@@ -264,12 +264,73 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
       if (response.ok) {
         router.push(`/audit?project=${data.project.id}`);
         toast.success("Project created successfully!");
+        
+        // Show user tier information if available
+        if (data.userTier) {
+          toast.info(`Current tier: ${data.userTier} - ${data.rateLimitInfo?.remaining || 0} requests remaining`);
+        }
+        
         dispatch(clearForm());
       } else {
-        toast.error(data.error || "Failed to create project.");
+        // Handle specific error codes with enhanced user feedback
+        let errorMessage = data.error || "Failed to create project.";
+        let shouldRedirect = false;
+        
+        switch (data.code) {
+          case 'RATE_LIMIT_EXCEEDED':
+            errorMessage = `Rate limit exceeded. Please try again in ${data.retryAfter || 60} seconds.`;
+            break;
+          case 'BURST_LIMIT_EXCEEDED':
+            errorMessage = `Too many requests too quickly. Please slow down and try again in ${data.retryAfter || 10} seconds.`;
+            break;
+          case 'DUPLICATE_URL':
+            errorMessage = `A project with this URL already exists.`;
+            if (data.projectId) {
+              errorMessage += ` Project ID: ${data.projectId}`;
+            }
+            break;
+          case 'VALIDATION_ERROR':
+            errorMessage = `Validation failed: ${data.details?.join(', ') || 'Invalid data provided'}`;
+            break;
+          case 'TOO_MANY_PROJECTS':
+            errorMessage = `Project limit reached for your tier (${data.userTier}). Current: ${data.currentCount}, Max: ${data.maxAllowed}`;
+            break;
+          case 'AUTH_REQUIRED':
+            errorMessage = "Please log in to create a project.";
+            shouldRedirect = true;
+            router.push('/auth/login');
+            break;
+          case 'DB_CONNECTION_ERROR':
+            errorMessage = "Database connection failed. Please try again.";
+            break;
+          case 'DB_TIMEOUT':
+            errorMessage = "Database operation timed out. Please try again.";
+            break;
+          case 'REQUEST_TIMEOUT':
+            errorMessage = "Request timed out. Please try again.";
+            break;
+          case 'DATA_TOO_LARGE':
+            errorMessage = "Request data is too large. Please reduce the amount of data.";
+            break;
+          case 'PAYLOAD_TOO_LARGE':
+            errorMessage = "Request payload is too large. Please reduce the amount of data.";
+            break;
+          default:
+            errorMessage = data.error || "Failed to create project.";
+        }
+        
+        toast.error(errorMessage);
+        setError(errorMessage);
+        
+        // Show user tier information in error cases
+        if (data.userTier && data.limits) {
+          console.log(`User tier: ${data.userTier}`, data.limits);
+        }
       }
     } catch (error) {
-      toast.error("Failed to create project.");
+      console.error('Create project error:', error);
+      toast.error("Network error. Please check your connection and try again.");
+      setError("Network error occurred");
     } finally {
       setLoading(false);
     }
@@ -332,10 +393,53 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
           toast.success("Project updated successfully!");
         }
       } else {
-        setError(data.error || "Failed to update project");
+        // Handle specific error codes for edit with enhanced feedback
+        let errorMessage = data.error || "Failed to update project.";
+        let shouldRedirect = false;
+        
+        switch (data.code) {
+          case 'RATE_LIMIT_EXCEEDED':
+            errorMessage = `Rate limit exceeded. Please try again in ${data.retryAfter || 60} seconds.`;
+            break;
+          case 'BURST_LIMIT_EXCEEDED':
+            errorMessage = `Too many requests too quickly. Please slow down and try again in ${data.retryAfter || 10} seconds.`;
+            break;
+          case 'VALIDATION_ERROR':
+            errorMessage = `Validation failed: ${data.details?.join(', ') || 'Invalid data provided'}`;
+            break;
+          case 'AUTH_REQUIRED':
+            errorMessage = "Please log in to update the project.";
+            shouldRedirect = true;
+            router.push('/auth/login');
+            break;
+          case 'DB_CONNECTION_ERROR':
+            errorMessage = "Database connection failed. Please try again.";
+            break;
+          case 'DB_TIMEOUT':
+            errorMessage = "Database operation timed out. Please try again.";
+            break;
+          case 'REQUEST_TIMEOUT':
+            errorMessage = "Request timed out. Please try again.";
+            break;
+          case 'DATA_TOO_LARGE':
+            errorMessage = "Request data is too large. Please reduce the amount of data.";
+            break;
+          default:
+            errorMessage = data.error || "Failed to update project.";
+        }
+        
+        setError(errorMessage);
+        toast.error(errorMessage);
+        
+        // Show user tier information in error cases
+        if (data.userTier && data.limits) {
+          console.log(`User tier: ${data.userTier}`, data.limits);
+        }
       }
     } catch (error) {
-      setError("Failed to update project");
+      console.error('Edit project error:', error);
+      setError("Network error occurred");
+      toast.error("Network error. Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
