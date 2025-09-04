@@ -204,9 +204,12 @@ export async function POST(request: Request) {
     } = companyDetails;
 
     // Single optimized database call using the new function
+    // This function handles URL duplicate checking internally
+    // It checks if the user already has a project with the same base_url
+    // and returns appropriate error codes if duplicates are found
     const { data: result, error: dbError } = await supabase.rpc('create_audit_project_optimized', {
       p_user_id: user.id,
-      p_base_url: base_url.trim().toLowerCase(),
+      p_base_url: base_url.trim().toLowerCase(), // Normalize URL for duplicate checking
       p_crawl_type: crawlType,
       p_instructions: instructions.length > 0 ? instructions : null,
       p_services: services.length > 0 ? services : null,
@@ -233,8 +236,13 @@ export async function POST(request: Request) {
     }
 
     // Check if the function returned an error
+    // This handles various error cases including URL duplicate checking
     if (!result.success) {
       const errorCode = result.error_code;
+      
+      // Map database error codes to appropriate HTTP status codes
+      // DUPLICATE_URL: User already has a project with this URL (409 Conflict)
+      // TOO_MANY_PROJECTS: User has exceeded their tier's project limit (403 Forbidden)
       const statusCode = errorCode === 'DUPLICATE_URL' ? HTTP_STATUS.CONFLICT :
                         errorCode === 'TOO_MANY_PROJECTS' ? HTTP_STATUS.FORBIDDEN :
                         HTTP_STATUS.INTERNAL_SERVER_ERROR;
@@ -243,10 +251,11 @@ export async function POST(request: Request) {
         { 
           error: result.error,
           code: errorCode,
-          ...(result.project_id && { projectId: result.project_id }),
-          ...(result.current_count && { currentCount: result.current_count }),
-          ...(result.max_allowed && { maxAllowed: result.max_allowed }),
-          ...(result.user_tier && { userTier: result.user_tier })
+          // Include additional context for client-side handling
+          ...(result.project_id && { projectId: result.project_id }), // Existing project ID if duplicate
+          ...(result.current_count && { currentCount: result.current_count }), // Current project count
+          ...(result.max_allowed && { maxAllowed: result.max_allowed }), // Max allowed for user tier
+          ...(result.user_tier && { userTier: result.user_tier }) // User's current tier
         },
         { status: statusCode }
       );

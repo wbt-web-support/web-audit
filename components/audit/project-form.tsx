@@ -267,7 +267,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
         
         // Show user tier information if available
         if (data.userTier) {
-          toast.info(`Current tier: ${data.userTier} - ${data.rateLimitInfo?.remaining || 0} requests remaining`);
+          // toast.info(`Current tier: ${data.userTier} - ${data.rateLimitInfo?.remaining || 0} requests remaining`);
         }
         
         dispatch(clearForm());
