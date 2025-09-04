@@ -1,21 +1,21 @@
-// API Configuration for 100-500 Active Users
+// API Configuration for 500+ Active Users (Optimized)
 export const API_CONFIG = {
-  // Rate limiting settings - Optimized for 100-500 active users
+  // Rate limiting settings - Optimized for 500+ active users
   RATE_LIMIT: {
     WINDOW_MS: 60 * 1000, // 1 minute
-    MAX_REQUESTS_PER_WINDOW: 200, // Increased to 200 requests per minute per user
+    MAX_REQUESTS_PER_WINDOW: 500, // Increased for high concurrency
     CLEANUP_INTERVAL_MS: 2 * 60 * 1000, // Clean up every 2 minutes for better memory management
-    BURST_LIMIT: 50, // Allow burst of 50 requests in first 10 seconds
+    BURST_LIMIT: 100, // Allow burst of 100 requests in first 10 seconds
     BURST_WINDOW_MS: 10 * 1000, // 10 seconds burst window
   },
   
-  // Database settings - Optimized for concurrent users
+  // Database settings - Optimized for 500+ concurrent users
   DATABASE: {
-    MAX_RETRIES: 3,
-    RETRY_DELAY_MS: 50, // Reduced delay for faster retries
-    QUERY_TIMEOUT_MS: 15000, // Reduced to 15 seconds for better responsiveness
-    CONNECTION_POOL_SIZE: 20, // Optimized pool size for 100-500 users
-    MAX_CONCURRENT_QUERIES: 100, // Limit concurrent database operations
+    MAX_RETRIES: 2, // Reduced retries for faster failure handling
+    RETRY_DELAY_MS: 25, // Faster retry delay
+    QUERY_TIMEOUT_MS: 10000, // Reduced to 10 seconds for better responsiveness
+    CONNECTION_POOL_SIZE: 50, // Increased pool size for high concurrency
+    MAX_CONCURRENT_QUERIES: 200, // Increased limit for concurrent operations
   },
   
   // Validation settings - Balanced for user experience
@@ -34,12 +34,12 @@ export const API_CONFIG = {
     CACHE_DURATION_MS: 5 * 60 * 1000, // 5 minutes cache for GET requests
   },
   
-  // Performance settings for 100-500 users
+  // Performance settings for 500+ users
   PERFORMANCE: {
-    MAX_CONCURRENT_REQUESTS: 500, // Handle 500 concurrent requests
-    REQUEST_TIMEOUT_MS: 30000, // 30 seconds total request timeout
-    MEMORY_LIMIT_MB: 512, // Memory limit per request
-    CPU_TIMEOUT_MS: 25000, // CPU timeout to prevent blocking
+    MAX_CONCURRENT_REQUESTS: 1000, // Handle 1000+ concurrent requests
+    REQUEST_TIMEOUT_MS: 15000, // Reduced to 15 seconds for faster responses
+    MEMORY_LIMIT_MB: 256, // Reduced memory limit per request
+    CPU_TIMEOUT_MS: 10000, // Reduced CPU timeout for better responsiveness
   },
   
   // User experience settings
@@ -154,8 +154,8 @@ export const PERFORMANCE_THRESHOLDS = {
     CRITICAL: 512,
   },
   CONCURRENT_USERS: {
-    OPTIMAL: 200,
-    HIGH: 400,
-    CRITICAL: 500,
+    OPTIMAL: 500,
+    HIGH: 800,
+    CRITICAL: 1000,
   },
 } as const;

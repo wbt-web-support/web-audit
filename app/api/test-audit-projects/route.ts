@@ -4,7 +4,8 @@ import { AuditProject } from '@/lib/types/database';
 import { ERROR_CODES, HTTP_STATUS, USER_TIERS, PERFORMANCE_THRESHOLDS } from '@/lib/config/api';
 import { redisRateLimiter } from '@/lib/redis/rate-limiter';
 
-// Redis-based rate limiting is now used instead of in-memory store
+// TEST VERSION - NO AUTHENTICATION REQUIRED
+// This endpoint is for load testing only
 
 // Helper function to get user tier (default to BASIC for now)
 function getUserTier(userId: string): keyof typeof USER_TIERS {
@@ -12,12 +13,6 @@ function getUserTier(userId: string): keyof typeof USER_TIERS {
   // For now, return BASIC tier
   return 'BASIC';
 }
-
-// Old in-memory rate limiting function removed - now using Redis
-
-// Validation now handled by database function
-
-// Data preparation now handled by database function
 
 // Performance monitoring helper
 function logPerformanceMetrics(userId: string, operation: string, startTime: number) {
@@ -40,20 +35,13 @@ export async function GET() {
   try {
     const supabase = await createClient();
     
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized', code: ERROR_CODES.AUTH_REQUIRED }, 
-        { status: HTTP_STATUS.UNAUTHORIZED }
-      );
-    }
-    
-    userId = user.id;
+    // TEST MODE: Use a fixed test user ID instead of authentication
+    userId = '00000000-0000-0000-0000-000000000001'; // Fixed test UUID
 
     const { data: projects, error } = await supabase
       .from('audit_projects')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(2000); // Max projects per request
 
@@ -80,7 +68,9 @@ export async function GET() {
         resetTime: rateLimitInfo.resetTime,
         burstRemaining: rateLimitInfo.burstRemaining,
         burstResetTime: rateLimitInfo.burstResetTime
-      }
+      },
+      testMode: true,
+      testUserId: userId
     });
   } catch (error) {
     console.error('Unexpected error in GET:', error);
@@ -137,20 +127,12 @@ export async function POST(request: Request) {
     // Create Supabase client
     supabase = await createClient();
     
-    // Authenticate user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized', code: ERROR_CODES.AUTH_REQUIRED },
-        { status: HTTP_STATUS.UNAUTHORIZED }
-      );
-    }
-    
-    userId = user.id;
+    // TEST MODE: Use a fixed test user ID instead of authentication
+    userId = '00000000-0000-0000-0000-000000000001'; // Fixed test UUID
 
     // Check Redis-based rate limiting
-    const userTier = getUserTier(user.id);
-    const rateLimitCheck = await redisRateLimiter.checkRateLimit(user.id, userTier);
+    const userTier = getUserTier(userId);
+    const rateLimitCheck = await redisRateLimiter.checkRateLimit(userId, userTier);
     
     if (!rateLimitCheck.allowed) {
       const retryAfter = rateLimitCheck.retryAfter || rateLimitCheck.burstRetryAfter;
@@ -165,7 +147,9 @@ export async function POST(request: Request) {
           retryAfter,
           userTier,
           limits: USER_TIERS[userTier],
-          remaining: rateLimitCheck.remaining || 0
+          remaining: rateLimitCheck.remaining || 0,
+          testMode: true,
+          testUserId: userId
         },
         { status: HTTP_STATUS.TOO_MANY_REQUESTS }
       );
@@ -205,7 +189,7 @@ export async function POST(request: Request) {
 
     // Single optimized database call using the new function
     const { data: result, error: dbError } = await supabase.rpc('create_audit_project_optimized', {
-      p_user_id: user.id,
+      p_user_id: userId,
       p_base_url: base_url.trim().toLowerCase(),
       p_crawl_type: crawlType,
       p_instructions: instructions.length > 0 ? instructions : null,
@@ -246,7 +230,9 @@ export async function POST(request: Request) {
           ...(result.project_id && { projectId: result.project_id }),
           ...(result.current_count && { currentCount: result.current_count }),
           ...(result.max_allowed && { maxAllowed: result.max_allowed }),
-          ...(result.user_tier && { userTier: result.user_tier })
+          ...(result.user_tier && { userTier: result.user_tier }),
+          testMode: true,
+          testUserId: userId
         },
         { status: statusCode }
       );
@@ -257,7 +243,7 @@ export async function POST(request: Request) {
     logPerformanceMetrics(userId!, 'POST project creation', startTime);
 
     // Get updated rate limit info from Redis
-    const rateLimitInfo = await redisRateLimiter.getRateLimitInfo(user.id, userTier);
+    const rateLimitInfo = await redisRateLimiter.getRateLimitInfo(userId, userTier);
 
     // Success response with enhanced information
     return NextResponse.json(
@@ -271,7 +257,9 @@ export async function POST(request: Request) {
           resetTime: rateLimitInfo.resetTime,
           burstRemaining: rateLimitInfo.burstRemaining,
           burstResetTime: rateLimitInfo.burstResetTime
-        }
+        },
+        testMode: true,
+        testUserId: userId
       },
       { status: HTTP_STATUS.CREATED }
     );
@@ -299,6 +287,4 @@ export async function POST(request: Request) {
       { status: HTTP_STATUS.INTERNAL_SERVER_ERROR }
     );
   }
-} 
-
-
+}
