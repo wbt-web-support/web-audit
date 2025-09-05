@@ -64,7 +64,6 @@ export async function updateProject(request: NextRequest) {
   if (
     request.nextUrl.pathname !== "/" &&
     request.nextUrl.pathname !== "/pricing" &&
-    request.nextUrl.pathname !== "/health" &&
     !user &&
     !request.nextUrl.pathname.startsWith("/login") &&
     !request.nextUrl.pathname.startsWith("/auth") &&
