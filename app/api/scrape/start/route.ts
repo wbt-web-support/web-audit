@@ -1,9 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
-import { WebScraper } from "@/lib/services/web-scraper";
 import { NextResponse } from "next/server";
-import { toast } from "react-toastify";
-import * as cheerio from "cheerio";
-import pLimit from "p-limit";
+import { addCrawlerJob, getQueueStats } from "@/lib/queue/crawler-queue";
+import { WebScraper } from "@/lib/services/web-scraper";
 import { extractImagesFromHtmlAndText, extractLinksFromHtmlAndText } from '@/lib/services/extract-resources';
 
 // URL normalization function (same as in WebScraper)
@@ -216,15 +214,18 @@ export async function POST(request: Request) {
     const avgTimePerPage = 1.5; // seconds
     const estimatedTimeSec = scraperOptions.maxPages * avgTimePerPage;
 
-    // Start crawling in the background based on crawl_type
-    await crawlWebsite(
-      project_id,
-      project.base_url,
-      user.id,
-      existingUrls,
-      crawl_type,
-      scraperOptions
-    );
+    // Add crawling job to optimized queue
+    const jobResult = await addCrawlerJob({
+      projectId: project_id,
+      baseUrl: project.base_url,
+      userId: user.id,
+      crawlType: crawl_type || 'full',
+      scraperOptions,
+      priority: 1, // Standard priority
+    });
+    
+    // Get queue statistics for response
+    const queueStats = await getQueueStats();
 
     // Check custom_urls directly (not via crawler)
     let customUrlResults: { pageLink: string; isPresent: boolean }[] = [];
@@ -308,12 +309,18 @@ export async function POST(request: Request) {
       }
     }
 
-    // Now estimatedTimeSec is in scope for the respons
+    // Calculate optimized estimated time
+    const optimizedTimeSec = Math.ceil(scraperOptions.maxPages / 8) * 1.5; // 8 concurrent pages
+    
     return NextResponse.json({
-      message: "Crawling started",
+      message: "Crawling job queued successfully",
       project_id,
+      job_id: jobResult.jobId,
       isRecrawl: project.status === "completed",
-      estimated_time_sec: estimatedTimeSec,
+      estimated_time_sec: optimizedTimeSec,
+      estimated_wait_time_sec: jobResult.estimatedWaitTime,
+      queue_position: jobResult.queuePosition,
+      queue_stats: queueStats,
       customUrlResults,
     });
   } catch (error) {

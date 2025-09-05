@@ -180,7 +180,7 @@ export function AuditMain() {
     }
     
     // Check for any background crawling processes that need to be resumed
-    checkAndResumeBackgroundProcesses();
+    // checkAndResumeBackgroundProcesses();
     
     return () => {
       crawlingStartedRef.current = false;
@@ -298,7 +298,6 @@ export function AuditMain() {
       
       if (projectResponse.ok) {
         setProjects([projectData.project]);
-        
         dispatch(initializeSession({ projectId: selectedProjectId }));
         dispatch(setActiveProject({ projectId: selectedProjectId }));
         
@@ -467,7 +466,7 @@ export function AuditMain() {
   // ============================================================================
 
   /**
-   * Start the crawling process
+   * Start the crawling process with optimized queue system
    */
   const startCrawlingProcess = async (projectId: string, background: boolean = false) => {
     setCrawling(true);
@@ -513,10 +512,21 @@ export function AuditMain() {
         return;
       }
 
-      if (background) {
-        toast.success('Background crawling started! You can continue using the app while crawling runs in the background.');
-      } else if (data.estimated_time_sec) {
-        toast.success(`Crawling started! Estimated time: ${Math.round(data.estimated_time_sec)} seconds`);
+      // Handle queue response
+      if (data.job_id) {
+        const waitTime = Math.round(data.estimated_wait_time_sec || 0);
+        const queuePos = data.queue_position || 1;
+        
+        if (queuePos === 1) {
+          toast.success(`🚀 Crawling started immediately! Estimated time: ${Math.round(data.estimated_time_sec)} seconds`);
+        } else {
+          toast.success(`📋 Crawling queued! Position: ${queuePos}, Wait time: ${waitTime}s, Processing time: ${Math.round(data.estimated_time_sec)}s`);
+        }
+        
+        // Start polling for job status
+        if (data.job_id) {
+          pollJobStatus(data.job_id, projectId);
+        }
       } else {
         toast.success('Crawling started!');
       }
@@ -527,6 +537,44 @@ export function AuditMain() {
     } finally {
       setCrawling(false);
     }
+  };
+
+  /**
+   * Poll job status for queue-based crawling
+   */
+  const pollJobStatus = async (jobId: string, projectId: string) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/queue/status/${jobId}`);
+        const data = await response.json();
+        
+        if (response.ok) {
+          if (data.status === 'completed') {
+            clearInterval(pollInterval);
+            toast.success('✅ Crawling completed successfully!');
+            dispatch(completeCrawling({ projectId }));
+            await fetchData();
+          } else if (data.status === 'failed') {
+            clearInterval(pollInterval);
+            toast.error(`❌ Crawling failed: ${data.error || 'Unknown error'}`);
+            dispatch(stopCrawling({ projectId }));
+            setError(data.error || 'Crawling failed');
+          } else if (data.status === 'active') {
+            // Update progress if available
+            if (data.progress) {
+              console.log(`Crawling progress: ${data.progress}%`);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error polling job status:', error);
+      }
+    }, 2000); // Poll every 2 seconds
+    
+    // Clear interval after 10 minutes to prevent infinite polling
+    setTimeout(() => {
+      clearInterval(pollInterval);
+    }, 600000);
   };
 
   /**

@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useDispatch, useSelector } from "react-redux";
 import { toast } from "react-toastify";
+import { useProjects } from "@/lib/hooks/useProjects";
+import { useUser } from "@/lib/contexts/UserContext";
 
 // UI Components
 import {
@@ -55,6 +57,12 @@ import ServicesDropdown from "@/app/(dashboard)/dashboard/components/ServicesDro
 import CustomUrls from "@/app/(dashboard)/dashboard/components/CustomUrls";
 import CheckStripKeys from "@/app/(dashboard)/dashboard/components/CheckStripKeys";
 
+// Tier Components
+import { TierStatusCard } from "@/components/ui/tier-status-card";
+import { LimitWarning } from "@/components/ui/limit-warning";
+import { UpgradePrompt } from "@/components/ui/upgrade-prompt";
+import { RouteProtection } from "@/components/auth/route-protection";
+
 // ============================================================================
 // INTERFACES
 // ============================================================================
@@ -83,9 +91,14 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
   // STATE MANAGEMENT
   // ============================================================================
   
-  // Loading and error states
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  // Use the new projects hook
+  const { createProject, updateProject, getProject, loading, error } = useProjects();
+  
+  // Use tier system
+  const { user, tier, canCreateProject, getRemainingProjects } = useUser();
+  
+  // Local error state for form-specific errors
+  const [formError, setFormError] = useState("");
   
   // Form field states
   const [projectUrl, setProjectUrl] = useState(project?.base_url || "");
@@ -225,14 +238,19 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
       return;
     }
 
-    setLoading(true);
-    setError("");
+    // Check tier limits
+    if (!canCreateProject()) {
+      toast.error("You've reached your project limit. Please upgrade your plan.");
+      return;
+    }
+
+    setFormError("");
 
     try {
       // Prepare payload
-      const payload = {
+      const projectData = {
         base_url: projectUrl.trim(),
-        crawlType: crawlType,
+        crawl_type: crawlType,
         services: selectedServices,
         companyDetails: {
           companyName,
@@ -244,95 +262,30 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
         instructions: instructions,
         custom_urls: (Array.isArray(urls) && urls.filter(u => u && u.trim()).length > 0) 
           ? urls.filter(u => u && u.trim()) 
-          : null,
+          : undefined,
         stripe_key_urls: (Array.isArray(stripeKeyUrls) && stripeKeyUrls.filter(u => u && u.trim()).length > 0) 
           ? stripeKeyUrls.filter(u => u && u.trim()) 
-          : null,
+          : undefined,
       };
      
-      // API call
-      const response = await fetch("/api/audit-projects", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      // Use the new API client
+      const success = await createProject(projectData);
       
-      const data = await response.json();
-      
-      if (response.ok) {
-        router.push(`/audit?project=${data.project.id}`);
+      if (success) {
+        router.push(`/audit?project=${projectUrl.trim()}`);
         toast.success("Project created successfully!");
-        
-        // Show user tier information if available
-        if (data.userTier) {
-          // toast.info(`Current tier: ${data.userTier} - ${data.rateLimitInfo?.remaining || 0} requests remaining`);
-        }
-        
         dispatch(clearForm());
       } else {
-        // Handle specific error codes with enhanced user feedback
-        let errorMessage = data.error || "Failed to create project.";
-        let shouldRedirect = false;
-        
-        switch (data.code) {
-          case 'RATE_LIMIT_EXCEEDED':
-            errorMessage = `Rate limit exceeded. Please try again in ${data.retryAfter || 60} seconds.`;
-            break;
-          case 'BURST_LIMIT_EXCEEDED':
-            errorMessage = `Too many requests too quickly. Please slow down and try again in ${data.retryAfter || 10} seconds.`;
-            break;
-          case 'DUPLICATE_URL':
-            errorMessage = `A project with this URL already exists.`;
-            if (data.projectId) {
-              errorMessage += ` Project ID: ${data.projectId}`;
-            }
-            break;
-          case 'VALIDATION_ERROR':
-            errorMessage = `Validation failed: ${data.details?.join(', ') || 'Invalid data provided'}`;
-            break;
-          case 'TOO_MANY_PROJECTS':
-            errorMessage = `Project limit reached for your tier (${data.userTier}). Current: ${data.currentCount}, Max: ${data.maxAllowed}`;
-            break;
-          case 'AUTH_REQUIRED':
-            errorMessage = "Please log in to create a project.";
-            shouldRedirect = true;
-            router.push('/auth/login');
-            break;
-          case 'DB_CONNECTION_ERROR':
-            errorMessage = "Database connection failed. Please try again.";
-            break;
-          case 'DB_TIMEOUT':
-            errorMessage = "Database operation timed out. Please try again.";
-            break;
-          case 'REQUEST_TIMEOUT':
-            errorMessage = "Request timed out. Please try again.";
-            break;
-          case 'DATA_TOO_LARGE':
-            errorMessage = "Request data is too large. Please reduce the amount of data.";
-            break;
-          case 'PAYLOAD_TOO_LARGE':
-            errorMessage = "Request payload is too large. Please reduce the amount of data.";
-            break;
-          default:
-            errorMessage = data.error || "Failed to create project.";
-        }
-        
+        // Handle error from the hook
+        const errorMessage = error || "Failed to create project.";
         toast.error(errorMessage);
-        setError(errorMessage);
-        
-        // Show user tier information in error cases
-        if (data.userTier && data.limits) {
-          console.log(`User tier: ${data.userTier}`, data.limits);
-        }
+        setFormError(errorMessage);
       }
-    } catch (error) {
-      console.error('Create project error:', error);
-      toast.error("Network error. Please check your connection and try again.");
-      setError("Network error occurred");
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      console.error('Create project error:', err);
+      const errorMessage = "Network error. Please check your connection and try again.";
+      toast.error(errorMessage);
+      setFormError(errorMessage);
     }
   };
 
@@ -341,107 +294,61 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
    * Validates input and sends PUT request to API
    */
   const handleEditProject = async () => {
-    if (!projectUrl.trim()) return;
+    if (!projectUrl.trim() || !project?.id) return;
 
-    setLoading(true);
-    setError("");
+    setFormError("");
 
     try {
       // Prepare payload
-      const payload = {
+      const updateData = {
         base_url: projectUrl.trim(),
         company_name: companyName.trim() || null,
         phone_number: phoneNumber.trim() || null,
         email: email.trim() || null,
         address: address.trim() || null,
         custom_info: customInfo.trim() || null,
-        crawlType: crawlType,
+        crawl_type: crawlType,
         services: selectedServices,
         instructions: instructions,
         custom_urls: (Array.isArray(urls) && urls.filter(u => u && u.trim()).length > 0) 
           ? urls.filter(u => u && u.trim()) 
-          : null,
+          : undefined,
         stripe_key_urls: (Array.isArray(stripeKeyUrls) && stripeKeyUrls.filter(u => u && u.trim()).length > 0) 
           ? stripeKeyUrls.filter(u => u && u.trim()) 
-          : null,
+          : undefined,
       };
       
-      // API call
-      const response = await fetch(`/api/audit-projects/${project?.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-    
-      const data = await response.json();
+      // Use the new API client
+      const success = await updateProject(project.id, updateData);
       
-      if (response.ok) {
-        if (onSubmit && data.project) {
-          onSubmit(data.project);
+      if (success) {
+        if (onSubmit) {
+          // Get the updated project data
+          const updatedProject = await getProject(project.id);
+          onSubmit(updatedProject);
         } else {
           // Update local state to reflect saved project values
-          setProjectUrl(data.project.base_url || "");
-          setCompanyName(data.project.company_name || "");
-          setPhoneNumber(data.project.phone_number || "");
-          setEmail(data.project.email || "");
-          setAddress(data.project.address || "");
-          setCustomInfo(data.project.custom_info || "");
-          setCrawlTypeState(data.project.crawl_type === "single" ? "single" : "full");
-          router.push(`/audit?project=${data.project.id}`);
-          toast.success("Project updated successfully!");
+          setProjectUrl(updateData.base_url);
+          setCompanyName(updateData.company_name || "");
+          setPhoneNumber(updateData.phone_number || "");
+          setEmail(updateData.email || "");
+          setAddress(updateData.address || "");
+          setCustomInfo(updateData.custom_info || "");
+          setCrawlTypeState(updateData.crawl_type === "single" ? "single" : "full");
+          router.push(`/audit?project=${project.id}`);
         }
+        toast.success("Project updated successfully!");
       } else {
-        // Handle specific error codes for edit with enhanced feedback
-        let errorMessage = data.error || "Failed to update project.";
-        let shouldRedirect = false;
-        
-        switch (data.code) {
-          case 'RATE_LIMIT_EXCEEDED':
-            errorMessage = `Rate limit exceeded. Please try again in ${data.retryAfter || 60} seconds.`;
-            break;
-          case 'BURST_LIMIT_EXCEEDED':
-            errorMessage = `Too many requests too quickly. Please slow down and try again in ${data.retryAfter || 10} seconds.`;
-            break;
-          case 'VALIDATION_ERROR':
-            errorMessage = `Validation failed: ${data.details?.join(', ') || 'Invalid data provided'}`;
-            break;
-          case 'AUTH_REQUIRED':
-            errorMessage = "Please log in to update the project.";
-            shouldRedirect = true;
-            router.push('/auth/login');
-            break;
-          case 'DB_CONNECTION_ERROR':
-            errorMessage = "Database connection failed. Please try again.";
-            break;
-          case 'DB_TIMEOUT':
-            errorMessage = "Database operation timed out. Please try again.";
-            break;
-          case 'REQUEST_TIMEOUT':
-            errorMessage = "Request timed out. Please try again.";
-            break;
-          case 'DATA_TOO_LARGE':
-            errorMessage = "Request data is too large. Please reduce the amount of data.";
-            break;
-          default:
-            errorMessage = data.error || "Failed to update project.";
-        }
-        
-        setError(errorMessage);
+        // Handle error from the hook
+        const errorMessage = error || "Failed to update project.";
         toast.error(errorMessage);
-        
-        // Show user tier information in error cases
-        if (data.userTier && data.limits) {
-          console.log(`User tier: ${data.userTier}`, data.limits);
-        }
+        setFormError(errorMessage);
       }
-    } catch (error) {
-      console.error('Edit project error:', error);
-      setError("Network error occurred");
-      toast.error("Network error. Please check your connection and try again.");
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      console.error('Edit project error:', err);
+      const errorMessage = "Network error. Please check your connection and try again.";
+      toast.error(errorMessage);
+      setFormError(errorMessage);
     }
   };
 
@@ -464,19 +371,31 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
   // ============================================================================
 
   return (
-    <Card className="h-full">
-      {/* Header Section */}
-      <CardHeader>
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
-            <Plus className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+    <div className="space-y-6">
+      {/* Tier Status Card - Only show in create mode */}
+      {mode === "create" && <TierStatusCard />}
+
+      {/* Limit Warning - Only show in create mode */}
+      {mode === "create" && <LimitWarning resource="projects" />}
+
+      <Card className="h-full">
+        {/* Header Section */}
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
+              <Plus className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <CardTitle>{title}</CardTitle>
+              <CardDescription>
+                {mode === "create" 
+                  ? `${description} (${getRemainingProjects()} projects remaining in your ${tier} tier)`
+                  : description
+                }
+              </CardDescription>
+            </div>
           </div>
-          <div>
-            <CardTitle>{title}</CardTitle>
-            <CardDescription>{description}</CardDescription>
-          </div>
-        </div>
-      </CardHeader>
+        </CardHeader>
 
         <CardContent>
           {/* Status Messages */}
@@ -491,10 +410,10 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
             </div>
           )}
 
-          {error && (
+          {(error || formError) && (
             <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 mb-4">
               <div className="flex items-center gap-2 text-destructive">
-                <span>{error}</span>
+                <span>{formError || error}</span>
               </div>
             </div>
           )}
@@ -570,22 +489,26 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
             {/* Custom Instructions - Conditional based on service selection */}
             {selectedServices.includes('custom_instructions') && (
               <div className="custom_instructions">
-                {mode === "edit" ? (
-                  <CustomInstructions
-                    projectInstructions={project?.instructions || []}
-                    loading={loading}
-                    isProjectRunning={isProjectRunning}
-                  />
-                ) : (
-                  <CustomInstructions />
-                )}
+                <RouteProtection requiredTier="PRO">
+                  {mode === "edit" ? (
+                    <CustomInstructions
+                      projectInstructions={project?.instructions || []}
+                      loading={loading}
+                      isProjectRunning={isProjectRunning}
+                    />
+                  ) : (
+                    <CustomInstructions />
+                  )}
+                </RouteProtection>
               </div>
             )}
 
             {/* Stripe Key URLs - Conditional based on service selection */}
             {selectedServices.includes('check_stripe_keys') && (
               <div className="check_stripe_keys">
-                <CheckStripKeys />
+                <RouteProtection requiredTier="ENTERPRISE">
+                  <CheckStripKeys />
+                </RouteProtection>
               </div>
             )}
 
@@ -703,7 +626,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
             <div className="flex flex-col sm:flex-row items-stretch gap-3 pt-4">
               <Button
                 type="submit"
-                disabled={loading || !projectUrl.trim() || isProjectRunning}
+                disabled={loading || !projectUrl.trim() || isProjectRunning || (mode === "create" && !canCreateProject())}
                 className="btn-primary w-full"
               >
                 {loading ? (
@@ -713,7 +636,10 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
                 ) : (
                   <Save className="h-4 w-4 mr-2" />
                 )}
-                {mode === "create" ? "Start Audit" : "Save Changes"}
+                {mode === "create" 
+                  ? (canCreateProject() ? "Start Audit" : "Project Limit Reached")
+                  : "Save Changes"
+                }
               </Button>
             </div>
 
@@ -760,5 +686,15 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
           </form>
         </CardContent>
       </Card>
+
+      {/* Upgrade Prompts for Lower Tiers - Only show in create mode */}
+      {mode === "create" && tier === "BASIC" && (
+        <UpgradePrompt feature="advanced audit options and custom instructions" />
+      )}
+      
+      {mode === "create" && tier === "PRO" && (
+        <UpgradePrompt feature="enterprise features like Stripe key auditing" />
+      )}
+    </div>
   );
 }

@@ -4,7 +4,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "workers": "tsx lib/workers/start-workers.ts",
+    "dev:workers": "concurrently \"npm run dev\" \"npm run workers\""
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -20,12 +22,15 @@
     "@supabase/supabase-js": "latest",
     "@types/redis": "^4.0.10",
     "axios": "^1.10.0",
+    "bullmq": "^5.25.0",
     "cheerio": "^1.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "concurrently": "^8.2.2",
     "lucide-react": "^0.511.0",
     "next": "latest",
     "next-themes": "^0.4.6",
+    "p-limit": "^5.0.0",
     "puppeteer": "^24.12.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -48,6 +53,7 @@
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "tailwindcss-animate": "^1.0.7",
+    "tsx": "^4.7.0",
     "typescript": "^5"
   }
 }

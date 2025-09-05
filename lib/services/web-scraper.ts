@@ -71,46 +71,67 @@ export class WebScraper {
 
   async crawl(onPageScraped?: (page: PageData) => Promise<void>): Promise<PageData[]> {
     const pages: PageData[] = [];
+    const maxConcurrent = 8; // Process 8 pages simultaneously
+    const pLimit = (await import('p-limit')).default;
+    const limit = pLimit(maxConcurrent);
 
     while (this.urlQueue.length > 0 && this.visitedUrls.size < this.options.maxPages) {
-      const url = this.urlQueue.shift()!;
-      const normalizedUrl = this.normalizeUrl(url);
+      // Get batch of URLs to process concurrently
+      const batchSize = Math.min(maxConcurrent, this.urlQueue.length);
+      const urlBatch = this.urlQueue.splice(0, batchSize);
       
-      if (this.visitedUrls.has(normalizedUrl)) continue;
-      this.visitedUrls.add(normalizedUrl);
+      // Process batch concurrently
+      const batchPromises = urlBatch.map(url => 
+        limit(async () => {
+          const normalizedUrl = this.normalizeUrl(url);
+          
+          if (this.visitedUrls.has(normalizedUrl)) return null;
+          this.visitedUrls.add(normalizedUrl);
+
+          try {
+            const pageData = await this.scrapePage(normalizedUrl);
+            
+            if (onPageScraped) {
+              try {
+                await onPageScraped(pageData);
+              } catch (error) {
+                console.log('Crawling stopped by callback:', error);
+                throw error; // Re-throw to stop the batch
+              }
+            }
+
+            // Add internal links to queue (normalized)
+            const internalLinks = this.filterInternalLinks(pageData.links);
+            const newLinks = internalLinks
+              .map(link => this.normalizeUrl(link))
+              .filter(link => !this.visitedUrls.has(link));
+            this.urlQueue.push(...newLinks);
+            
+            return pageData;
+          } catch (error) {
+            console.error(`Error scraping ${normalizedUrl}:`, error);
+            return {
+              url: normalizedUrl,
+              title: '',
+              content: '',
+              html: '',
+              statusCode: 0,
+              links: [],
+              images: [],
+              meta: {},
+            };
+          }
+        })
+      );
 
       try {
-        const pageData = await this.scrapePage(normalizedUrl);
-        pages.push(pageData);
-        
-        if (onPageScraped) {
-          try {
-            await onPageScraped(pageData);
-          } catch (error) {
-            // If the callback throws an error (like stop signal), break out of the loop
-            console.log('Crawling stopped by callback:', error);
-            break;
-          }
-        }
-
-        // Add internal links to queue (normalized)
-        const internalLinks = this.filterInternalLinks(pageData.links);
-        const newLinks = internalLinks
-          .map(link => this.normalizeUrl(link))
-          .filter(link => !this.visitedUrls.has(link));
-        this.urlQueue.push(...newLinks);
+        const batchResults = await Promise.all(batchPromises);
+        const validPages = batchResults.filter(page => page !== null);
+        pages.push(...validPages);
       } catch (error) {
-        console.error(`Error scraping ${normalizedUrl}:`, error);
-        pages.push({
-          url: normalizedUrl,
-          title: '',
-          content: '',
-          html: '',
-          statusCode: 0,
-          links: [],
-          images: [],
-          meta: {},
-        });
+        // If any page in batch fails with stop signal, break
+        console.log('Crawling stopped:', error);
+        break;
       }
     }
 
