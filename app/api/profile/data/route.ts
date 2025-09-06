@@ -15,7 +15,7 @@ export async function GET() {
     }
 
     // Fetch all data in parallel for better performance
-    const [profileResult, projectsResult, statsResult] = await Promise.all([
+    const [profileResult, projectsResult, statsResult, subscriptionResult] = await Promise.all([
       // Fetch user profile
       supabase
         .from('user_profiles')
@@ -43,7 +43,15 @@ export async function GET() {
             overall_score
           )
         `)
+        .eq('user_id', user.id),
+      
+      // Fetch user subscription/tier information
+      supabase
+        .from('user_subscriptions')
+        .select('tier, max_projects, features, status')
         .eq('user_id', user.id)
+        .eq('status', 'active')
+        .single()
     ]);
 
     // Handle profile data
@@ -103,10 +111,26 @@ export async function GET() {
       averageScore,
     };
 
+    // Handle subscription/tier data
+    const subscription = subscriptionResult.data;
+    const userTier = subscription?.tier || 'BASIC';
+    const maxProjects = subscription?.max_projects || 5; // Default to BASIC tier limit
+    const features = subscription?.features || ['Basic Audit', 'Standard Reports', 'Email Support'];
+
+    const tierLimits = {
+      maxProjects,
+      features,
+      tier: userTier,
+      currentProjects: totalProjects,
+      remainingProjects: Math.max(0, maxProjects - totalProjects),
+      usagePercentage: maxProjects > 0 ? Math.min(100, (totalProjects / maxProjects) * 100) : 0
+    };
+
     return NextResponse.json({
       profile,
       projects,
       stats,
+      tierLimits,
     });
 
   } catch (error) {

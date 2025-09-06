@@ -23,10 +23,19 @@ interface Project {
   updated_at: string
 }
 
+interface TierLimits {
+  maxProjects: number
+  features: string[]
+  tier: UserTier
+  currentProjects: number
+  remainingProjects: number
+  usagePercentage: number
+}
+
 interface UserContextType {
   user: User | null
   tier: UserTier
-  tierLimits: typeof TIER_CONFIG[UserTier]
+  tierLimits: TierLimits | null
   projects: Project[]
   loading: boolean
   isAtLimit: (resource: 'projects') => boolean
@@ -48,10 +57,11 @@ export function UserProvider({ children }: UserProviderProps) {
   const { user: authUser, userTier, loading: authLoading, refreshUserInfo } = useAuthWithBackend()
   const { projects, loading: projectsLoading, refreshProjects } = useProjects()
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+  const [tierLimits, setTierLimits] = useState<TierLimits | null>(null)
+  const [tierLimitsLoading, setTierLimitsLoading] = useState(false)
 
   // Determine user tier (default to BASIC if not set)
   const tier: UserTier = (userTier as UserTier) || 'BASIC'
-  const tierLimits = TIER_CONFIG[tier]
 
   // Create user object with tier information
   const user: User | null = authUser ? {
@@ -64,15 +74,56 @@ export function UserProvider({ children }: UserProviderProps) {
     updated_at: authUser.updated_at
   } : null
 
-  const loading = authLoading || projectsLoading
+  const loading = authLoading || projectsLoading || tierLimitsLoading
+
+  // Fetch tier limits from server
+  const fetchTierLimits = async () => {
+    if (!authUser) {
+      setTierLimits(null)
+      return
+    }
+
+    setTierLimitsLoading(true)
+    try {
+      const response = await fetch('/api/profile/data')
+      if (response.ok) {
+        const data = await response.json()
+        setTierLimits(data.tierLimits)
+      } else {
+        console.error('Failed to fetch tier limits:', response.statusText)
+        // Fallback to default limits if server fails
+        setTierLimits({
+          maxProjects: 5,
+          features: ['Basic Audit', 'Standard Reports', 'Email Support'],
+          tier: 'BASIC',
+          currentProjects: projects.length,
+          remainingProjects: Math.max(0, 5 - projects.length),
+          usagePercentage: Math.min(100, (projects.length / 5) * 100)
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching tier limits:', error)
+      // Fallback to default limits if server fails
+      setTierLimits({
+        maxProjects: 5,
+        features: ['Basic Audit', 'Standard Reports', 'Email Support'],
+        tier: 'BASIC',
+        currentProjects: projects.length,
+        remainingProjects: Math.max(0, 5 - projects.length),
+        usagePercentage: Math.min(100, (projects.length / 5) * 100)
+      })
+    } finally {
+      setTierLimitsLoading(false)
+    }
+  }
 
   // Check if user is at limit for a specific resource
   const isAtLimit = (resource: 'projects'): boolean => {
-    if (!user) return false
+    if (!user || !tierLimits) return false
     
     switch (resource) {
       case 'projects':
-        return projects.length >= tierLimits.maxProjects
+        return tierLimits.currentProjects >= tierLimits.maxProjects
       default:
         return false
     }
@@ -85,14 +136,14 @@ export function UserProvider({ children }: UserProviderProps) {
 
   // Get remaining projects count
   const getRemainingProjects = (): number => {
-    if (!user) return 0
-    return Math.max(0, tierLimits.maxProjects - projects.length)
+    if (!user || !tierLimits) return 0
+    return tierLimits.remainingProjects
   }
 
   // Get project usage percentage
   const getProjectUsagePercentage = (): number => {
-    if (!user || tierLimits.maxProjects === 0) return 0
-    return Math.min(100, (projects.length / tierLimits.maxProjects) * 100)
+    if (!user || !tierLimits) return 0
+    return tierLimits.usagePercentage
   }
 
   // Check if user has required tier
@@ -111,6 +162,8 @@ export function UserProvider({ children }: UserProviderProps) {
       refreshUserInfo(),
       refreshProjects()
     ])
+    // Fetch tier limits after projects are refreshed to get updated counts
+    await fetchTierLimits()
   }
 
   // Auto-refresh user data when auth state changes
@@ -119,6 +172,17 @@ export function UserProvider({ children }: UserProviderProps) {
       refreshUserData()
     }
   }, [authUser?.id])
+
+  // Fetch tier limits when user is authenticated
+  useEffect(() => {
+    if (authUser && !tierLimits) {
+      fetchTierLimits()
+    }
+  }, [authUser, tierLimits])
+
+  // Note: We no longer sync client-side project count with server tier limits
+  // The server provides the authoritative project count in tierLimits.currentProjects
+  // This prevents infinite re-render loops and keeps data consistent
 
   const value: UserContextType = {
     user,
@@ -223,8 +287,8 @@ function UpgradeModal({ isOpen, onClose, currentTier }: UpgradeModalProps) {
                 {isCurrentTier ? (
                   <div className="text-center">
                     <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
-                      Current Plan
-                    </span>
+                      Current Plan 
+                    </span> 
                   </div>
                 ) : (
                   <button 

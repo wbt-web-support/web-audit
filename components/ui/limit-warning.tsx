@@ -1,19 +1,54 @@
 import { AlertTriangle, ArrowUp } from 'lucide-react'
 import { useUser } from '@/lib/contexts/UserContext'
 
+interface ProjectLimits {
+  tenantInfo: {
+    tier: string;
+    subscriptionStatus: string;
+  };
+  limits: {
+    maxProjects: number;
+    maxAuditsPerDay: number;
+    maxConcurrentAudits: number;
+  };
+  usage: {
+    projects: {
+      current: number;
+      max: number;
+      remaining: number;
+    };
+    audits: {
+      today: number;
+      maxPerDay: number;
+      remaining: number;
+    };
+  };
+}
+
 interface LimitWarningProps {
   resource: 'projects'
   className?: string
+  projectLimits: ProjectLimits;
+  loading?: boolean;
 }
 
-export function LimitWarning({ resource, className = '' }: LimitWarningProps) {
-  const { user, tierLimits, isAtLimit, getRemainingProjects, upgradePrompt } = useUser()
+export function LimitWarning({ resource, className = '', projectLimits, loading = false }: LimitWarningProps) {
+  const { upgradePrompt } = useUser()
 
-  if (!user || !isAtLimit(resource)) {
+  if (!projectLimits) {
     return null
   }
 
-  const remaining = getRemainingProjects()
+  // Use project limits data from v2 API
+  const currentProjects = projectLimits.usage.projects.current
+  const maxProjects = projectLimits.limits.maxProjects
+  const isAtProjectLimit = currentProjects >= maxProjects
+  const remaining = projectLimits.usage.projects.remaining
+  const tier = projectLimits.tenantInfo.tier
+
+  if (!isAtProjectLimit) {
+    return null
+  }
 
   return (
     <div className={`bg-yellow-50 border border-yellow-200 rounded-lg p-4 ${className}`}>
@@ -26,7 +61,7 @@ export function LimitWarning({ resource, className = '' }: LimitWarningProps) {
           <p className="text-sm text-yellow-700 mt-1">
             {remaining === 0 ? (
               <>
-                You've reached your {user.tier} tier limit of {tierLimits.maxProjects} projects.
+                You've reached your {tier} tier limit of {maxProjects} projects.
                 <button 
                   onClick={upgradePrompt}
                   className="ml-2 inline-flex items-center text-yellow-800 underline hover:text-yellow-900 font-medium"
@@ -37,7 +72,7 @@ export function LimitWarning({ resource, className = '' }: LimitWarningProps) {
               </>
             ) : (
               <>
-                You have {remaining} project{remaining === 1 ? '' : 's'} remaining in your {user.tier} tier.
+                You have {remaining} project{remaining === 1 ? '' : 's'} remaining in your {tier} tier.
                 <button 
                   onClick={upgradePrompt}
                   className="ml-2 text-yellow-800 underline hover:text-yellow-900"

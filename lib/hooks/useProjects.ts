@@ -80,17 +80,41 @@ export function useProjects(): UseProjectsReturn {
       setProjects(prev => [response.project, ...prev]);
       
       return true;
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to create project';
+    } catch (err: any) {
+      console.log('Caught error in createProject:', err);
+      console.log('Error status:', err.status);
+      console.log('Error data:', err.data);
       
-      // Check if it's a backend connection error
+      // Handle duplicate URL error - check multiple conditions
+      if (err.message?.includes('A project with this URL already exists') || 
+          err.message?.includes('already exists') || 
+          (err.status === 409 && err.data?.code === 'DUPLICATE_URL')) {
+        setError('You already have a project with this URL');
+        return false;
+      }
+      
+      // Handle project limit exceeded error
+      if (err.status === 403 && err.data?.code === 'TOO_MANY_PROJECTS') {
+        console.log('Project limit error data:', err.data);
+        const details = err.data?.details || {};
+        const currentCount = details.currentCount || 0;
+        const maxAllowed = details.maxAllowed || 0;
+        const userTier = details.userTier || 'BASIC';
+        const errorMessage = `Project limit exceeded for your ${userTier} tier. You have ${currentCount}/${maxAllowed} projects. Please upgrade your plan.`;
+        console.log('Setting error message:', errorMessage);
+        setError(errorMessage);
+        return false;
+      }
+      
+      // Handle backend connection errors
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create project';
       if (errorMessage.includes('Not Found') || errorMessage.includes('Failed to fetch')) {
         setError('Backend server is not running. Please start your Fastify backend server.');
+        return false;
       } else {
         setError(errorMessage);
+        return false;
       }
-      console.error('Error creating project:', err);
-      return false;
     } finally {
       setLoading(false);
     }

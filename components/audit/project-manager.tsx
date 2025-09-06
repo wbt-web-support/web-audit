@@ -240,6 +240,9 @@ const CrawlingProgressIndicator = React.memo(({
   liveProgress?: CrawlingProgress;
 }) => {
   const isCrawling = project.status === 'crawling';
+  const isAnalyzing = project.status === 'analyzing';
+  const isCompleted = project.status === 'completed';
+  const isPending = project.status === 'pending';
   
   // Calculate current progress from project data or use live progress
   const currentProgress = liveProgress || {
@@ -251,48 +254,121 @@ const CrawlingProgressIndicator = React.memo(({
     external_links: project.all_links_analysis?.filter(link => link.type === 'external').length || 0
   };
 
-  if (!isCrawling) return null;
+  // Show progress for crawling, analyzing, completed, and pending statuses
+  if (!isCrawling && !isAnalyzing && !isCompleted && !isPending) return null;
 
   const progressPercentage = currentProgress.total_pages > 0 
     ? Math.round((currentProgress.pages_crawled / currentProgress.total_pages) * 100)
     : 0;
 
+  // Show a message if no progress data is available
+  const hasProgressData = currentProgress.total_pages > 0 || currentProgress.pages_crawled > 0;
+
+  // Determine styling based on status
+  const getStatusConfig = () => {
+    if (isCrawling) {
+      return {
+        bgColor: 'bg-blue-50',
+        borderColor: 'border-blue-200',
+        iconColor: 'text-blue-600',
+        textColor: 'text-blue-700',
+        icon: Activity,
+        title: 'Live Crawling Progress',
+        showLive: true
+      };
+    } else if (isAnalyzing) {
+      return {
+        bgColor: 'bg-amber-50',
+        borderColor: 'border-amber-200',
+        iconColor: 'text-amber-600',
+        textColor: 'text-amber-700',
+        icon: Zap,
+        title: 'Analysis Progress',
+        showLive: false
+      };
+    } else if (isCompleted) {
+      return {
+        bgColor: 'bg-emerald-50',
+        borderColor: 'border-emerald-200',
+        iconColor: 'text-emerald-600',
+        textColor: 'text-emerald-700',
+        icon: CheckCircle,
+        title: 'Crawling Complete',
+        showLive: false
+      };
+    } else if (isPending) {
+      return {
+        bgColor: 'bg-slate-50',
+        borderColor: 'border-slate-200',
+        iconColor: 'text-slate-600',
+        textColor: 'text-slate-700',
+        icon: Clock,
+        title: 'Ready to Start',
+        showLive: false
+      };
+    }
+    return null;
+  };
+
+  const statusConfig = getStatusConfig();
+  if (!statusConfig) return null;
+
+  const IconComponent = statusConfig.icon;
+
   return (
-    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+    <div className={`mt-3 p-3 ${statusConfig.bgColor} border ${statusConfig.borderColor} rounded-lg`}>
       <div className="flex items-center gap-2 mb-2">
-        <Activity className="h-4 w-4 text-blue-600 animate-pulse" />
-        <span className="text-sm font-medium text-blue-700">Live Crawling Progress</span>
-        <div className="flex items-center gap-1 ml-auto">
-          <Wifi className="h-3 w-3 text-blue-600" />
-          <span className="text-xs text-blue-600">Live</span>
-        </div>
+        <IconComponent className={`h-4 w-4 ${statusConfig.iconColor} ${isCrawling ? 'animate-pulse' : ''}`} />
+        <span className={`text-sm font-medium ${statusConfig.textColor}`}>{statusConfig.title}</span>
+        {statusConfig.showLive && (
+          <div className="flex items-center gap-1 ml-auto">
+            <Wifi className="h-3 w-3 text-blue-600" />
+            <span className="text-xs text-blue-600">Live</span>
+          </div>
+        )}
       </div>
       
       <div className="space-y-2">
-        {/* Progress Bar */}
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs text-blue-600">
-            <span>Pages Crawled</span>
-            <span>{currentProgress.pages_crawled} / {currentProgress.total_pages}</span>
+        {hasProgressData ? (
+          <>
+            {/* Progress Bar */}
+            <div className="space-y-1">
+              <div className={`flex justify-between text-xs ${statusConfig.textColor}`}>
+                <span>Pages Crawled</span>
+                <span>{currentProgress.pages_crawled} / {currentProgress.total_pages}</span>
+              </div>
+              <Progress 
+                value={progressPercentage} 
+                className={`h-2 ${isCompleted ? 'bg-emerald-200' : isAnalyzing ? 'bg-amber-200' : isPending ? 'bg-slate-200' : ''}`}
+              />
+            </div>
+            
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className={`text-center p-2 ${statusConfig.bgColor.replace('50', '100')} rounded`}>
+                <div className={`font-semibold ${statusConfig.textColor}`}>{currentProgress.total_images}</div>
+                <div className={statusConfig.textColor.replace('700', '600')}>Images</div>
+              </div>
+              <div className={`text-center p-2 ${statusConfig.bgColor.replace('50', '100')} rounded`}>
+                <div className={`font-semibold ${statusConfig.textColor}`}>{currentProgress.total_links}</div>
+                <div className={statusConfig.textColor.replace('700', '600')}>Links</div>
+              </div>
+              <div className={`text-center p-2 ${statusConfig.bgColor.replace('50', '100')} rounded`}>
+                <div className={`font-semibold ${statusConfig.textColor}`}>{currentProgress.internal_links}</div>
+                <div className={statusConfig.textColor.replace('700', '600')}>Internal</div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className={`text-center py-4 ${statusConfig.textColor.replace('700', '500')}`}>
+            <div className="text-sm">
+              {isPending && 'Project is ready to start crawling'}
+              {isCrawling && 'Starting to crawl pages...'}
+              {isAnalyzing && 'Analyzing crawled content...'}
+              {isCompleted && 'Crawling completed successfully'}
+            </div>
           </div>
-          <Progress value={progressPercentage} className="h-2" />
-        </div>
-        
-        {/* Live Stats */}
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <div className="text-center p-2 bg-blue-100 rounded">
-            <div className="font-semibold text-blue-700">{currentProgress.total_images}</div>
-            <div className="text-blue-600">Images</div>
-          </div>
-          <div className="text-center p-2 bg-blue-100 rounded">
-            <div className="font-semibold text-blue-700">{currentProgress.total_links}</div>
-            <div className="text-blue-600">Links</div>
-          </div>
-          <div className="text-center p-2 bg-blue-100 rounded">
-            <div className="font-semibold text-blue-700">{currentProgress.internal_links}</div>
-            <div className="text-blue-600">Internal</div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

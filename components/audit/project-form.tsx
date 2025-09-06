@@ -6,6 +6,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { toast } from "react-toastify";
 import { useProjects } from "@/lib/hooks/useProjects";
 import { useUser } from "@/lib/contexts/UserContext";
+import { apiClient } from "@/lib/api-client";
 
 // UI Components
 import {
@@ -72,6 +73,8 @@ interface ProjectFormProps {
   mode: "create" | "edit";
   onSubmit?: (project: AuditProject) => void;
   projects?: AuditProject[]; // For create mode to check duplicates
+  // Callback for when a new project is created (for dashboard updates)
+  onProjectCreated?: (project: AuditProject) => void;
 }
 
 interface CompanyDetails {
@@ -86,7 +89,7 @@ interface CompanyDetails {
 // MAIN COMPONENT
 // ============================================================================
 
-export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectFormProps) {
+export function ProjectForm({ project, mode, onSubmit, projects = [], onProjectCreated }: ProjectFormProps) {
   // ============================================================================
   // STATE MANAGEMENT
   // ============================================================================
@@ -99,6 +102,32 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
   
   // Local error state for form-specific errors
   const [formError, setFormError] = useState("");
+  
+  // Project limits state
+  const [projectLimits, setProjectLimits] = useState<{
+    tenantInfo: {
+      tier: string;
+      subscriptionStatus: string;
+    };
+    limits: {
+      maxProjects: number;
+      maxAuditsPerDay: number;
+      maxConcurrentAudits: number;
+    };
+    usage: {
+      projects: {
+        current: number;
+        max: number;
+        remaining: number;
+      };
+      audits: {
+        today: number;
+        maxPerDay: number;
+        remaining: number;
+      };
+    };
+  } | null>(null);
+  const [limitsLoading, setLimitsLoading] = useState(false);
   
   // Form field states
   const [projectUrl, setProjectUrl] = useState(project?.base_url || "");
@@ -129,6 +158,87 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
 
   // URL normalization utility
   const normalizeUrl = (url: string) => url.replace(/\/+$/, "").toLowerCase();
+
+  // Fetch project limits from projects/limits API
+  const fetchProjectLimits = async () => {
+    if (mode !== "create") return; // Only fetch for create mode
+    
+    // Safety check - ensure we have required data
+    if (!user) {
+      console.warn('No user available for fetching project limits');
+      return;
+    }
+    
+    setLimitsLoading(true);
+    try {
+      const response = await apiClient.getProjectLimits();
+      console.log('Project limits API response:', response);
+      
+      if (response.success && response.data) {
+        // Safely access nested properties with fallbacks
+        const tenantInfo = response.data.tenantInfo || {};
+        const limits = response.data.limits || {};
+        const usage = response.data.usage || {};
+        const projectsUsage = usage.projects || {};
+        const auditsUsage = usage.audits || {};
+        
+        setProjectLimits({
+          tenantInfo: {
+            tier: tenantInfo.tier || (tier && typeof tier === 'string' ? tier : 'BASIC'),
+            subscriptionStatus: tenantInfo.subscriptionStatus || 'active',
+          },
+          limits: {
+            maxProjects: limits.maxProjects || 5,
+            maxAuditsPerDay: limits.maxAuditsPerDay || 10,
+            maxConcurrentAudits: limits.maxConcurrentAudits || 2,
+          },
+          usage: {
+            projects: {
+              current: projectsUsage.current || (Array.isArray(projects) ? projects.length : 0),
+              max: projectsUsage.max || limits.maxProjects || 5,
+              remaining: projectsUsage.remaining || Math.max(0, (limits.maxProjects || 5) - (projectsUsage.current || (Array.isArray(projects) ? projects.length : 0))),
+            },
+            audits: {
+              today: auditsUsage.today || 0,
+              maxPerDay: auditsUsage.maxPerDay || limits.maxAuditsPerDay || 10,
+              remaining: auditsUsage.remaining || (limits.maxAuditsPerDay || 10),
+            },
+          },
+        });
+      } else {
+        console.warn('API response not successful or missing data:', response);
+        throw new Error('Invalid API response');
+      }
+    } catch (error) {
+      console.error('Failed to fetch project limits:', error);
+      // Fallback to basic limits if API fails
+      setProjectLimits({
+        tenantInfo: {
+          tier: (tier && typeof tier === 'string') ? tier : 'BASIC',
+          subscriptionStatus: 'active',
+        },
+        limits: {
+          maxProjects: 5, // Default BASIC tier
+          maxAuditsPerDay: 10,
+          maxConcurrentAudits: 2,
+        },
+        usage: {
+          projects: {
+            current: Array.isArray(projects) ? projects.length : 0,
+            max: 5,
+            remaining: Math.max(0, 5 - (Array.isArray(projects) ? projects.length : 0)),
+          },
+          audits: {
+            today: 0,
+            maxPerDay: 10,
+            remaining: 10,
+          },
+        },
+      });
+    } finally {
+      setLimitsLoading(false);
+    }
+  };
 
   // ============================================================================
   // EFFECTS
@@ -167,6 +277,15 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
       }
     }
   }, [project, dispatch]);
+
+  /**
+   * Fetch project limits for create mode
+   */
+  useEffect(() => {
+    if (mode === "create" && user) {
+      fetchProjectLimits();
+    }
+  }, [mode, user]);
 
   /**
    * Handle crawl type changes
@@ -238,11 +357,8 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
       return;
     }
 
-    // Check tier limits
-    if (!canCreateProject()) {
-      toast.error("You've reached your project limit. Please upgrade your plan.");
-      return;
-    }
+    // Note: Project limits are now validated server-side only
+    // Client-side validation removed for security and maintainability
 
     setFormError("");
 
@@ -270,15 +386,62 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
      
       // Use the new API client
       const success = await createProject(projectData);
-      
+      console.log('Project creation result:', success);
       if (success) {
+        // Call the onProjectCreated callback if provided
+        if (onProjectCreated) {
+          // Create a mock project object for the callback
+          const createdProject: AuditProject = {
+            id: Date.now().toString(), // Generate a temporary ID
+            base_url: projectUrl.trim(),
+            company_name: companyName.trim() || null,
+            phone_number: phoneNumber.trim() || null,
+            email: email.trim() || null,
+            address: address.trim() || null,
+            custom_info: customInfo.trim() || null,
+            crawl_type: crawlType,
+            services: selectedServices,
+            instructions: instructions,
+            custom_urls: (Array.isArray(urls) && urls.filter(u => u && u.trim()).length > 0) 
+              ? urls.filter(u => u && u.trim()) 
+              : null,
+            status: 'pending' as AuditProjectStatus,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            user_id: user?.id || '',
+            total_pages: 0,
+            pages_analyzed: 0,
+            pages_crawled: 0,
+            completed_at: null,
+            error_message: null,
+            custom_urls_analysis: undefined,
+            all_image_analysis: undefined,
+            all_links_analysis: undefined
+          };
+          onProjectCreated(createdProject);
+        }
+        
         router.push(`/audit?project=${projectUrl.trim()}`);
         toast.success("Project created successfully!");
         dispatch(clearForm());
       } else {
         // Handle error from the hook
         const errorMessage = error || "Failed to create project.";
-        toast.error(errorMessage);
+        console.log('ProjectForm received error:', errorMessage);
+        
+        // Show different toast styles based on error type
+        if (errorMessage.includes('already have a project') || errorMessage.includes('A project with this URL already exists')) {
+          toast.warning("You already have a project with this URL");
+        } else if (errorMessage.includes('Project limit exceeded')) {
+          // Show project limit error with warning style for better UX
+          toast.warning(errorMessage, {
+            autoClose: 6000, // Show longer for important message
+            hideProgressBar: false,
+          });
+        } else {
+          toast.error(errorMessage);
+        }
+        
         setFormError(errorMessage);
       }
     } catch (err) {
@@ -373,10 +536,21 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
   return (
     <div className="space-y-6">
       {/* Tier Status Card - Only show in create mode */}
-      {mode === "create" && <TierStatusCard />}
+      {mode === "create" && projectLimits && (
+        <TierStatusCard 
+          projectLimits={projectLimits}
+          loading={limitsLoading}
+        />
+      )}
 
       {/* Limit Warning - Only show in create mode */}
-      {mode === "create" && <LimitWarning resource="projects" />}
+      {mode === "create" && projectLimits && (
+        <LimitWarning 
+          resource="projects" 
+          projectLimits={projectLimits}
+          loading={limitsLoading}
+        />
+      )}
 
       <Card className="h-full">
         {/* Header Section */}
@@ -626,7 +800,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
             <div className="flex flex-col sm:flex-row items-stretch gap-3 pt-4">
               <Button
                 type="submit"
-                disabled={loading || !projectUrl.trim() || isProjectRunning || (mode === "create" && !canCreateProject())}
+                disabled={loading || !projectUrl.trim() || isProjectRunning}
                 className="btn-primary w-full"
               >
                 {loading ? (
@@ -636,10 +810,7 @@ export function ProjectForm({ project, mode, onSubmit, projects = [] }: ProjectF
                 ) : (
                   <Save className="h-4 w-4 mr-2" />
                 )}
-                {mode === "create" 
-                  ? (canCreateProject() ? "Start Audit" : "Project Limit Reached")
-                  : "Save Changes"
-                }
+                {mode === "create" ? "Start Audit" : "Save Changes"}
               </Button>
             </div>
 

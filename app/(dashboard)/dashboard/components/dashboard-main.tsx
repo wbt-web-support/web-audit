@@ -64,6 +64,16 @@ export function DashboardMain() {
     }, [refetch])
   });
 
+  // Handle project creation from ProjectForm
+  const handleProjectCreated = useCallback((project: AuditProject) => {
+    console.log('Project created from form:', project);
+    // Invalidate cache when new project is created
+    dashboardCache.data = null;
+    dashboardCache.timestamp = 0;
+    // Refresh dashboard stats
+    refetch(true);
+  }, [refetch]);
+
   // Cache the stats data when it's loaded
   useEffect(() => {
     if (stats && !loading) {
@@ -216,6 +226,7 @@ export function DashboardMain() {
             <ProjectForm 
               mode="create" 
               projects={displayStats.recentProjects}
+              onProjectCreated={handleProjectCreated}
             />
           </div>
           

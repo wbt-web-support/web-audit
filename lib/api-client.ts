@@ -78,20 +78,23 @@ class ApiClient {
           
           if (responseText) {
             errorData = JSON.parse(responseText);
-            errorMessage = errorData.error || `HTTP ${response.status}: ${response.statusText}`;
+            errorMessage = errorData.message || errorData.error || `HTTP ${response.status}: ${response.statusText}`;
           } else {
             errorMessage = `HTTP ${response.status}: ${response.statusText}`;
             errorData = null;
           }
           
-          console.error('=== API ERROR DETAILS ===');
-          console.error('Status:', response.status);
-          console.error('Status Text:', response.statusText);
-          console.error('URL:', url);
-          console.error('Method:', config.method || 'GET');
-          console.error('Error Data:', errorData);
-          console.error('Raw Response:', responseText);
-          console.error('========================');
+          // Only log detailed errors for non-client errors (5xx, 4xx except 409 and 403)
+          if (response.status >= 500 || (response.status >= 400 && response.status !== 409 && response.status !== 403)) {
+            console.error('=== API ERROR DETAILS ===');
+            console.error('Status:', response.status);
+            console.error('Status Text:', response.statusText);
+            console.error('URL:', url);
+            console.error('Method:', config.method || 'GET');
+            console.error('Error Data:', errorData);
+            console.error('Raw Response:', responseText);
+            console.error('========================');
+          }
         } catch (parseError) {
           errorMessage = `HTTP ${response.status}: ${response.statusText}`;
           console.error('=== API ERROR (Parse Failed) ===');
@@ -102,19 +105,38 @@ class ApiClient {
           console.error('Parse Error:', parseError);
           console.error('===============================');
         }
-        throw new Error(errorMessage);
+        
+        // Create a custom error with structured data for better handling
+        const error = new Error(errorMessage) as any;
+        error.status = response.status;
+        error.data = errorData;
+        error.isClientError = response.status >= 400 && response.status < 500;
+        
+        // For duplicate URL and project limit errors, don't log as error
+        if ((response.status === 409 && errorData?.code === 'DUPLICATE_URL') || 
+            (response.status === 403 && errorData?.code === 'TOO_MANY_PROJECTS')) {
+          // Don't log this as an error, just throw it
+        } else {
+          // Only log errors that aren't client errors (like duplicate URL or project limits)
+          if (!error.isClientError) {
+            console.error('API request failed:', error);
+            console.error('Request details:', { 
+              endpoint, 
+              baseURL: this.baseURL,
+              fullUrl: `${this.baseURL}${endpoint}`,
+              method: options.method || 'GET'
+            });
+          }
+        }
+        
+        throw error;
       }
 
       const data = await response.json();
+      console.log('API response data:', data);
       return data;
     } catch (error) {
-      console.error('API request failed:', error);
-      console.error('Request details:', { 
-        endpoint, 
-        baseURL: this.baseURL,
-        fullUrl: `${this.baseURL}${endpoint}`,
-        method: options.method || 'GET'
-      });
+      // Error logging is handled in the response.ok check above
       throw error;
     }
   }
@@ -397,6 +419,13 @@ class ApiClient {
     usagePercentage: number;
   }> {
     return this.request('/api/auth/limits');
+  }
+
+  /**
+   * Get comprehensive project limits and usage from projects/limits API
+   */
+  async getProjectLimits(): Promise<any> {
+    return this.request('/api/projects/limits');
   }
 
   /**
