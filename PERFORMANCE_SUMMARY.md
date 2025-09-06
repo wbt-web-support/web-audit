@@ -39,7 +39,7 @@
 - `scripts/optimize-dashboard.sql` - Simple setup script
 
 ### API
-- `app/api/dashboard/stats/route.ts` - Optimized queries and caching
+- `app/api/dashboard/stats/route.ts` - **REMOVED** (migrated to Fastify backend)
 
 ### Components
 - `app/(dashboard)/dashboard/components/dashboard-main.tsx` - Memoized components

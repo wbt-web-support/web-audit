@@ -47,7 +47,7 @@ export async function GET(
     const { data: results, error: resultsError } = await supabase
       .from('audit_results')
       .select('*')
-      .in('scraped_page_id', pages.map(p => p.id));
+      .in('scraped_page_id', pages.map((p: any) => p.id));
 
     if (resultsError) {
       console.error('Results query error:', resultsError);
@@ -57,7 +57,7 @@ export async function GET(
     // Create a map of page_id to results for efficient lookup
     const resultsMap = new Map();
     if (results) {
-      results.forEach(result => {
+      results.forEach((result: any) => {
         resultsMap.set(result.scraped_page_id, result);
       });
     }
@@ -79,7 +79,7 @@ export async function GET(
     return NextResponse.json({ 
       project,
       pageResults,
-      totalResults: pageResults.filter(p => p.results).length
+      totalResults: pageResults.filter((p: any) => p.results).length
     });
   } catch (error) {
     console.error('Results API error:', error);

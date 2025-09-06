@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Transform the data to match the expected PageStatus interface
-    const pageStatuses = pages.map(page => ({
+    const pageStatuses = pages.map((page: any) => ({
       pageId: page.id,
       status: page.analysis_status || 'pending',
       hasResults: page.results && Object.keys(page.results).length > 0,
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     }));
 
     // Add any missing pageIds as 'error' status
-    const foundPageIds = new Set(pages.map(p => p.id));
+    const foundPageIds = new Set(pages.map((p: any) => p.id));
     const missingPageIds = pageIds.filter(id => !foundPageIds.has(id));
     
     missingPageIds.forEach(pageId => {

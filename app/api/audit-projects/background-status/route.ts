@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Format the response
-    const crawlingProjects = projects?.map(project => ({
+    const crawlingProjects = projects?.map((project: any) => ({
       id: project.id,
       base_url: project.base_url,
       status: project.status,

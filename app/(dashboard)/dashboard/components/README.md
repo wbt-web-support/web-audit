@@ -17,7 +17,7 @@ dashboard/
 
 ### DashboardMain
 The main dashboard component that:
-- Fetches dashboard statistics from `/api/dashboard/stats`
+- Fetches dashboard statistics from Fastify backend (`/api/projects/`)
 - Handles loading and error states
 - Orchestrates the display of stats cards and recent projects
 - Provides a retry mechanism on errors
@@ -49,7 +49,7 @@ export default function DashboardPage() {
 ## API Dependencies
 
 The dashboard requires:
-- `/api/dashboard/stats` - Returns dashboard statistics
+- Fastify backend (`/api/projects/`) - Returns dashboard statistics
 - User authentication (checked at page level)
 
 ## Features

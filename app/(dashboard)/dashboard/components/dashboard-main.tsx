@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { XCircle, BarChart3, Plus, TrendingUp, Globe, Clock, CheckCircle } from "lucide-react";
 import { RecentProjects } from './recent-projects';
+import { StatusMetrics } from './status-metrics';
 import { ProjectForm } from '@/components/audit/project-form';
 import { DashboardSkeleton } from '@/components/skeletons';
 import { useDashboardStats } from '../hooks/use-dashboard-stats';
@@ -198,7 +199,13 @@ export function DashboardMain() {
               </div>
             </div>
           )}
-          <StatsCards stats={displayStats} loading={debouncedLoading} />
+          <StatusMetrics 
+            totalProjects={displayStats.totalProjects}
+            activeProjects={displayStats.activeProjects}
+            totalPagesAnalyzed={displayStats.totalPagesAnalyzed}
+            averageScore={displayStats.averageScore}
+            loading={debouncedLoading}
+          />
         </div>
         
         {/* Main Content Grid */}
@@ -262,84 +269,3 @@ const DashboardHeader = React.memo(() => {
 });
 
 DashboardHeader.displayName = 'DashboardHeader';
-
-/**
- * Statistics cards component displaying key metrics
- * Shows 0 values for new users with no projects
- * Memoized to prevent unnecessary re-renders
- */
-const StatsCards = React.memo(({ stats, loading }: { stats: DashboardStats, loading: boolean }) => {
-  // Memoize stat cards to prevent recreation on every render
-  const statCards = useMemo(() => [
-    {
-      title: "Total Projects",
-      value: stats.totalProjects || 0,
-      icon: Globe,
-      color: "bg-slate-100",
-      iconColor: "text-slate-700",
-      description: "All time projects"
-    },
-    {
-      title: "Active Projects",
-      value: stats.activeProjects || 0,
-      icon: Clock,
-      color: "bg-amber-50",
-      iconColor: "text-amber-600",
-      description: "Currently running projects"
-    },
-    {
-      title: "Total Pages Analyzed",
-      value: stats.totalPagesAnalyzed || 0,
-      icon: CheckCircle,
-      color: "bg-emerald-50",
-      iconColor: "text-emerald-600",
-      description: "All pages processed"
-    },
-    {
-      title: "Average Score",
-      value: stats.averageScore ? `${stats.averageScore.toFixed(1)}%` : "0.0%",
-      icon: TrendingUp,
-      color: "bg-purple-50",
-      iconColor: "text-purple-600",
-      description: "Overall performance"
-    }
-  ], [stats]);
-
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-      {statCards.map((stat, index) => {
-        const IconComponent = stat.icon;
-        return (
-          <Card key={index} className="border-0 shadow-sm bg-white hover:shadow-md transition-shadow duration-200">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-slate-600 mb-1">
-                    {stat.title}
-                  </p>
-                  <div className="mb-1">
-                    {loading ? (
-                      <div className="h-8 w-16 bg-slate-200 rounded animate-pulse"></div>
-                    ) : (
-                      <p className="text-2xl font-bold text-slate-900">
-                        {stat.value}
-                      </p>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500">
-                    {stat.description}
-                  </p>
-                </div>
-                <div className={`p-3 rounded-lg ${stat.color} ml-4`}>
-                  <IconComponent className={`h-6 w-6 ${stat.iconColor}`} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        );
-      })}
-    </div>
-  );
-});
-
-StatsCards.displayName = 'StatsCards'; 

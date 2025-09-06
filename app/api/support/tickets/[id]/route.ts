@@ -5,7 +5,7 @@ import { TicketStatus } from "@/lib/types/database";
 // GET - Fetch specific ticket with responses
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -19,7 +19,8 @@ export async function GET(
       }, { status: 401 });
     }
 
-    const ticketId = params.id;
+    const resolvedParams = await params;
+    const ticketId = resolvedParams.id;
 
     // Fetch ticket with responses
     const { data: ticket, error: ticketError } = await supabase
@@ -51,7 +52,7 @@ export async function GET(
 // PUT - Update ticket status
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -65,7 +66,8 @@ export async function PUT(
       }, { status: 401 });
     }
 
-    const ticketId = params.id;
+    const resolvedParams = await params;
+    const ticketId = resolvedParams.id;
     const body = await request.json();
     const { status } = body;
 
@@ -108,7 +110,7 @@ export async function PUT(
 // DELETE - Delete ticket (only if it's open)
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -122,7 +124,8 @@ export async function DELETE(
       }, { status: 401 });
     }
 
-    const ticketId = params.id;
+    const resolvedParams = await params;
+    const ticketId = resolvedParams.id;
 
     // Check if ticket exists and belongs to user
     const { data: existingTicket, error: fetchError } = await supabase

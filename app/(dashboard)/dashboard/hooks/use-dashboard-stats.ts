@@ -13,6 +13,41 @@ interface UseDashboardStatsReturn {
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes (matching Redis TTL)
 const STALE_DURATION = 10 * 60 * 1000; // 10 minutes
 
+/**
+ * Process backend API response to calculate dashboard statistics
+ */
+function processBackendData(backendData: any): DashboardStats {
+  const projects = backendData.projects || backendData || [];
+  
+  // Calculate statistics
+  const totalProjects = projects.length;
+  const activeProjects = projects.filter((p: any) => 
+    p.status === 'crawling' || p.status === 'analyzing' || p.status === 'pending'
+  ).length;
+  
+  // Calculate total pages analyzed
+  const totalPagesAnalyzed = projects.reduce((sum: number, project: any) => {
+    return sum + (project.pages_analyzed || project.pages_crawled || 0);
+  }, 0);
+  
+  // Calculate average score
+  const projectsWithScores = projects.filter((p: any) => p.overall_score !== undefined && p.overall_score !== null);
+  const averageScore = projectsWithScores.length > 0
+    ? projectsWithScores.reduce((sum: number, p: any) => sum + (p.overall_score || 0), 0) / projectsWithScores.length
+    : 0;
+  
+  // Get recent projects (last 5)
+  const recentProjects = projects.slice(0, 5);
+  
+  return {
+    totalProjects,
+    activeProjects,
+    totalPagesAnalyzed,
+    averageScore: Math.round(averageScore),
+    recentProjects,
+  };
+}
+
 export function useDashboardStats(): UseDashboardStatsReturn {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,11 +88,13 @@ export function useDashboardStats(): UseDashboardStatsReturn {
       setLoading(true);
       setError(null);
       
-      const response = await fetch('/api/dashboard/stats', {
+      const response = await fetch('/api/profile/projects/', {
         signal: abortControllerRef.current.signal,
         headers: {
           'Cache-Control': 'max-age=30',
+          'Content-Type': 'application/json',
         },
+        credentials: 'include', // Include cookies for authentication
       });
       
       if (!response.ok) {
@@ -66,10 +103,13 @@ export function useDashboardStats(): UseDashboardStatsReturn {
       
       const data = await response.json();
       
+      // Process the backend API response to calculate dashboard stats
+      const processedStats = processBackendData(data);
+      
       // Update both local state and global cache
-      setStats(data);
+      setStats(processedStats);
       setLastFetchTime(now);
-      cacheUtils.setDashboardStats(data);
+      cacheUtils.setDashboardStats(processedStats);
       hasInitialized.current = true;
       
     } catch (err) {

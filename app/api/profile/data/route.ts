@@ -75,17 +75,17 @@ export async function GET() {
     // Calculate optimized stats
     const allProjects = statsResult.data || [];
     const totalProjects = allProjects.length;
-    const activeProjects = allProjects.filter(p => p.status === 'crawling' || p.status === 'analyzing').length;
+    const activeProjects = allProjects.filter((p: any) => p.status === 'crawling' || p.status === 'analyzing').length;
     
     // Calculate total pages and average score more efficiently
     let totalPagesAnalyzed = 0;
     let totalScore = 0;
     let scoreCount = 0;
     
-    allProjects.forEach(project => {
+    allProjects.forEach((project: any) => {
       totalPagesAnalyzed += project.pages_analyzed || 0;
       if (project.audit_results && project.audit_results.length > 0) {
-        project.audit_results.forEach(result => {
+        project.audit_results.forEach((result: any) => {
           if (result.overall_score) {
             totalScore += result.overall_score;
             scoreCount++;

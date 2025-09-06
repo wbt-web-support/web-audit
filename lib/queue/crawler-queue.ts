@@ -37,9 +37,16 @@ let crawlerQueue: Queue<CrawlerJobData> | null = null;
 
 export async function getCrawlerQueue(): Promise<Queue<CrawlerJobData>> {
   if (!crawlerQueue) {
-    const redisClient = await getRedisClient();
+    // Use Redis connection configuration instead of client instance
+    const connection = {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '6379'),
+      password: process.env.REDIS_PASSWORD,
+      db: parseInt(process.env.REDIS_DB || '0'),
+    };
+    
     crawlerQueue = new Queue(QUEUE_CONFIG.name, {
-      connection: redisClient,
+      connection,
       defaultJobOptions: {
         removeOnComplete: QUEUE_CONFIG.removeOnComplete,
         removeOnFail: QUEUE_CONFIG.removeOnFail,
@@ -125,7 +132,7 @@ export async function getJobStatus(jobId: string): Promise<{
   
   return {
     status: state,
-    progress: job.progress || 0,
+    progress: typeof job.progress === 'number' ? job.progress : 0,
     data: job.data,
     error: job.failedReason,
     queuePosition,
@@ -170,7 +177,13 @@ export async function getQueueStats(): Promise<{
 
 // Optimized worker function with concurrent page processing
 export async function startCrawlerWorker(): Promise<void> {
-  const redisClient = await getRedisClient();
+  // Use Redis connection configuration instead of client instance
+  const connection = {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    password: process.env.REDIS_PASSWORD,
+    db: parseInt(process.env.REDIS_DB || '0'),
+  };
   
   const worker = new Worker(
     QUEUE_CONFIG.name,
@@ -234,9 +247,10 @@ export async function startCrawlerWorker(): Promise<void> {
         
         // Start optimized crawling
         await scraper.crawl(async (pageData) => {
-          // Check if job was cancelled
-          if (await job.isStopped()) {
-            throw new Error('Job was cancelled');
+          // Check if job was cancelled by checking the job state
+          const jobState = await job.getState();
+          if (jobState === 'failed' || jobState === 'completed') {
+            throw new Error('Job was cancelled or completed');
           }
           
           const normalizedUrl = normalizeUrl(pageData.url);
@@ -342,7 +356,7 @@ export async function startCrawlerWorker(): Promise<void> {
       }
     },
     {
-      connection: redisClient,
+      connection,
       concurrency: QUEUE_CONFIG.concurrency,
       limiter: {
         max: QUEUE_CONFIG.concurrency,
