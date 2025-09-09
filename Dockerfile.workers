@@ -1,0 +1,54 @@
+# Multi-stage build for Queue Workers
+FROM node:18-alpine AS base
+
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Install dependencies
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Build the application
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Build TypeScript files
+RUN npm run build
+
+# Production image for workers
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV production
+
+# Create a non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 worker
+
+# Install production dependencies
+COPY package.json package-lock.json* ./
+RUN npm ci --only=production && npm cache clean --force
+
+# Copy built application
+COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/tsconfig.json ./
+
+# Create uploads directory
+RUN mkdir -p /app/uploads && chown worker:nodejs /app/uploads
+
+# Set proper permissions
+RUN chown -R worker:nodejs /app
+
+USER worker
+
+# Health check for workers
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "console.log('Worker health check')" || exit 1
+
+# Start queue workers
+CMD ["npx", "ts-node", "scripts/start-queue-workers.ts"]

@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { AuditProject, ScrapedPage } from '@/lib/types/database';
 import { 
   Loader2, 
   Globe, 
@@ -31,7 +30,11 @@ import {
   ArrowUp,
   ArrowDown,
   Zap,
-  CodeSquare
+  CodeSquare,
+  Users,
+  Building,
+  Shield,
+  TrendingUp
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -53,21 +56,54 @@ import {
 } from '@/app/stores/auditSlice';
 
 // Import sub-components
-import { ProjectHeader } from './components/ProjectHeader';
-import { ProjectMetrics } from './components/ProjectMetrics';
-import { ProcessStatusCard } from './components';
-import { CustomUrlsCard } from './components';
-import { PagesTable } from './components/PagesTable';
+import { ProjectHeader } from '../components/ProjectHeader';
+import { ProjectMetrics } from '../components/ProjectMetrics';
+import { ProcessStatusCard } from '../components';
+import { CustomUrlsCard } from '../components';
+import { PagesTable } from '../components/PagesTable';
+import { TenantUsageCard } from '../components/TenantUsageCard';
+import { TenantLimitsCard } from '../components/TenantLimitsCard';
 
-import { ImageAnalysisTable } from './image-analysis-table';
-import { LinksAnalysisTable } from './links-analysis-table';
+import { ImageAnalysisTable } from '../image-analysis-table';
+import { LinksAnalysisTable } from '../links-analysis-table';
 
 // ============================================================================
 // TYPES & INTERFACES
 // ============================================================================
 
+interface TenantInfo {
+  id: string;
+  name: string;
+  slug: string;
+  plan: {
+    name: string;
+    tier: 'free' | 'starter' | 'professional' | 'enterprise';
+    limits: {
+      maxProjects: number;
+      maxPagesPerProject: number;
+      maxConcurrentCrawls: number;
+      maxWorkers: number;
+      rateLimitPerMinute: number;
+      storageGB: number;
+    };
+  };
+  usage: {
+    currentProjects: number;
+    currentPages: number;
+    currentCrawls: number;
+    currentWorkers: number;
+    currentStorageGB: number;
+    monthlyCrawls: number;
+  };
+  status: 'active' | 'suspended' | 'cancelled';
+}
+
 interface AnalyzedPage {
-  page: ScrapedPage & {
+  page: {
+    id: string;
+    url: string;
+    title: string;
+    status_code: number;
     analysis_status?: 'pending' | 'analyzing' | 'completed' | 'failed';
   };
   project: {
@@ -80,36 +116,50 @@ interface AnalyzedPage {
   overallStatus: string;
 }
 
-interface PageStatus {
-  pageId: string;
-  status: 'pending' | 'analyzing' | 'completed' | 'failed' | 'timeout' | 'error';
-  hasResults: boolean;
-  error?: string;
-  lastChecked?: number;
+interface Project {
+  id: string;
+  tenantId: string;
+  name: string;
+  baseUrl: string;
+  status: 'pending' | 'crawling' | 'completed' | 'failed' | 'paused';
+  settings: {
+    maxPages: number;
+    maxDepth: number;
+    followExternal: boolean;
+    respectRobotsTxt: boolean;
+    userAgent: string;
+    timeout: number;
+    analysisTypes: string[];
+    customUrls: string[];
+  };
+  metrics: {
+    pagesCrawled: number;
+    totalPages: number;
+    totalImages: number;
+    totalLinks: number;
+    internalLinks: number;
+    externalLinks: number;
+    averageLoadTime: number;
+    lastCrawledAt: Date;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
 }
 
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
 
-/**
- * Get the analysis status of a page
- */
 const getAnalysisStatus = (page: AnalyzedPage): string => {
   if (page.page.analysis_status === 'analyzing') return 'analyzing';
   return page.resultCount > 0 ? 'analyzed' : 'not-analyzed';
 };
 
-/**
- * Check if a page is currently being analyzed
- */
 const isPageAnalyzing = (page: AnalyzedPage, analyzingPages: Set<string>): boolean => {
   return analyzingPages.has(page.page.id) || page.page.analysis_status === 'analyzing';
 };
 
-/**
- * Get status badge component
- */
 const getStatusBadge = (status: string) => {
   const variants = {
     pass: 'bg-emerald-100 text-emerald-700 w-full text-center justify-center',
@@ -132,22 +182,39 @@ const getStatusBadge = (status: string) => {
   );
 };
 
+const getPlanBadge = (tier: string) => {
+  const variants = {
+    free: 'bg-gray-100 text-gray-700',
+    starter: 'bg-blue-100 text-blue-700',
+    professional: 'bg-purple-100 text-purple-700',
+    enterprise: 'bg-gold-100 text-gold-700'
+  };
+
+  return (
+    <Badge className={variants[tier as keyof typeof variants] || 'bg-gray-100 text-gray-700'}>
+      {tier.toUpperCase()}
+    </Badge>
+  );
+};
+
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
-export function AuditMain() {
+export function TenantAuditMain() {
   const dispatch = useDispatch();
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedProjectId = searchParams.get('project');
+  const tenantSlug = searchParams.get('tenant');
   
   // Redux state
   const auditState = useSelector((state: RootState) => state.audit);
   const currentSession = selectedProjectId ? auditState.sessions[selectedProjectId] : null;
   
   // Local state
-  const [projects, setProjects] = useState<AuditProject[]>([]);
+  const [tenant, setTenant] = useState<TenantInfo | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [analyzingPages, setAnalyzingPages] = useState<Set<string>>(new Set());
   const [deletingPages, setDeletingPages] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
@@ -172,7 +239,12 @@ export function AuditMain() {
 
   // Initialize component and fetch data
   useEffect(() => {
-    fetchData();
+    if (!tenantSlug) {
+      router.push('/dashboard');
+      return;
+    }
+
+    fetchTenantData();
     
     if (selectedProjectId) {
       dispatch(initializeSession({ projectId: selectedProjectId }));
@@ -185,12 +257,138 @@ export function AuditMain() {
     return () => {
       crawlingStartedRef.current = false;
     };
-  }, [selectedProjectId, dispatch]);
+  }, [selectedProjectId, tenantSlug, dispatch]);
 
-  // Function to check and resume background processes
+  // Poll for crawl progress when crawling is active
+  useEffect(() => {
+    const shouldPoll = currentSession?.isCrawling || currentSession?.backgroundCrawling || (projects[0]?.status === 'crawling');
+    
+    if (!shouldPoll || !projects[0] || !tenant) return;
+    
+    const interval = setInterval(async () => {
+      await pollCrawlStatus();
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [currentSession?.isCrawling, currentSession?.backgroundCrawling, projects, tenant, dispatch, selectedProjectId]);
+
+  // ============================================================================
+  // DATA FETCHING
+  // ============================================================================
+
+  /**
+   * Fetch tenant data and projects
+   */
+  const fetchTenantData = async (retryCount = 0) => {
+    try {
+      if (!tenantSlug) {
+        router.push('/dashboard');
+        return;
+      }
+
+      // Fetch tenant information
+      const tenantResponse = await fetch(`/api/saas/tenants/${tenantSlug}`);
+      const tenantData = await tenantResponse.json();
+      
+      if (!tenantResponse.ok) {
+        setError(tenantData.error || 'Failed to fetch tenant data');
+        return;
+      }
+
+      setTenant(tenantData.tenant);
+
+      // Fetch projects for tenant
+      const projectsResponse = await fetch(`/api/saas/tenants/${tenantSlug}/projects`);
+      const projectsData = await projectsResponse.json();
+      
+      if (projectsResponse.ok) {
+        setProjects(projectsData.projects);
+        
+        // Find the selected project
+        const selectedProject = projectsData.projects.find((p: Project) => p.id === selectedProjectId);
+        
+        if (selectedProject) {
+          dispatch(initializeSession({ projectId: selectedProjectId! }));
+          dispatch(setActiveProject({ projectId: selectedProjectId! }));
+          
+          // Start crawling if project is pending
+          if (selectedProject.status === "pending" && !crawlingStartedRef.current) {
+            crawlingStartedRef.current = true;
+            startCrawlingProcess(selectedProject.id, true);
+            return;
+          }
+          
+          if (selectedProject.status !== "pending") {
+            crawlingStartedRef.current = false;
+          }
+          
+          await fetchAnalyzedPages(selectedProjectId!, retryCount);
+        }
+      } else {
+        setError(projectsData.error || 'Failed to fetch projects');
+      }
+    } catch (error) {
+      setError('Failed to fetch data');
+      setLoading(false);
+    } finally {
+      setLoading(false);
+      setError('');
+    }
+  };
+
+  /**
+   * Fetch analyzed pages with timeout handling
+   */
+  const fetchAnalyzedPages = async (projectId: string, retryCount: number) => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+          
+      const resultsResponse = await fetch(`/api/saas/tenants/${tenantSlug}/projects/${projectId}/results`, {
+        signal: controller.signal
+      });
+          
+      clearTimeout(timeoutId);
+      const resultsData = await resultsResponse.json();
+
+      if (resultsResponse.ok && resultsData.pageResults) {
+        const pages = resultsData.pageResults.map((pageResult: any) => {
+          const results = pageResult.results;
+          const analysisTypes = ['grammar_analysis', 'content_analysis', 'seo_analysis', 'performance_analysis', 'accessibility_analysis', 'ui_quality_analysis', 'image_relevance_analysis', 'context_analysis'];
+          const completedAnalyses = results ? analysisTypes.filter(type => results[type]).length : 0;
+          
+          return {
+            page: pageResult.page,
+            project: {
+              id: projectId,
+              base_url: projects[0]?.baseUrl || '',
+              status: projects[0]?.status || 'pending'
+            },
+            resultCount: completedAnalyses,
+            overallScore: results?.overall_score || 0,
+            overallStatus: results?.overall_status || 'pending'
+          };
+        });
+        
+        dispatch(updateAnalyzedPages({ projectId, pages }));
+        updateAnalyzingPagesState(pages);
+      }
+    } catch (error: any) {
+      if (error?.name === 'AbortError' && retryCount < 2) {
+        setTimeout(() => fetchTenantData(retryCount + 1), 2000);
+        return;
+      }
+      
+      dispatch(updateAnalyzedPages({ projectId, pages: [] }));
+    }
+  };
+
+  /**
+   * Check and resume background processes
+   */
   const checkAndResumeBackgroundProcesses = async () => {
     try {
-      const response = await fetch('/api/audit-projects/background-status');
+      const response = await fetch(`/api/saas/tenants/${tenantSlug}/background-status`);
       if (response.ok) {
         const data = await response.json();
         
@@ -219,173 +417,19 @@ export function AuditMain() {
     }
   };
 
-  // Poll for crawl progress when crawling is active
-  useEffect(() => {
-    const shouldPoll = currentSession?.isCrawling || currentSession?.backgroundCrawling || (projects[0]?.status === 'crawling');
-    
-    if (!shouldPoll || !projects[0]) return;
-    
-    const interval = setInterval(async () => {
-      await pollCrawlStatus();
-    }, 1000);
-    
-    return () => clearInterval(interval);
-  }, [currentSession?.isCrawling, currentSession?.backgroundCrawling, projects, dispatch, selectedProjectId]);
-
-  // Global background crawling status check - runs even when component unmounts
-  useEffect(() => {
-    let globalInterval: NodeJS.Timeout;
-    
-    const checkGlobalCrawlingStatus = async () => {
-      try {
-        // Check if any projects are crawling in the background
-        const response = await fetch('/api/audit-projects/background-status');
-        if (response.ok) {
-          const data = await response.json();
-          
-          // Update Redux state for any background crawling projects
-          data.crawlingProjects?.forEach((project: any) => {
-            if (project.status === 'crawling') {
-              dispatch(initializeSession({ projectId: project.id }));
-              dispatch(startCrawling({ projectId: project.id, background: true }));
-              
-              // Update live counts if available
-              if (project.crawl_progress) {
-                dispatch(updateLiveCounts({
-                  projectId: project.id,
-                  imageCount: project.crawl_progress.total_images || 0,
-                  linkCount: project.crawl_progress.total_links || 0,
-                  internalLinks: project.crawl_progress.internal_links || 0,
-                  externalLinks: project.crawl_progress.external_links || 0,
-                  pagesCount: project.crawl_progress.pages_crawled || 0
-                }));
-              }
-            }
-          });
-        }
-      } catch (error) {
-        console.error('Global crawling status check error:', error);
-      }
-    };
-
-    // Check immediately
-    checkGlobalCrawlingStatus();
-    
-    // Then check every 10 seconds for background processes
-    globalInterval = setInterval(checkGlobalCrawlingStatus, 10000);
-    
-    return () => {
-      if (globalInterval) clearInterval(globalInterval);
-    };
-  }, [dispatch]);
-
-  // ============================================================================
-  // DATA FETCHING
-  // ============================================================================
-
-  /**
-   * Fetch project data and analyzed pages
-   */
-  const fetchData = async (retryCount = 0) => {
-    try {
-      if (!selectedProjectId) {
-        router.push('/projects');
-        return;
-      }
-
-      const projectResponse = await fetch(`/api/audit-projects/${selectedProjectId}`);
-      const projectData = await projectResponse.json();
-      
-      if (projectResponse.ok) {
-        setProjects([projectData.project]);
-        
-        dispatch(initializeSession({ projectId: selectedProjectId }));
-        dispatch(setActiveProject({ projectId: selectedProjectId }));
-        
-        // Start crawling if project is pending
-        if (projectData.project.status === "pending" && !crawlingStartedRef.current) {
-          crawlingStartedRef.current = true;
-          startCrawlingProcess(projectData.project.id, true); // Start in background by default
-          return;
-        }
-        
-        if (projectData.project.status !== "pending") {
-          crawlingStartedRef.current = false;
-        }
-        
-        await fetchAnalyzedPages(selectedProjectId, retryCount);
-      } else {
-        setError(projectData.error || 'Failed to fetch project');
-      }
-    } catch (error) {
-      setError('Failed to fetch data');
-      setLoading(false);
-    } finally {
-      setLoading(false);
-      setError('');
-    }
-  };
-
-  /**
-   * Fetch analyzed pages with timeout handling
-   */
-  const fetchAnalyzedPages = async (projectId: string, retryCount: number) => {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-          
-      const resultsResponse = await fetch(`/api/audit-projects/${projectId}/results`, {
-        signal: controller.signal
-      });
-          
-      clearTimeout(timeoutId);
-      const resultsData = await resultsResponse.json();
-
-      if (resultsResponse.ok && resultsData.pageResults) {
-        const pages = resultsData.pageResults.map((pageResult: any) => {
-          const results = pageResult.results;
-          const analysisTypes = ['grammar_analysis', 'content_analysis', 'seo_analysis', 'performance_analysis', 'accessibility_analysis', 'ui_quality_analysis', 'image_relevance_analysis', 'context_analysis'];
-          const completedAnalyses = results ? analysisTypes.filter(type => results[type]).length : 0;
-          
-          return {
-            page: pageResult.page,
-            project: {
-              id: projectId,
-              base_url: projects[0]?.base_url || '',
-              status: projects[0]?.status || 'pending'
-            },
-            resultCount: completedAnalyses,
-            overallScore: results?.overall_score || 0,
-            overallStatus: results?.overall_status || 'pending'
-          };
-        });
-        
-        dispatch(updateAnalyzedPages({ projectId, pages }));
-        updateAnalyzingPagesState(pages);
-      }
-    } catch (error: any) {
-      if (error?.name === 'AbortError' && retryCount < 2) {
-        setTimeout(() => fetchData(retryCount + 1), 2000);
-        return;
-      }
-      
-      dispatch(updateAnalyzedPages({ projectId, pages: [] }));
-    }
-  };
-
   /**
    * Poll crawl status for real-time updates
    */
   const pollCrawlStatus = async () => {
-    if (!projects[0]?.id) return;
+    if (!projects[0]?.id || !tenant) return;
     
     try {
-      const res = await fetch(`/api/audit-projects/${projects[0].id}/crawl-status`);
+      const res = await fetch(`/api/saas/tenants/${tenantSlug}/projects/${projects[0].id}/crawl-status`);
       const data = await res.json();
       
       if (!data.is_crawling) {
         dispatch(completeCrawling({ projectId: projects[0].id }));
-        fetchData();
+        fetchTenantData();
         return;
       }
       
@@ -404,8 +448,11 @@ export function AuditMain() {
         p.id === projects[0].id 
           ? { 
               ...p, 
-              pages_crawled: data.project.pages_crawled,
-              total_pages: data.project.total_pages
+              metrics: {
+                ...p.metrics,
+                pagesCrawled: data.project.pages_crawled,
+                totalPages: data.project.total_pages
+              }
             }
           : p
       ));
@@ -422,7 +469,7 @@ export function AuditMain() {
           },
           project: {
             id: projects[0]?.id || selectedProjectId,
-            base_url: projects[0]?.base_url || '',
+            base_url: projects[0]?.baseUrl || '',
             status: projects[0]?.status || 'crawling'
           },
           resultCount: 0,
@@ -470,21 +517,29 @@ export function AuditMain() {
    * Start the crawling process
    */
   const startCrawlingProcess = async (projectId: string, background: boolean = false) => {
+    if (!tenant) return;
+
     setCrawling(true);
     setError('');
     
+    // Check tenant limits
+    if (tenant.usage.currentCrawls >= tenant.plan.limits.maxConcurrentCrawls) {
+      setError(`Maximum concurrent crawls reached (${tenant.plan.limits.maxConcurrentCrawls})`);
+      setCrawling(false);
+      return;
+    }
+
     // Reset project state
     setProjects(prev => prev.map(p => 
       p.id === projectId 
         ? { 
             ...p, 
-            pages_crawled: 0,
-            total_pages: 0,
-            all_image_analysis: [],
-            all_links_analysis: [],
-            custom_urls_analysis: [],
-            stripe_keys_analysis: [],
-            status: 'crawling'
+            status: 'crawling',
+            metrics: {
+              ...p.metrics,
+              pagesCrawled: 0,
+              totalPages: 0,
+            }
           }
         : p
     ));
@@ -495,11 +550,10 @@ export function AuditMain() {
     dispatch(startCrawling({ projectId, background }));
     
     try {
-      const response = await fetch('/api/scrape/start', {
+      const response = await fetch(`/api/saas/tenants/${tenantSlug}/projects/${projectId}/start-crawl`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          project_id: projectId,
           background: background 
         }),
       });
@@ -539,7 +593,7 @@ export function AuditMain() {
     const stopToast = toast.loading('Stopping crawling process...');
     
     try {
-      const response = await fetch(`/api/audit-projects/${projectId}/stop`, {
+      const response = await fetch(`/api/saas/tenants/${tenantSlug}/projects/${projectId}/stop`, {
         method: 'POST',
       });
 
@@ -568,167 +622,6 @@ export function AuditMain() {
   };
 
   // ============================================================================
-  // ANALYSIS OPERATIONS
-  // ============================================================================
-
-  /**
-   * Analyze a single page with improved performance and state management
-   */
-  const analyzeSinglePage = async (pageId: string) => {
-    if (!projects[0]) return;
-
-    setAnalyzingPages(prev => new Set(prev).add(pageId));
-    setError('');
-    
-    let timeoutId: NodeJS.Timeout | undefined;
-    let pollInterval: NodeJS.Timeout | undefined;
-    
-    try {
-      // Start analysis with timeout
-      const controller = new AbortController();
-      timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes timeout
-      
-      const response = await fetch(`/api/audit-projects/${projects[0].id}/analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          page_ids: [pageId],
-          background: false,
-          analysis_types: ["grammar", "seo", "ui", "performance", "tagsAnalysis", "images", "links"]
-        }),
-        signal: controller.signal
-      });
-
-      if (timeoutId) clearTimeout(timeoutId);
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to start analysis');
-      }
-
-      // Analysis completed successfully
-      toast.success('Analysis completed successfully!');
-      
-      // Remove from analyzing pages
-      setAnalyzingPages(prev => {
-        const newAnalyzing = new Set(prev);
-        newAnalyzing.delete(pageId);
-        return newAnalyzing;
-      });
-
-      // Immediately fetch updated data
-      await fetchData();
-      
-    } catch (error: any) {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (pollInterval) clearInterval(pollInterval);
-      
-      if (error.name === 'AbortError') {
-        toast.error('Analysis timed out. Please try again.');
-        setError('Analysis timed out after 5 minutes');
-      } else {
-        setError(error.message || 'Failed to start analysis');
-      }
-      
-      // Remove from analyzing pages on error
-      setAnalyzingPages(prev => {
-        const newAnalyzing = new Set(prev);
-        newAnalyzing.delete(pageId);
-        return newAnalyzing;
-      });
-    }
-  };
-
-  /**
-   * Stop analysis for a single page
-   */
-  const stopAnalysis = async (pageId: string) => {
-    if (!projects[0]) return;
-
-    try {
-      const response = await fetch(`/api/audit-projects/${projects[0].id}/analyze/stop`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          page_id: pageId
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to stop analysis');
-      }
-
-      toast.success('Analysis stopped successfully!');
-      
-      // Immediately fetch updated data
-      await fetchData();
-      
-    } catch (error: any) {
-      console.error(error.message || 'Failed to stop analysis');
-      throw error;
-    }
-  };
-
-  /**
-   * Poll for analysis status updates
-   */
-  const pollAnalysisStatus = async (pageId: string, maxAttempts: number = 60) => {
-    let attempts = 0;
-    
-    const poll = async () => {
-      if (attempts >= maxAttempts) {
-        console.warn(`Polling timeout for page ${pageId}`);
-        return;
-      }
-      
-      try {
-        const response = await fetch(`/api/audit-projects/${projects[0]?.id}/results`);
-        const data = await response.json();
-        
-        if (response.ok && data.pageResults) {
-          const pageResult = data.pageResults.find((p: any) => p.page.id === pageId);
-          
-          if (pageResult && pageResult.page.analysis_status === 'completed') {
-            // Analysis completed, update UI
-            setAnalyzingPages(prev => {
-              const newAnalyzing = new Set(prev);
-              newAnalyzing.delete(pageId);
-              return newAnalyzing;
-            });
-            
-            await fetchData();
-            return;
-          } else if (pageResult && pageResult.page.analysis_status === 'failed') {
-            // Analysis failed
-            setAnalyzingPages(prev => {
-              const newAnalyzing = new Set(prev);
-              newAnalyzing.delete(pageId);
-              return newAnalyzing;
-            });
-            
-            setError(`Analysis failed for page: ${pageResult.page.error_message || 'Unknown error'}`);
-            return;
-          }
-        }
-        
-        // Continue polling
-        attempts++;
-        setTimeout(poll, 2000); // Poll every 2 seconds
-        
-      } catch (error) {
-        console.error('Error polling analysis status:', error);
-        attempts++;
-        setTimeout(poll, 2000);
-      }
-    };
-    
-    poll();
-  };
-
-  // ============================================================================
   // UTILITY FUNCTIONS
   // ============================================================================
 
@@ -739,7 +632,7 @@ export function AuditMain() {
     console.log('Manual refresh triggered');
     setError('');
     setLoading(true);
-    await fetchData();
+    await fetchTenantData();
   };
 
   /**
@@ -794,7 +687,22 @@ export function AuditMain() {
   // ============================================================================
 
   if (loading) {
-    return <></>;
+    return <AuditMainSkeleton />;
+  }
+
+  if (!tenant) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Tenant Not Found</h2>
+          <p className="text-gray-600 mb-4">The tenant you're looking for doesn't exist or you don't have access to it.</p>
+          <Button onClick={() => router.push('/dashboard')}>
+            Back to Dashboard
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -803,9 +711,46 @@ export function AuditMain() {
         
         {/* Back Button */}
         <div className="mb-6">
-          <BackButton href="/projects" id={`audit-session-${selectedProjectId || 'default'}`}>
-            ← Back to Projects
+          <BackButton href={`/dashboard?tenant=${tenantSlug}`} id={`tenant-audit-session-${selectedProjectId || 'default'}`}>
+            ← Back to Dashboard
           </BackButton>
+        </div>
+
+        {/* Tenant Header */}
+        <div className="mb-6">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Building className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">{tenant.name}</CardTitle>
+                    <CardDescription className="flex items-center gap-2 mt-1">
+                      <span>@{tenant.slug}</span>
+                      {getPlanBadge(tenant.plan.tier)}
+                      <Badge variant={tenant.status === 'active' ? 'default' : 'secondary'}>
+                        {tenant.status}
+                      </Badge>
+                    </CardDescription>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-gray-500" />
+                  <span className="text-sm text-gray-600">
+                    {tenant.usage.currentProjects}/{tenant.plan.limits.maxProjects} projects
+                  </span>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+        </div>
+
+        {/* Tenant Usage & Limits */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <TenantUsageCard tenant={tenant} />
+          <TenantLimitsCard tenant={tenant} />
         </div>
         
         {/* Header */}
@@ -839,28 +784,6 @@ export function AuditMain() {
           </div>
         )}
 
-        {/* Global Background Crawling Status */}
-        {auditState.globalIsCrawling && (
-          <div className="mb-6">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-center gap-3">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                <div className="flex-1">
-                  <h3 className="text-sm font-medium text-blue-900">
-                    Background Crawling Active
-                  </h3>
-                  <p className="text-xs text-blue-700 mt-1">
-                    {Object.values(auditState.sessions).filter(s => s.backgroundCrawling).length} project(s) crawling in background
-                  </p>
-                </div>
-                <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                  Background
-                </Badge>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Project Metrics */}
         {projects.length > 0 && projects[0] && (
           <div className="my-6">
@@ -874,23 +797,23 @@ export function AuditMain() {
         )}
 
         {/* Custom URLs */}
-        {projects[0] && projects[0].custom_urls_analysis && Array.isArray(projects[0].custom_urls_analysis) && projects[0].custom_urls_analysis.length > 0 && (
+        {projects[0] && projects[0].settings.customUrls && Array.isArray(projects[0].settings.customUrls) && projects[0].settings.customUrls.length > 0 && (
           <div className="mb-6">
-            <CustomUrlsCard customUrls={projects[0].custom_urls_analysis} />
+            <CustomUrlsCard customUrls={projects[0].settings.customUrls} />
           </div>
         )}
 
         {/* Image Analysis */}
-        {currentSession?.showImageAnalysis && projects[0] && projects[0].all_image_analysis && Array.isArray(projects[0].all_image_analysis) && projects[0].all_image_analysis.length > 0 && (
+        {currentSession?.showImageAnalysis && projects[0] && (
           <div id="image-analysis-table" className="mb-6 animate-in slide-in-from-top-2 duration-300">
-            <ImageAnalysisTable images={projects[0].all_image_analysis} />
+            <ImageAnalysisTable images={[]} />
           </div>
         )}
 
         {/* Links Analysis */}
-        {currentSession?.showLinksAnalysis && projects[0] && projects[0].all_links_analysis && Array.isArray(projects[0].all_links_analysis) && projects[0].all_links_analysis.length > 0 && (
+        {currentSession?.showLinksAnalysis && projects[0] && (
           <div id="links-analysis-table" className="mb-6 animate-in slide-in-from-top-2 duration-300">
-            <LinksAnalysisTable links={projects[0].all_links_analysis} />
+            <LinksAnalysisTable links={[]} />
           </div>
         )}
 
@@ -917,9 +840,9 @@ export function AuditMain() {
           filteredAndSortedPages={filteredAndSortedPages}
           isPageAnalyzing={(page: AnalyzedPage) => isPageAnalyzing(page, analyzingPages)}
           isAnalysisDisabled={isAnalysisDisabled}
-          onAnalyzeSinglePage={analyzeSinglePage}
-          onStopAnalysis={stopAnalysis}
-          onDeletePage={() => {}} // Implement if needed
+          onAnalyzeSinglePage={() => {}} // TODO: Implement
+          onStopAnalysis={() => {}} // TODO: Implement
+          onDeletePage={() => {}} // TODO: Implement
           getStatusBadge={getStatusBadge}
           getAnalysisStatus={getAnalysisStatus}
         />

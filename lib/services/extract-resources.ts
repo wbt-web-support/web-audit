@@ -1,4 +1,6 @@
 import { parse } from 'node-html-parser';
+import { queueManager, JobData, JobResult } from '@/lib/queue/queue-manager';
+import { getQueueConfig } from '@/lib/queue/queue-config';
 
 
 interface ImageInfo {
@@ -800,4 +802,327 @@ export async function analyzeLinksDetailed(html: string, baseUrl: string) {
   }
 
   return analysis;
+}
+
+// Queue-based image extraction functions
+export async function extractImagesWithQueue(
+  html: string,
+  baseUrl: string,
+  projectId?: string,
+  pageId?: string
+): Promise<{ jobId: string; queueName: string }> {
+  try {
+    const queueName = 'image-extraction';
+    const config = await getQueueConfig(queueName);
+    
+    // Create queue if it doesn't exist
+    if (!queueManager.queueMap.has(queueName)) {
+      await queueManager.createQueue(queueName, processImageExtractionJob);
+    }
+
+    const jobData: JobData = {
+      html,
+      baseUrl,
+      projectId: projectId || null,
+      pageId: pageId || null,
+      timestamp: new Date().toISOString(),
+    };
+
+    const job = await queueManager.addJob(queueName, jobData, {
+      priority: 2, // Medium priority for image extraction
+      delay: 0,
+    });
+
+    console.log(`📝 Image extraction job ${job.id} queued for ${baseUrl}`);
+    
+    return {
+      jobId: job.id!,
+      queueName,
+    };
+  } catch (error) {
+    console.error('❌ Error queuing image extraction job:', error);
+    throw error;
+  }
+}
+
+async function processImageExtractionJob(job: any): Promise<JobResult> {
+  const startTime = Date.now();
+  const { html, baseUrl, projectId, pageId } = job.data;
+  
+  try {
+    console.log(`🔄 Processing image extraction job ${job.id} for ${baseUrl}`);
+    
+    // Update job progress
+    await job.updateProgress(10);
+    
+    // Extract images with rate limiting
+    const images = await extractImagesWithRateLimit(html, baseUrl, {
+      maxConcurrent: 5,
+      delay: 100,
+      timeout: 10000,
+    });
+    
+    await job.updateProgress(50);
+    
+    // Analyze images
+    const analysis = await analyzeImagesDetailed(html, baseUrl);
+    
+    await job.updateProgress(90);
+    
+    const duration = Date.now() - startTime;
+    console.log(`✅ Image extraction job ${job.id} completed: ${images.length} images in ${duration}ms`);
+
+    return {
+      success: true,
+      data: {
+        images,
+        analysis,
+        totalImages: images.length,
+        duration,
+        projectId,
+        pageId,
+      },
+      duration,
+    };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    console.error(`❌ Image extraction job ${job.id} failed after ${duration}ms:`, errorMessage);
+    
+    return {
+      success: false,
+      error: errorMessage,
+      duration,
+    };
+  }
+}
+
+// Queue-based link extraction functions
+export async function extractLinksWithQueue(
+  html: string,
+  baseUrl: string,
+  projectId?: string,
+  pageId?: string
+): Promise<{ jobId: string; queueName: string }> {
+  try {
+    const queueName = 'content-analysis';
+    const config = await getQueueConfig(queueName);
+    
+    // Create queue if it doesn't exist
+    if (!queueManager.queueMap.has(queueName)) {
+      await queueManager.createQueue(queueName, processLinkExtractionJob);
+    }
+
+    const jobData: JobData = {
+      html,
+      baseUrl,
+      projectId: projectId || null,
+      pageId: pageId || null,
+      timestamp: new Date().toISOString(),
+    };
+
+    const job = await queueManager.addJob(queueName, jobData, {
+      priority: 2, // Medium priority for link extraction
+      delay: 0,
+    });
+
+    console.log(`📝 Link extraction job ${job.id} queued for ${baseUrl}`);
+    
+    return {
+      jobId: job.id!,
+      queueName,
+    };
+  } catch (error) {
+    console.error('❌ Error queuing link extraction job:', error);
+    throw error;
+  }
+}
+
+export async function processLinkExtractionJob(job: any): Promise<JobResult> {
+  const startTime = Date.now();
+  const { html, baseUrl, projectId, pageId } = job.data;
+  
+  try {
+    console.log(`🔄 Processing link extraction job ${job.id} for ${baseUrl}`);
+    
+    // Update job progress
+    await job.updateProgress(10);
+    
+    // Extract links
+    const links = extractLinksFromHtmlAndText(html, baseUrl);
+    
+    await job.updateProgress(50);
+    
+    // Analyze links
+    const analysis = await analyzeLinksDetailed(html, baseUrl);
+    
+    await job.updateProgress(90);
+    
+    const duration = Date.now() - startTime;
+    console.log(`✅ Link extraction job ${job.id} completed: ${links.length} links in ${duration}ms`);
+
+    return {
+      success: true,
+      data: {
+        links,
+        analysis,
+        totalLinks: links.length,
+        duration,
+        projectId,
+        pageId,
+      },
+      duration,
+    };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    console.error(`❌ Link extraction job ${job.id} failed after ${duration}ms:`, errorMessage);
+    
+    return {
+      success: false,
+      error: errorMessage,
+      duration,
+    };
+  }
+}
+
+// Static methods for job management
+export async function getImageExtractionJobStatus(jobId: string): Promise<any> {
+  try {
+    const queueName = 'image-extraction';
+    const queue = queueManager.queueMap.get(queueName);
+    
+    if (!queue) {
+      throw new Error('Image extraction queue not found');
+    }
+
+    const job = await queue.getJob(jobId);
+    if (!job) {
+      throw new Error(`Job ${jobId} not found`);
+    }
+
+    const state = await job.getState();
+    const progress = job.progress;
+    const returnValue = job.returnvalue;
+    const failedReason = job.failedReason;
+
+    return {
+      jobId,
+      state,
+      progress,
+      returnValue,
+      failedReason,
+      createdAt: job.timestamp,
+      processedOn: job.processedOn,
+      finishedOn: job.finishedOn,
+    };
+  } catch (error) {
+    console.error(`❌ Error getting image extraction job status for ${jobId}:`, error);
+    throw error;
+  }
+}
+
+export async function getLinkExtractionJobStatus(jobId: string): Promise<any> {
+  try {
+    const queueName = 'content-analysis';
+    const queue = queueManager.queueMap.get(queueName);
+    
+    if (!queue) {
+      throw new Error('Link extraction queue not found');
+    }
+
+    const job = await queue.getJob(jobId);
+    if (!job) {
+      throw new Error(`Job ${jobId} not found`);
+    }
+
+    const state = await job.getState();
+    const progress = job.progress;
+    const returnValue = job.returnvalue;
+    const failedReason = job.failedReason;
+
+    return {
+      jobId,
+      state,
+      progress,
+      returnValue,
+      failedReason,
+      createdAt: job.timestamp,
+      processedOn: job.processedOn,
+      finishedOn: job.finishedOn,
+    };
+  } catch (error) {
+    console.error(`❌ Error getting link extraction job status for ${jobId}:`, error);
+    throw error;
+  }
+}
+
+export async function cancelImageExtractionJob(jobId: string): Promise<boolean> {
+  try {
+    const queueName = 'image-extraction';
+    const queue = queueManager.queueMap.get(queueName);
+    
+    if (!queue) {
+      throw new Error('Image extraction queue not found');
+    }
+
+    const job = await queue.getJob(jobId);
+    if (!job) {
+      throw new Error(`Job ${jobId} not found`);
+    }
+
+    await job.remove();
+    console.log(`🗑️ Image extraction job ${jobId} cancelled`);
+    
+    return true;
+  } catch (error) {
+    console.error(`❌ Error cancelling image extraction job ${jobId}:`, error);
+    return false;
+  }
+}
+
+export async function cancelLinkExtractionJob(jobId: string): Promise<boolean> {
+  try {
+    const queueName = 'content-analysis';
+    const queue = queueManager.queueMap.get(queueName);
+    
+    if (!queue) {
+      throw new Error('Link extraction queue not found');
+    }
+
+    const job = await queue.getJob(jobId);
+    if (!job) {
+      throw new Error(`Job ${jobId} not found`);
+    }
+
+    await job.remove();
+    console.log(`🗑️ Link extraction job ${jobId} cancelled`);
+    
+    return true;
+  } catch (error) {
+    console.error(`❌ Error cancelling link extraction job ${jobId}:`, error);
+    return false;
+  }
+}
+
+export async function getImageExtractionQueueStats(): Promise<any> {
+  try {
+    const queueName = 'image-extraction';
+    return await queueManager.getQueueStats(queueName);
+  } catch (error) {
+    console.error('❌ Error getting image extraction queue stats:', error);
+    throw error;
+  }
+}
+
+export async function getLinkExtractionQueueStats(): Promise<any> {
+  try {
+    const queueName = 'content-analysis';
+    return await queueManager.getQueueStats(queueName);
+  } catch (error) {
+    console.error('❌ Error getting link extraction queue stats:', error);
+    throw error;
+  }
 } 

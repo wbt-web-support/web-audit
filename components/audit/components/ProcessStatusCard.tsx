@@ -1,34 +1,28 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { Loader2, CheckCircle, Zap } from 'lucide-react';
+import { Loader2, CheckCircle } from 'lucide-react';
 
 interface ProcessStatusCardProps {
   currentSession: any;
 }
 
 export function ProcessStatusCard({ currentSession }: ProcessStatusCardProps) {
-  const isBackgroundCrawling = currentSession?.backgroundCrawling;
-  
   return (
-    <Card className={isBackgroundCrawling ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20" : ""}>
+    <Card>
       <CardContent className="pt-6">
-        <div className={`flex items-center gap-3 ${isBackgroundCrawling ? 'text-amber-600 dark:text-amber-400' : 'text-blue-600'}`}>
-          {isBackgroundCrawling ? (
-            <Zap className="h-4 w-4 sm:h-5 sm:w-5 animate-pulse flex-shrink-0" />
-          ) : (
-            <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin flex-shrink-0" />
-          )}
+        <div className="flex items-center gap-3 text-blue-600">
+          <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin flex-shrink-0" />
           <div className="min-w-0 flex-1">
             <p className="font-medium text-sm sm:text-base">
-              {isBackgroundCrawling ? 'Background Process Running' : 'Process Running'}
+              Crawling in Progress
             </p>
             <p className="text-xs sm:text-sm text-muted-foreground">
-              {currentSession?.currentAction || (isBackgroundCrawling ? 'Crawling in background...' : 'Crawling in progress...')}
+              {currentSession?.currentAction || 'Processing pages...'}
             </p>
           </div>
         </div>
         
         {/* Recent Crawling Activity */}
-        {(currentSession?.isCrawling || currentSession?.backgroundCrawling) && currentSession?.recentCrawledPages && currentSession.recentCrawledPages.length > 0 && (
+        {currentSession?.recentCrawledPages && currentSession.recentCrawledPages.length > 0 && (
           <div className="mt-4 pt-4 border-t">
             <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-2">
               Pages Crawled ({currentSession.recentCrawledPages.length} total):

@@ -4,7 +4,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "start:workers": "npx ts-node scripts/start-queue-workers.ts",
+    "start:workers:dev": "npx ts-node --watch scripts/start-queue-workers.ts",
+    "optimize:100-users": "npx ts-node scripts/optimize-for-100-users.ts",
+    "optimize:200-users-8gb": "npx ts-node scripts/optimize-for-200-users-8gb.ts",
+    "simulate:100-workers": "npx ts-node scripts/simulate-100-workers.ts",
+    "update:scaling": "npx ts-node scripts/update-scaling-config.ts",
+    "validate:scaling": "npx ts-node -e \"import { dynamicScalingManager } from './lib/saas/config/dynamic-scaling'; const validation = dynamicScalingManager.validateScalingConfig(); console.log(validation.valid ? '✅ Configuration valid' : '❌ Configuration invalid:', validation.errors);\""
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -18,9 +25,12 @@
     "@reduxjs/toolkit": "^2.8.2",
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
+    "@types/ioredis": "^4.28.10",
     "axios": "^1.10.0",
+    "bullmq": "^5.58.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "ioredis": "^5.7.0",
     "lucide-react": "^0.511.0",
     "next": "latest",
     "next-themes": "^0.4.6",

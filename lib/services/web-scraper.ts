@@ -1,6 +1,8 @@
 import axios from 'axios';
 import { parse } from 'node-html-parser';
 import { URL } from 'url';
+import { queueManager, JobData, JobResult } from '@/lib/queue/queue-manager';
+import { getQueueConfig } from '@/lib/queue/queue-config';
 
 export interface CrawlOptions {
   maxPages?: number;
@@ -319,5 +321,183 @@ export class WebScraper {
       .trim();
     
     return cleanedTitle || title; // Return original if cleaning resulted in empty string
+  }
+
+  // Queue-based crawling methods
+  async crawlWithQueue(
+    onPageScraped?: (page: PageData) => Promise<void>,
+    projectId?: string
+  ): Promise<{ jobId: string; queueName: string }> {
+    try {
+      const queueName = 'web-scraping';
+      const config = await getQueueConfig(queueName);
+      
+      // Create queue if it doesn't exist
+      if (!queueManager.queueMap.has(queueName)) {
+        await queueManager.createQueue(queueName, this.processScrapingJob.bind(this));
+      }
+
+      const jobData: JobData = {
+        baseUrl: this.baseUrl.href,
+        options: this.options,
+        initialUrl: this.urlQueue[0],
+        onPageScraped: !!onPageScraped,
+        projectId: projectId || null,
+        timestamp: new Date().toISOString(),
+      };
+
+      const job = await queueManager.addJob(queueName, jobData, {
+        priority: 1, // High priority for scraping jobs
+        delay: 0,
+      });
+
+      console.log(`📝 Web scraping job ${job.id} queued for ${this.baseUrl.href}`);
+      
+      return {
+        jobId: job.id!,
+        queueName,
+      };
+    } catch (error) {
+      console.error('❌ Error queuing web scraping job:', error);
+      throw error;
+    }
+  }
+
+  private async processScrapingJob(job: any): Promise<JobResult> {
+    const startTime = Date.now();
+    const { baseUrl, options, initialUrl, projectId } = job.data;
+    
+    try {
+      console.log(`🔄 Processing scraping job ${job.id} for ${baseUrl}`);
+      
+      // Recreate scraper instance with job data
+      const scraper = new WebScraper(baseUrl, options);
+      scraper.urlQueue = [initialUrl];
+      
+      const pages: PageData[] = [];
+      let processedCount = 0;
+      const maxPages = options.maxPages || 50;
+
+      // Process pages with progress updates
+      const onPageScraped = async (page: PageData) => {
+        pages.push(page);
+        processedCount++;
+        
+        // Update job progress
+        const progress = Math.round((processedCount / maxPages) * 100);
+        await job.updateProgress(progress);
+        
+        console.log(`📊 Scraping progress: ${processedCount}/${maxPages} pages (${progress}%)`);
+        
+        // Check if we should stop (e.g., if project was cancelled)
+        if (projectId) {
+          // You can add project status check here
+          // const projectStatus = await checkProjectStatus(projectId);
+          // if (projectStatus === 'cancelled') {
+          //   throw new Error('Project cancelled');
+          // }
+        }
+      };
+
+      // Perform the actual crawling
+      const crawledPages = await scraper.crawl(onPageScraped);
+      
+      const duration = Date.now() - startTime;
+      console.log(`✅ Scraping job ${job.id} completed: ${crawledPages.length} pages in ${duration}ms`);
+
+      return {
+        success: true,
+        data: {
+          pages: crawledPages,
+          totalPages: crawledPages.length,
+          duration,
+          projectId,
+        },
+        duration,
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      console.error(`❌ Scraping job ${job.id} failed after ${duration}ms:`, errorMessage);
+      
+      return {
+        success: false,
+        error: errorMessage,
+        duration,
+      };
+    }
+  }
+
+  // Static method to get scraping job status
+  static async getScrapingJobStatus(jobId: string): Promise<any> {
+    try {
+      const queueName = 'web-scraping';
+      const queue = queueManager.queueMap.get(queueName);
+      
+      if (!queue) {
+        throw new Error('Scraping queue not found');
+      }
+
+      const job = await queue.getJob(jobId);
+      if (!job) {
+        throw new Error(`Job ${jobId} not found`);
+      }
+
+      const state = await job.getState();
+      const progress = job.progress;
+      const returnValue = job.returnvalue;
+      const failedReason = job.failedReason;
+
+      return {
+        jobId,
+        state,
+        progress,
+        returnValue,
+        failedReason,
+        createdAt: job.timestamp,
+        processedOn: job.processedOn,
+        finishedOn: job.finishedOn,
+      };
+    } catch (error) {
+      console.error(`❌ Error getting scraping job status for ${jobId}:`, error);
+      throw error;
+    }
+  }
+
+  // Static method to cancel scraping job
+  static async cancelScrapingJob(jobId: string): Promise<boolean> {
+    try {
+      const queueName = 'web-scraping';
+      const queue = queueManager.queueMap.get(queueName);
+      
+      if (!queue) {
+        throw new Error('Scraping queue not found');
+      }
+
+      const job = await queue.getJob(jobId);
+      if (!job) {
+        throw new Error(`Job ${jobId} not found`);
+      }
+
+      await job.remove();
+      console.log(`🗑️ Scraping job ${jobId} cancelled`);
+      
+      return true;
+    } catch (error) {
+      console.error(`❌ Error cancelling scraping job ${jobId}:`, error);
+      return false;
+    }
+  }
+
+  // Static method to get scraping queue stats
+  static async getScrapingQueueStats(): Promise<any> {
+    try {
+      const queueName = 'web-scraping';
+      return await queueManager.getQueueStats(queueName);
+    } catch (error) {
+      console.error('❌ Error getting scraping queue stats:', error);
+      throw error;
+    }
   }
 } 

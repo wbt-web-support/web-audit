@@ -22,10 +22,8 @@ export async function GET(request: NextRequest) {
         updated_at,
         pages_crawled,
         total_pages,
-        total_images,
-        total_links,
-        internal_links,
-        external_links
+        all_image_analysis,
+        all_links_analysis
       `)
       .eq('user_id', user.id)
       .eq('status', 'crawling')
@@ -37,21 +35,29 @@ export async function GET(request: NextRequest) {
     }
 
     // Format the response
-    const crawlingProjects = projects?.map(project => ({
-      id: project.id,
-      base_url: project.base_url,
-      status: project.status,
-      created_at: project.created_at,
-      updated_at: project.updated_at,
-      crawl_progress: {
-        pages_crawled: project.pages_crawled || 0,
-        total_pages: project.total_pages || 0,
-        total_images: project.total_images || 0,
-        total_links: project.total_links || 0,
-        internal_links: project.internal_links || 0,
-        external_links: project.external_links || 0
-      }
-    })) || [];
+    const crawlingProjects = projects?.map(project => {
+      const images = Array.isArray(project.all_image_analysis) ? project.all_image_analysis : [];
+      const links = Array.isArray(project.all_links_analysis) ? project.all_links_analysis : [];
+      
+      const internalLinks = links.filter(link => link.type === 'internal').length;
+      const externalLinks = links.filter(link => link.type === 'external').length;
+      
+      return {
+        id: project.id,
+        base_url: project.base_url,
+        status: project.status,
+        created_at: project.created_at,
+        updated_at: project.updated_at,
+        crawl_progress: {
+          pages_crawled: project.pages_crawled || 0,
+          total_pages: project.total_pages || 0,
+          total_images: images.length,
+          total_links: links.length,
+          internal_links: internalLinks,
+          external_links: externalLinks
+        }
+      };
+    }) || [];
 
     return NextResponse.json({
       crawlingProjects,
