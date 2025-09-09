@@ -192,10 +192,10 @@ function prepareProjectData(body: any, userId: string) {
     email: email?.trim() || null,
     address: address?.trim() || null,
     custom_info: customInfo?.trim() || null,
-    custom_urls: custom_urls.filter((url: string) => url && url.trim()).length > 0 
+    custom_urls: custom_urls && Array.isArray(custom_urls) && custom_urls.filter((url: string) => url && url.trim()).length > 0 
       ? custom_urls.filter((url: string) => url && url.trim()) 
       : null,
-    stripe_key_urls: stripe_key_urls.filter((url: string) => url && url.trim()).length > 0 
+    stripe_key_urls: stripe_key_urls && Array.isArray(stripe_key_urls) && stripe_key_urls.filter((url: string) => url && url.trim()).length > 0 
       ? stripe_key_urls.filter((url: string) => url && url.trim()) 
       : null,
     created_at: new Date().toISOString(),

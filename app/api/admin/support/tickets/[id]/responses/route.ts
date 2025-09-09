@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 // POST - Add support response to ticket (admin only)
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -31,7 +31,7 @@ export async function POST(
       }, { status: 403 });
     }
 
-    const ticketId = params.id;
+    const { id: ticketId } = await params;
     const body = await request.json();
     const { message } = body;
 

@@ -5,7 +5,7 @@ import { TicketStatus } from "@/lib/types/database";
 // PUT - Update ticket status (admin only)
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -32,7 +32,7 @@ export async function PUT(
       }, { status: 403 });
     }
 
-    const ticketId = params.id;
+    const { id: ticketId } = await params;
     const body = await request.json();
     const { status } = body;
 

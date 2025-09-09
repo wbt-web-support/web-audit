@@ -1,5 +1,5 @@
 import axios from 'axios';
-import * as cheerio from 'cheerio';
+import { parse } from 'node-html-parser';
 import { URL } from 'url';
 
 export interface CrawlOptions {
@@ -72,6 +72,10 @@ export class WebScraper {
   async crawl(onPageScraped?: (page: PageData) => Promise<void>): Promise<PageData[]> {
     const pages: PageData[] = [];
 
+    console.log(`🚀 Starting crawl with maxPages: ${this.options.maxPages}, maxDepth: ${this.options.maxDepth}`);
+    console.log(`📍 Base URL: ${this.baseUrl.href}`);
+    console.log(`📋 Initial queue: ${this.urlQueue.length} URLs`);
+
     while (this.urlQueue.length > 0 && this.visitedUrls.size < this.options.maxPages) {
       const url = this.urlQueue.shift()!;
       const normalizedUrl = this.normalizeUrl(url);
@@ -98,6 +102,13 @@ export class WebScraper {
         const newLinks = internalLinks
           .map(link => this.normalizeUrl(link))
           .filter(link => !this.visitedUrls.has(link));
+        
+        console.log(`🔗 Page: ${normalizedUrl}`);
+        console.log(`   Total links found: ${pageData.links.length}`);
+        console.log(`   Internal links: ${internalLinks.length}`);
+        console.log(`   New links to crawl: ${newLinks.length}`);
+        console.log(`   Queue size: ${this.urlQueue.length + newLinks.length}`);
+        
         this.urlQueue.push(...newLinks);
       } catch (error) {
         console.error(`Error scraping ${normalizedUrl}:`, error);
@@ -114,6 +125,12 @@ export class WebScraper {
       }
     }
 
+    console.log(`✅ Crawl completed!`);
+    console.log(`   Pages crawled: ${pages.length}`);
+    console.log(`   URLs visited: ${this.visitedUrls.size}`);
+    console.log(`   Queue remaining: ${this.urlQueue.length}`);
+    console.log(`   Max pages limit: ${this.options.maxPages}`);
+
     return pages;
   }
 
@@ -127,30 +144,68 @@ export class WebScraper {
         maxRedirects: 5,
       });
 
-      const $ = cheerio.load(response.data);
+      const root = parse(response.data);
       
       // Remove script and style elements
-      $('script, style').remove();
+      root.querySelectorAll('script, style').forEach(el => el.remove());
 
       // Extract page data
-      const rawTitle = $('title').text().trim() || '';
+      const titleElement = root.querySelector('title');
+      const rawTitle = titleElement?.text?.trim() || '';
       const title = this.cleanTitle(rawTitle);
-      const content = $('body').text().replace(/\s+/g, ' ').trim();
+      const bodyElement = root.querySelector('body');
+      const content = bodyElement?.text?.replace(/\s+/g, ' ').trim() || '';
       
-      // Extract links
+      // Extract links from multiple sources
       const links: string[] = [];
-      $('a[href]').each((_, element) => {
-        const href = $(element).attr('href');
+      
+      // 1. Standard anchor tags
+      root.querySelectorAll('a[href]').forEach(element => {
+        const href = element.getAttribute('href');
         if (href) {
           const absoluteUrl = this.makeAbsoluteUrl(href, url);
           if (absoluteUrl) links.push(absoluteUrl);
         }
       });
+      
+      // 2. Links in navigation elements (more comprehensive)
+      const navSelectors = [
+        'nav a[href]', '.navigation a[href]', '.menu a[href]', '.nav-menu a[href]',
+        '.navbar a[href]', '.header a[href]', '.footer a[href]', '.sidebar a[href]',
+        '.breadcrumb a[href]', '.breadcrumbs a[href]', '.pagination a[href]',
+        '.page-numbers a[href]', '.pager a[href]'
+      ];
+      
+      navSelectors.forEach(selector => {
+        root.querySelectorAll(selector).forEach(element => {
+          const href = element.getAttribute('href');
+          if (href) {
+            const absoluteUrl = this.makeAbsoluteUrl(href, url);
+            if (absoluteUrl) links.push(absoluteUrl);
+          }
+        });
+      });
+      
+      // 3. Links in main content areas
+      const contentSelectors = [
+        'main a[href]', 'article a[href]', '.content a[href]', '.post-content a[href]',
+        '.entry-content a[href]', '.page-content a[href]'
+      ];
+      
+      contentSelectors.forEach(selector => {
+        root.querySelectorAll(selector).forEach(element => {
+          const href = element.getAttribute('href');
+          if (href) {
+            const absoluteUrl = this.makeAbsoluteUrl(href, url);
+            if (absoluteUrl) links.push(absoluteUrl);
+          }
+        });
+      });
 
       // Extract images
       const images: string[] = [];
-      $('img[src]').each((_, element) => {
-        const src = $(element).attr('src');
+      root.querySelectorAll('img[src]').forEach(element => {
+        const src = element.getAttribute('src');
         if (src) {
           const absoluteUrl = this.makeAbsoluteUrl(src, url);
           if (absoluteUrl) images.push(absoluteUrl);
@@ -159,11 +214,11 @@ export class WebScraper {
 
       // Extract meta tags
       const meta = {
-        description: $('meta[name="description"]').attr('content') || undefined,
-        keywords: $('meta[name="keywords"]').attr('content') || undefined,
-        ogTitle: $('meta[property="og:title"]').attr('content') || undefined,
-        ogDescription: $('meta[property="og:description"]').attr('content') || undefined,
-        ogImage: $('meta[property="og:image"]').attr('content') || undefined,
+        description: root.querySelector('meta[name="description"]')?.getAttribute('content') || undefined,
+        keywords: root.querySelector('meta[name="keywords"]')?.getAttribute('content') || undefined,
+        ogTitle: root.querySelector('meta[property="og:title"]')?.getAttribute('content') || undefined,
+        ogDescription: root.querySelector('meta[property="og:description"]')?.getAttribute('content') || undefined,
+        ogImage: root.querySelector('meta[property="og:image"]')?.getAttribute('content') || undefined,
       };
 
       return {
@@ -172,8 +227,8 @@ export class WebScraper {
         content,
         html: response.data,
         statusCode: response.status,
-        links: [...new Set(links)], // Remove duplicates
-        images: [...new Set(images)],
+        links: Array.from(new Set(links)), // Remove duplicates
+        images: Array.from(new Set(images)),
         meta,
       };
     } catch (error: any) {
@@ -205,7 +260,23 @@ export class WebScraper {
   private filterInternalLinks(links: string[]): string[] {
     return links.filter(link => {
       try {
+        // Skip fragment-only links (they don't lead to new pages)
+        if (link.startsWith('#') && !link.includes('/')) {
+          return false;
+        }
+        
+        // Skip javascript and other non-HTTP protocols
+        if (link.startsWith('javascript:') || link.startsWith('mailto:') || link.startsWith('tel:')) {
+          return false;
+        }
+        
         const linkUrl = new URL(link);
+        
+        // Only include HTTP/HTTPS links
+        if (!['http:', 'https:'].includes(linkUrl.protocol)) {
+          return false;
+        }
+        
         return linkUrl.hostname === this.baseUrl.hostname;
       } catch {
         return false;

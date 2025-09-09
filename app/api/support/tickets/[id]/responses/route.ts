@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 // POST - Add response to ticket
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -18,7 +18,7 @@ export async function POST(
       }, { status: 401 });
     }
 
-    const ticketId = params.id;
+    const { id: ticketId } = await params;
     const body = await request.json();
     const { message } = body;
 

@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { WebScraper } from "@/lib/services/web-scraper";
 import { NextResponse } from "next/server";
 import { toast } from "react-toastify";
-import * as cheerio from "cheerio";
 import pLimit from "p-limit";
 import { extractImagesFromHtmlAndText, extractLinksFromHtmlAndText } from '@/lib/services/extract-resources';
 
@@ -58,17 +57,33 @@ const SKIP_EXTENSIONS = [
 // Helper to check if URL should be skipped
 function shouldSkipUrl(url: string): boolean {
   const lowerUrl = url.toLowerCase();
+  
   // Skip if URL ends with any of the extensions
   if (SKIP_EXTENSIONS.some((ext) => lowerUrl.endsWith(ext))) return true;
-  // Optionally, skip all /wp-content/uploads/ URLs
+  
+  // Skip WordPress upload directories
   if (lowerUrl.includes("/wp-content/uploads/")) return true;
+  
+  // Skip common admin/technical paths
+  if (lowerUrl.includes("/wp-admin/") || 
+      lowerUrl.includes("/wp-includes/") ||
+      lowerUrl.includes("/admin/") ||
+      lowerUrl.includes("/login") ||
+      lowerUrl.includes("/register")) return true;
+  
+  // Skip API endpoints and feeds
+  if (lowerUrl.includes("/api/") || 
+      lowerUrl.includes("/feed") ||
+      lowerUrl.includes("/rss") ||
+      lowerUrl.includes("/sitemap")) return true;
+  
   return false;
 }
 
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
-    console.log("Starting scraping process...");
+    console.log("🔄             Starting scraping process...");
     const {
       data: { user },
       error: authError,
@@ -209,7 +224,7 @@ export async function POST(request: Request) {
     // - 'full': Crawl the entire website (maxPages: 50, maxDepth: 3)
     const scraperOptions = {
       maxPages: crawl_type === "single" ? 1 : 50,
-      maxDepth: crawl_type === "single" ? 0 : 3,
+      maxDepth: crawl_type === "single" ? 0 : 5,
       followExternal: false,
       respectRobotsTxt: true,
     };
@@ -416,20 +431,20 @@ async function crawlWebsite(
 
       // Skip unwanted URLs
       if (shouldSkipUrl(normalizedUrl)) {
-        // console.log(`Skipping static or upload URL: ${normalizedUrl}`);
+        console.log(`⏭️  Skipping URL: ${normalizedUrl}`);
         return; // Don't save or update this page
       }
 
       // Log if URL was normalized (different from original)
       if (normalizedUrl !== pageData.url) {
-        // console.log(`URL normalized: ${pageData.url} → ${normalizedUrl}`);
+        console.log(`🔄 URL normalized: ${pageData.url} → ${normalizedUrl}`);
       }
 
       // Check if page already exists (using normalized URL)
       const pageExists = existingUrls.has(normalizedUrl);
 
       if (pageExists) {
-        // console.log(`Updating existing page: ${normalizedUrl}`);
+        console.log(`🔄 Updating existing page: ${normalizedUrl}`);
         // Update existing page
         const { error } = await supabase
           .from("scraped_pages")
@@ -448,7 +463,7 @@ async function crawlWebsite(
           pagesCrawled++;
         }
       } else {
-        console.log(`Creating new page: ${normalizedUrl}`);
+        console.log(`🔄 Creating new page: ${normalizedUrl}`);
         // Insert new page (with normalized URL)
         const { error } = await supabase.from("scraped_pages").insert({
           audit_project_id: projectId,
@@ -465,7 +480,7 @@ async function crawlWebsite(
           existingUrls.add(normalizedUrl); // Add normalized URL to prevent duplicates in this project
         }
       }
-      console.log(`Pages crawled: ${pagesCrawled} - URL: ${normalizedUrl}`);
+      console.log(`🔄 Pages crawled: ${pagesCrawled} - URL: ${normalizedUrl}`);
       
       // Use shared utility for image and link extraction - run concurrently
       const [allPageImages, allPageLinks] = await Promise.all([
@@ -474,8 +489,8 @@ async function crawlWebsite(
       ]);
       allImages.push(...allPageImages);
       allLinks.push(...allPageLinks);
-      console.log(`Image section completed - Found ${allPageImages.length} unique images`);
-      console.log(`Link section completed - Found ${allPageLinks.length} unique links`);
+      console.log(`🔄 Image section completed - Found ${allPageImages.length} unique images`);
+      console.log(`🔄 Link section completed - Found ${allPageLinks.length} unique links`);
       
       // Calculate current totals for this page
       const currentImageCount = allImages.length;
@@ -484,7 +499,7 @@ async function crawlWebsite(
       const currentExternalLinks = allLinks.filter(link => link.type === 'external').length;
       
       // Update project with incremental counts after each page
-      console.log(`Updating project ${projectId} - Page ${pagesCrawled}: ${currentImageCount} total images, ${currentLinkCount} total links`);
+      console.log(`🔄 Updating project ${projectId} - Page ${pagesCrawled}: ${currentImageCount} total images, ${currentLinkCount} total links`);
       await supabase
         .from("audit_projects")
         .update({ 
@@ -516,12 +531,12 @@ async function crawlWebsite(
         })
         .eq("id", projectId);
 
-      console.log(`Crawling completed (${crawlType || 'full'}): ${pagesCrawled} pages crawled`);
+      console.log(`🔄 Crawling completed (${crawlType || 'full'}): ${pagesCrawled} pages crawled`);
     } else {
-      console.log(`Crawling was stopped by user: ${pagesCrawled} pages crawled before stopping`);
+      console.log(`🔄 Crawling was stopped by user: ${pagesCrawled} pages crawled before stopping`);
     }
   } catch (error: any) {
-    console.error(`Crawling error for project ${projectId}:`, error);
+    console.error(`🔄 Crawling error for project ${projectId}:`, error);
     
     // Check if it was stopped by user
     const { data: currentProject } = await supabase
@@ -531,10 +546,10 @@ async function crawlWebsite(
       .single();
 
     if (currentProject?.status === "failed") {
-      console.log(`Crawling stopped by user for project ${projectId}: ${currentProject.error_message}`);
+      console.log(`🔄 Crawling stopped by user for project ${projectId}: ${currentProject.error_message}`);
     } else {
       // Update project status to failed only if not already set to failed (stopped)
-      console.log(`Crawling failed for project ${projectId}: ${error.message}`);
+      console.log(`🔄 Crawling failed for project ${projectId}: ${error.message}`);
       await supabase
         .from("audit_projects")
         .update({

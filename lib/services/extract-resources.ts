@@ -1,4 +1,4 @@
-import * as cheerio from 'cheerio';
+import { parse } from 'node-html-parser';
 
 
 interface ImageInfo {
@@ -18,7 +18,7 @@ export async function extractImagesFromHtmlAndText(
   baseUrl: string,
   fetchHeaders: Record<string, string> = {}
 ): Promise<ImageInfo[]> {
-  const $ = cheerio.load(html);
+  const root = parse(html);
   const imageSet = new Set<string>();
   const images: ImageInfo[] = [];
 
@@ -40,11 +40,11 @@ export async function extractImagesFromHtmlAndText(
       const preserveParams = ['v', 'version', 'rev', 't'];
       const newSearchParams = new URLSearchParams();
       
-      for (const [key, value] of urlObj.searchParams) {
+      urlObj.searchParams.forEach((value, key) => {
         if (preserveParams.includes(key.toLowerCase())) {
           newSearchParams.set(key, value);
         }
-      }
+      });
       
       urlObj.search = newSearchParams.toString();
       return urlObj.href;
@@ -94,15 +94,14 @@ export async function extractImagesFromHtmlAndText(
   }
 
   // 1. Extract from <img> tags with enhanced WordPress support
-  const imgElements = $('img').toArray();
+  const imgElements = root.querySelectorAll('img');
   
   for (const img of imgElements) {
-    const $img = $(img);
-    const srcRaw = $img.attr('src');
-    const alt = $img.attr('alt') || '';
-    const width = parseInt($img.attr('width') || '0', 10) || undefined;
-    const height = parseInt($img.attr('height') || '0', 10) || undefined;
-    const srcset = $img.attr('srcset') || undefined;
+    const srcRaw = img.getAttribute('src');
+    const alt = img.getAttribute('alt') || '';
+    const width = parseInt(img.getAttribute('width') || '0', 10) || undefined;
+    const height = parseInt(img.getAttribute('height') || '0', 10) || undefined;
+    const srcset = img.getAttribute('srcset') || undefined;
     
     if (srcRaw) {
       const normalizedSrc = normalizeUrl(srcRaw);
@@ -149,9 +148,9 @@ export async function extractImagesFromHtmlAndText(
   }
 
   // 2. Extract from CSS background images
-  const elementsWithBg = $('[style*="background"]').toArray();
+  const elementsWithBg = root.querySelectorAll('[style*="background"]');
   for (const el of elementsWithBg) {
-    const style = $(el).attr('style') || '';
+    const style = el.getAttribute('style') || '';
     const bgMatches = style.match(/background(?:-image)?:\s*url\(['"]?([^'")\s]+)['"]?\)/gi);
     
     if (bgMatches) {
@@ -176,11 +175,10 @@ export async function extractImagesFromHtmlAndText(
   }
 
   // 3. Extract from data attributes (common in WordPress lazy loading)
-  const lazyElements = $('[data-src], [data-lazy-src], [data-original], [data-background-image]').toArray();
+  const lazyElements = root.querySelectorAll('[data-src], [data-lazy-src], [data-original], [data-background-image]');
   for (const el of lazyElements) {
-    const $el = $(el);
-    const dataSrc = $el.attr('data-src') || $el.attr('data-lazy-src') || 
-                   $el.attr('data-original') || $el.attr('data-background-image');
+    const dataSrc = el.getAttribute('data-src') || el.getAttribute('data-lazy-src') || 
+                   el.getAttribute('data-original') || el.getAttribute('data-background-image');
     
     if (dataSrc) {
       const normalizedSrc = normalizeUrl(dataSrc);
@@ -188,7 +186,7 @@ export async function extractImagesFromHtmlAndText(
         imageSet.add(normalizedSrc);
         images.push({
           src: normalizedSrc,
-          alt: $el.attr('alt') || '',
+          alt: el.getAttribute('alt') || '',
           format: getImageFormat(normalizedSrc),
           size: null,
           is_small: null,
@@ -199,10 +197,10 @@ export async function extractImagesFromHtmlAndText(
   }
 
   // 4. Extract from structured data (JSON-LD)
-  const jsonLdScripts = $('script[type="application/ld+json"]').toArray();
+  const jsonLdScripts = root.querySelectorAll('script[type="application/ld+json"]');
   for (const script of jsonLdScripts) {
     try {
-      const jsonData = JSON.parse($(script).html() || '{}');
+      const jsonData = JSON.parse(script.text || '{}');
       const findImages = (obj: any): void => {
         if (typeof obj === 'object' && obj !== null) {
           for (const [key, value] of Object.entries(obj)) {
@@ -238,9 +236,9 @@ export async function extractImagesFromHtmlAndText(
   }
 
   // 5. Extract from meta tags
-  const metaTags = $('meta[property*="image"], meta[name*="image"], meta[content*=".jpg"], meta[content*=".png"], meta[content*=".gif"], meta[content*=".webp"]').toArray();
+  const metaTags = root.querySelectorAll('meta[property*="image"], meta[name*="image"], meta[content*=".jpg"], meta[content*=".png"], meta[content*=".gif"], meta[content*=".webp"]');
   for (const meta of metaTags) {
-    const content = $(meta).attr('content');
+    const content = meta.getAttribute('content');
     if (content) {
       const normalizedSrc = normalizeUrl(content);
       if (normalizedSrc && getImageFormat(normalizedSrc) && !imageSet.has(normalizedSrc)) {
@@ -258,7 +256,7 @@ export async function extractImagesFromHtmlAndText(
   }
 
   // 6. Extract from text content (improved regex)
-  const textContent = $.html();
+  const textContent = root.toString();
   const imageUrlRegex = /(?:https?:)?\/\/[^\s<>'"\)\]\}\,]+\.(?:jpg|jpeg|png|gif|svg|webp|bmp|tiff|avif|heic)(?:\?[^\s<>'"\)\]\}\,]*)?/gi;
   const matches = textContent.match(imageUrlRegex) || [];
   
@@ -360,7 +358,7 @@ export async function extractImagesWithRateLimit(
  
 //website wide links extraction
 export function extractLinksFromHtmlAndText(html: string, baseUrl: string) {
-  const $ = cheerio.load(html);
+  const root = parse(html);
   
   // Define patterns for non-essential links to exclude
   const excludePatterns = [
@@ -448,11 +446,11 @@ export function extractLinksFromHtmlAndText(html: string, baseUrl: string) {
   };
 
   // 1. Extract from <a> tags with improved filtering
-  const aTags = $('a[href]').toArray();
-  const linksFromTags = aTags
+  const aTags = root.querySelectorAll('a[href]');
+  const linksFromTags = Array.from(aTags)
     .map((a) => {
-      let hrefRaw = $(a).attr('href') || '';
-      let text = $(a).text().trim();
+      let hrefRaw = a.getAttribute('href') || '';
+      let text = a.text?.trim() || '';
       
       // Skip empty hrefs, just fragments, or javascript links
       if (!hrefRaw || 
@@ -533,7 +531,7 @@ export function extractLinksFromHtmlAndText(html: string, baseUrl: string) {
     }
     
     // Remove duplicates
-    const uniqueLinks = [...new Set(linkUrls)];
+    const uniqueLinks = Array.from(new Set(linkUrls));
     
     // Map to link objects
     return uniqueLinks.map(href => {
@@ -563,19 +561,24 @@ export function extractLinksFromHtmlAndText(html: string, baseUrl: string) {
   
   let targetText = '';
   contentSelectors.forEach(selector => {
-    const element = $(selector);
-    if (element.length > 0) {
-      targetText += ' ' + element.text();
+    const element = root.querySelector(selector);
+    if (element) {
+      targetText += ' ' + (element.text || '');
     }
   });
   
   // Fallback to body if no specific content areas found
   if (!targetText.trim()) {
-    targetText = $('body').text();
+    const bodyElement = root.querySelector('body');
+    targetText = bodyElement?.text || '';
   }
   
   // Also include the raw HTML but be more selective
-  const htmlForParsing = $('nav, main, article, .content, .menu').html() || '';
+  const contentElements = root.querySelectorAll('nav, main, article, .content, .menu');
+  let htmlForParsing = '';
+  contentElements.forEach(el => {
+    htmlForParsing += el.toString();
+  });
   const combinedText = targetText + ' ' + htmlForParsing;
   
   const additionalLinks = extractLinksFromText(combinedText, baseUrl);
