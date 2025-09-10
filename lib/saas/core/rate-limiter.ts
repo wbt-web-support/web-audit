@@ -156,8 +156,8 @@ export class RateLimiter {
       }
 
       // Get rate limit from subscription plan
-      const planLimits = tenant.subscription_plans.limits;
-      return planLimits.rateLimitPerMinute || this.getDefaultLimit(endpoint);
+      const planLimits = tenant.subscription_plans[0]?.limits;
+      return planLimits?.rateLimitPerMinute || this.getDefaultLimit(endpoint);
     } catch (error) {
       console.error('Error getting tenant rate limit:', error);
       return this.getDefaultLimit(endpoint);

@@ -6,10 +6,10 @@ import { TenantWebScraper } from '@/lib/saas/services/tenant-web-scraper';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { slug: string; projectId: string } }
+  { params }: { params: Promise<{ slug: string; projectId: string }> }
 ) {
   try {
-    const { slug, projectId } = params;
+    const { slug, projectId } = await params;
     const body = await request.json();
     const { background = false } = body;
     

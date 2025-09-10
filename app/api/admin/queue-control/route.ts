@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { queueManager } from '@/lib/queue/queue-manager';
-import { errorLogger } from '@/lib/logging/error-logger';
+import { logInfo, logError } from '@/lib/logging/error-logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
         );
     }
 
-    await errorLogger.logInfo(`Queue control action: ${action}`, {
+    await logInfo(`Queue control action: ${action}`, {
       action,
       queueName,
       jobId,
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    await errorLogger.logError('error', 'Failed to perform queue control action', error as Error);
+    await logError('Failed to perform queue control action', error as Error);
     return NextResponse.json(
       { error: 'Failed to perform queue control action' },
       { status: 500 }

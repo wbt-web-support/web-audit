@@ -34,7 +34,7 @@ export class TenantQueueManager {
   ): Promise<Queue> {
     try {
       // Check tenant limits
-      const limitCheck = await tenantManager.checkTenantLimits(tenantId, 'maxWorkers', 1);
+      const limitCheck = await tenantManager.checkTenantLimits(tenantId, 'currentWorkers', 1);
       if (!limitCheck.allowed) {
         throw new Error(`Tenant limit exceeded: ${limitCheck.reason}`);
       }
@@ -276,7 +276,7 @@ export class TenantQueueManager {
   ): Promise<Job> {
     try {
       // Check tenant limits
-      const limitCheck = await tenantManager.checkTenantLimits(tenantId, 'maxConcurrentCrawls', 1);
+      const limitCheck = await tenantManager.checkTenantLimits(tenantId, 'currentCrawls', 1);
       if (!limitCheck.allowed) {
         throw new Error(`Tenant limit exceeded: ${limitCheck.reason}`);
       }
@@ -286,12 +286,8 @@ export class TenantQueueManager {
         throw new Error(`Tenant queue '${queueName}' not found for tenant '${tenantId}'`);
       }
 
-      // Check queue size with dynamic limits
+      // Check queue size (no specific limit defined in TenantLimits)
       const waiting = await queue.getWaiting();
-      const tenant = await tenantManager.getTenant(tenantId);
-      if (tenant && waiting.length >= tenant.limits.maxQueueSize) {
-        throw new Error(`Tenant queue is full (${tenant.limits.maxQueueSize} jobs)`);
-      }
 
       const job = await queue.add(queueName, {
         ...jobData,
@@ -462,17 +458,8 @@ export class TenantQueueManager {
           try {
             const newConfig = dynamicScalingManager.getOptimalQueueConfig(tenantId, queueName);
             
-            // Update queue options
-            await queue.updateJobOptions({
-              removeOnComplete: Math.min(newConfig.maxQueueSize / 10, 50),
-              removeOnFail: Math.min(newConfig.maxQueueSize / 20, 25),
-              attempts: newConfig.retryAttempts,
-              backoff: {
-                type: 'exponential',
-                delay: newConfig.retryDelay,
-              },
-              delay: newConfig.delayBetweenJobs,
-            });
+            // Note: Queue options cannot be updated after creation
+            // Configuration changes require recreating the queue
 
             updated++;
             console.log(`🔄 Updated queue config for tenant:${tenantId}:${queueName}`);

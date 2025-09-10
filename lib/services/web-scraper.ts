@@ -34,7 +34,7 @@ export class WebScraper {
   private baseUrl: URL;
   private options: Required<CrawlOptions>;
   private visitedUrls: Set<string>;
-  private urlQueue: string[];
+  public urlQueue: string[];
 
   constructor(baseUrl: string, options: CrawlOptions = {}) {
     this.baseUrl = new URL(baseUrl);
@@ -500,4 +500,8 @@ export class WebScraper {
       throw error;
     }
   }
-} 
+}
+
+// Export the static methods for external use
+export const cancelScrapingJob = WebScraper.cancelScrapingJob;
+export const getScrapingQueueStats = WebScraper.getScrapingQueueStats; 

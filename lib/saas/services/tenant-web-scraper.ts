@@ -43,6 +43,9 @@ export class TenantWebScraper {
       respectRobotsTxt: options.respectRobotsTxt || true,
       userAgent: options.userAgent || 'WebAuditBot/1.0',
       timeout: options.timeout || 30000,
+      delay: options.delay || 1000,
+      followRedirects: options.followRedirects || true,
+      customHeaders: options.customHeaders || {},
     };
     this.visitedUrls = new Set();
     this.urlQueue = [this.normalizeUrl(baseUrl)];
@@ -369,9 +372,14 @@ export class TenantWebScraper {
           content: '',
           html: '',
           statusCode: 0,
+          loadTime: 0,
           links: [],
           images: [],
+          scripts: [],
+          stylesheets: [],
           meta: {},
+          headers: {},
+          timestamp: new Date(),
         });
       }
     }
@@ -477,13 +485,18 @@ export class TenantWebScraper {
       });
 
       // Extract meta tags
-      const meta = {
-        description: root.querySelector('meta[name="description"]')?.getAttribute('content') || undefined,
-        keywords: root.querySelector('meta[name="keywords"]')?.getAttribute('content') || undefined,
-        ogTitle: root.querySelector('meta[property="og:title"]')?.getAttribute('content') || undefined,
-        ogDescription: root.querySelector('meta[property="og:description"]')?.getAttribute('content') || undefined,
-        ogImage: root.querySelector('meta[property="og:image"]')?.getAttribute('content') || undefined,
-      };
+      const meta: Record<string, string> = {};
+      const description = root.querySelector('meta[name="description"]')?.getAttribute('content');
+      const keywords = root.querySelector('meta[name="keywords"]')?.getAttribute('content');
+      const ogTitle = root.querySelector('meta[property="og:title"]')?.getAttribute('content');
+      const ogDescription = root.querySelector('meta[property="og:description"]')?.getAttribute('content');
+      const ogImage = root.querySelector('meta[property="og:image"]')?.getAttribute('content');
+      
+      if (description) meta.description = description;
+      if (keywords) meta.keywords = keywords;
+      if (ogTitle) meta.ogTitle = ogTitle;
+      if (ogDescription) meta.ogDescription = ogDescription;
+      if (ogImage) meta.ogImage = ogImage;
 
       return {
         url,
@@ -491,9 +504,14 @@ export class TenantWebScraper {
         content,
         html: response.data,
         statusCode: response.status,
+        loadTime: 0, // Could be calculated from response timing
         links: Array.from(new Set(links)), // Remove duplicates
         images: Array.from(new Set(images)),
+        scripts: [], // Could be extracted if needed
+        stylesheets: [], // Could be extracted if needed
         meta,
+        headers: response.headers as Record<string, string>,
+        timestamp: new Date(),
       };
     } catch (error: any) {
       throw new Error(`Failed to scrape ${url}: ${error.message}`);

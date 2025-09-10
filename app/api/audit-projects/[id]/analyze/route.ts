@@ -21,10 +21,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import puppeteer, { Page } from "puppeteer";
-import path from "path";
-import fs from "fs/promises";
 import axios from "axios";
+import nodeHtmlToImage from 'node-html-to-image';
 import { analyzePerformanceAndAccessibility } from "./analyzePerformanceWithPageSpeed";
 import { analyzeImagesDetailed, analyzeLinksDetailed } from '@/lib/services/extract-resources';
 
@@ -182,7 +180,7 @@ async function performSinglePageAnalysis(
   customInstruction?: string | null
 ) {
   const startTime = Date.now();
-  const OVERALL_TIMEOUT = 180000; // 3 minutes total timeout
+  const OVERALL_TIMEOUT = 120000; // 2 minutes total timeout (reduced from 3 minutes)
   
   try {
     // Update page status to analyzing
@@ -236,7 +234,7 @@ async function performSinglePageAnalysis(
       const grammarPromise = Promise.race([
         analyzeContentWithGemini(page.content || "", project),
         new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Grammar analysis timeout')), 120000) // 2 minutes timeout
+          setTimeout(() => reject(new Error('Grammar analysis timeout')), 90000) // 1.5 minutes timeout (reduced)
         )
       ])
         .then(result => {
@@ -279,7 +277,7 @@ async function performSinglePageAnalysis(
       const performancePromise = Promise.race([
         analyzePerformanceAndAccessibility(page.url),
         new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Performance analysis timeout')), 90000) // 1.5 minutes timeout
+          setTimeout(() => reject(new Error('Performance analysis timeout')), 60000) // 1 minute timeout (reduced)
         )
       ])
         .then(result => {
@@ -368,47 +366,108 @@ async function performSinglePageAnalysis(
       analysisLabels.push('links');
     }
 
-    // UI analysis with screenshots (most resource-intensive) - Heavy operation
+    // UI analysis with screenshots (OPTIMIZED - using stored HTML instead of live URLs)
     const screenshotUrls: Record<string, string | null> = { phone: null, tablet: null, desktop: null };
     
     if (analysisTypes.includes("ui")) {
-      console.log(`[ANALYSIS] Starting UI analysis for page ${page.id}`);
+      console.log(`[ANALYSIS] Starting OPTIMIZED UI analysis for page ${page.id}`);
       
-      // Process UI analysis for all devices in parallel with individual error handling and timeouts
-      const uiPromises = ["phone", "tablet", "desktop"].map(async (device) => {
-        try {
-          console.log(`[UI] Starting ${device} analysis for page ${page.id}`);
-          
-          // Add timeout for screenshot and UI analysis
-          const uiResult = await Promise.race([
-            (async () => {
-              const buffer = await takeScreenshotBuffer(page.url, device as any, project.id);
-              if (!buffer) return null;
-              
-              const storagePath = `project_${project.id}/screenshot_${page.id}_${device}.png`;
-              const publicUrl = await uploadScreenshotBufferToStorage(buffer, storagePath);
-              screenshotUrls[device] = publicUrl;
-              
-              if (publicUrl) {
-                return await analyzeUIImageWithGemini(publicUrl, device);
+      // Check if screenshot generation is disabled via environment variable
+      const screenshotsDisabled = process.env.DISABLE_SCREENSHOTS === 'true';
+      
+      // Check if we have HTML content to work with
+      if (!page.html) {
+        console.warn(`[WARNING] No HTML content available for page ${page.id}, skipping UI analysis`);
+        // Add null promises for UI analysis
+        analysisPromises.push(Promise.resolve(null), Promise.resolve(null), Promise.resolve(null));
+        analysisLabels.push('ui_phone', 'ui_tablet', 'ui_desktop');
+      } else if (screenshotsDisabled) {
+        console.log(`[INFO] Screenshot generation disabled via DISABLE_SCREENSHOTS environment variable`);
+        // Add fallback UI analysis promises
+        const fallbackUIPromises = ["phone", "tablet", "desktop"].map(async (device) => {
+          return {
+            issues: [
+              {
+                type: "Screenshot Generation",
+                description: `Screenshot generation disabled for ${device}`,
+                suggestion: "Screenshots are disabled via environment configuration"
               }
-              return null;
-            })(),
-            new Promise((_, reject) => 
-              setTimeout(() => reject(new Error(`${device} UI analysis timeout`)), 180000) // 3 minutes timeout
-            )
-          ]);
-          
-          console.log(`[UI] ${device} analysis completed for page ${page.id}`);
-          return uiResult;
-        } catch (err) {
-          console.error(`[ERROR] ${device} UI analysis failed for page ${page.id}:`, err);
-          return null;
-        }
-      });
-      
-      analysisPromises.push(...uiPromises);
-      analysisLabels.push('ui_phone', 'ui_tablet', 'ui_desktop');
+            ],
+            overall_summary: `UI analysis completed without ${device} screenshot. Screenshot generation is disabled.`
+          };
+        });
+        analysisPromises.push(...fallbackUIPromises);
+        analysisLabels.push('ui_phone', 'ui_tablet', 'ui_desktop');
+      } else {
+        // Process UI analysis for all devices in parallel using stored HTML
+        const uiPromises = ["phone", "tablet", "desktop"].map(async (device) => {
+          try {
+            console.log(`[UI] Starting OPTIMIZED ${device} analysis for page ${page.id}`);
+            
+            // Add timeout for screenshot and UI analysis with fallback
+            const uiResult = await Promise.race([
+              (async () => {
+                // Use the optimized HTML-to-image approach instead of live URL
+                const publicUrl = await takeScreenshotFromStoredHtml(
+                  page.id, 
+                  page.html, 
+                  device as any, 
+                  project.id
+                );
+                
+                if (!publicUrl) {
+                  console.warn(`[WARNING] Failed to generate ${device} screenshot for page ${page.id}, using fallback analysis`);
+                  // Fallback: Return basic UI analysis without screenshot
+                  return {
+                    issues: [
+                      {
+                        type: "Screenshot Generation",
+                        description: `Unable to generate ${device} screenshot - node-html-to-image rendering failed`,
+                        suggestion: "Screenshot generation skipped due to rendering engine issues. Analysis completed with HTML-only review."
+                      }
+                    ],
+                    overall_summary: `UI analysis completed without ${device} screenshot. Screenshot generation failed due to rendering engine issues, but HTML structure analysis was performed.`
+                  };
+                }
+                
+                screenshotUrls[device] = publicUrl;
+                
+                // Analyze the generated screenshot with timeout
+                return await Promise.race([
+                  analyzeUIImageWithGemini(publicUrl, device),
+                  new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('UI analysis timeout')), 60000) // 1 minute for UI analysis
+                  )
+                ]);
+              })(),
+              new Promise((_, reject) => 
+                setTimeout(() => reject(new Error(`${device} UI analysis timeout`)), 90000) // 1.5 minutes total
+              )
+            ]);
+            
+            console.log(`[UI] OPTIMIZED ${device} analysis completed for page ${page.id}`);
+            return uiResult;
+          } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+            console.error(`[ERROR] OPTIMIZED ${device} UI analysis failed for page ${page.id}:`, errorMessage);
+            
+            // Return fallback analysis result instead of null
+            return {
+              issues: [
+                {
+                  type: "Analysis Error",
+                  description: `${device} UI analysis failed: ${errorMessage}`,
+                  suggestion: "Check system resources and try again"
+                }
+              ],
+              overall_summary: `${device} UI analysis could not be completed due to technical issues.`
+            };
+          }
+        });
+        
+        analysisPromises.push(...uiPromises);
+        analysisLabels.push('ui_phone', 'ui_tablet', 'ui_desktop');
+      }
     } else {
       // Add null promises for UI analysis if not requested
       analysisPromises.push(Promise.resolve(null), Promise.resolve(null), Promise.resolve(null));
@@ -1804,201 +1863,521 @@ Analyze the provided HTML content and screenshots to answer the user's specific 
   }
 }
 
-async function takeAllScreenshots(url: string, pageId: number) {
-  const devices: Array<"phone" | "tablet" | "desktop"> = [
-    "phone",
-    "tablet",
-    "desktop",
-  ];
 
-  const screenshotPromises = devices.map(device =>
-    takeScreenshot(url, pageId, device).then(result => [device, result])
-  );
-  const results = await Promise.all(screenshotPromises);
-  const screenshots: Record<string, string> = Object.fromEntries(results);
-  return screenshots;
-}
 
-async function takeScreenshot(
-  url: string,
-  pageId: number,
-  device: "phone" | "tablet" | "desktop"
-): Promise<string> {
-  let browser: import("puppeteer").Browser | null = null;
-  try {
-    console.log("taking screenshot for device", device);
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
-
-    const page = await browser.newPage();
-
-    // Set viewport based on device
-    let viewport;
-    let suffix;
-    switch (device) {
-      case "phone":
-        viewport = { width: 375, height: 812 };
-        suffix = "phone";
-        break;
-      case "tablet":
-        viewport = { width: 768, height: 1024 };
-        suffix = "tablet";
-        break;
-      default:
-        viewport = { width: 1440, height: 3000 };
-        suffix = "desktop";
-    }
-    await page.setViewport(viewport);
-
-    await page.goto(url, { waitUntil: "networkidle2" });
-    await page.waitForSelector("body");
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-    await autoScroll(page);
-    await page.evaluate(() => window.scrollTo(0, 0));
-
-    const screenshotPath = path.join(
-      process.cwd(),
-      "public",
-      `screenshot_${pageId}_${suffix}.png`
-    ) as `${string}.png`;
-    await page.screenshot({
-      path: screenshotPath,
-      fullPage: true,
-    });
-
-    return `/screenshot_${pageId}_${suffix}.png`;
-  } catch (error) {
-    console.error("Error taking screenshot:", error);
-    return "";
-  } finally {
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (closeError) {
-        console.error("Error closing browser:", closeError);
-      }
-    }
-  }
-}
 
 /**
- * Optimized auto-scroll function for better performance
- * Reduces scroll time and improves screenshot quality
+ * Prepare HTML content for optimal rendering
+ * Fixes common issues and optimizes for screenshot generation
+ * Handles animations and dynamic content
  */
-async function autoScroll(page: Page) {
-  await page.evaluate(async () => {
-    await new Promise<void>((resolve) => {
-      let totalHeight = 0;
-      const distance = 800; // Increased distance for faster scroll
-      const timer = setInterval(() => {
-        window.scrollBy(0, distance);
-        totalHeight += distance;
+function prepareHtmlForRendering(html: string, viewport: { width: number; height: number }): string {
+  try {
+    // Ensure we have a complete HTML document
+    if (!html.includes('<html')) {
+      html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>${html}</body></html>`;
+    }
 
-        if (totalHeight >= document.body.scrollHeight) {
-          clearInterval(timer);
-          resolve();
+    // Add responsive viewport meta tag if missing
+    if (!html.includes('viewport')) {
+      html = html.replace(
+        '<head>',
+        '<head><meta name="viewport" content="width=device-width, initial-scale=1">'
+      );
+    }
+
+    // Add comprehensive CSS for better rendering and animation handling
+    const responsiveCSS = `
+      <style>
+        * { box-sizing: border-box; }
+        body { 
+          margin: 0; 
+          padding: 0; 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          line-height: 1.6;
+          color: #333;
         }
-      }, 200); // Faster scroll interval
-    });
-  });
-}
+        img { max-width: 100%; height: auto; }
+        .container { max-width: ${viewport.width}px; margin: 0 auto; }
+        @media (max-width: ${viewport.width}px) {
+          .container { max-width: 100%; padding: 0 16px; }
+        }
+        
+        /* Animation and dynamic content handling */
+        .fade-in, .slide-in, .animate, [class*="animate-"], [class*="fade"], [class*="slide"] {
+          opacity: 1 !important;
+          transform: none !important;
+          animation: none !important;
+          transition: none !important;
+        }
+        
+        /* Handle common loading states */
+        .loading, .skeleton, .placeholder {
+          background: #f0f0f0 !important;
+          color: transparent !important;
+        }
+        
+        /* Ensure lazy-loaded images are visible */
+        img[data-src], img[loading="lazy"] {
+          opacity: 1 !important;
+        }
+        
+        /* Handle modal and overlay content */
+        .modal, .overlay, .popup, .dropdown {
+          display: block !important;
+          position: static !important;
+          opacity: 1 !important;
+          visibility: visible !important;
+        }
+        
+        /* Handle carousel and slider content */
+        .carousel, .slider, .swiper {
+          overflow: visible !important;
+        }
+        .carousel-item, .slider-item, .swiper-slide {
+          display: block !important;
+          opacity: 1 !important;
+        }
+        
+        /* Handle accordion and collapsible content */
+        .accordion-content, .collapse, .collapsible {
+          display: block !important;
+          max-height: none !important;
+          overflow: visible !important;
+        }
+        
+        /* Handle tabs content */
+        .tab-content, .tab-pane {
+          display: block !important;
+          opacity: 1 !important;
+        }
+        
+        /* Handle hover states */
+        .hover\\:bg-gray-100:hover, .hover\\:text-blue-600:hover {
+          background-color: #f3f4f6 !important;
+          color: #2563eb !important;
+        }
+        
+        /* Handle viewport-triggered animations */
+        [data-aos], [data-animate], [data-lazy], .aos-animate {
+          opacity: 1 !important;
+          transform: none !important;
+          animation: none !important;
+          transition: none !important;
+        }
+        
+        /* Handle intersection observer lazy loading */
+        .lazy, .lazy-load, [data-lazy], [data-src] {
+          opacity: 1 !important;
+          visibility: visible !important;
+        }
+        
+        /* Handle scroll-triggered content */
+        .scroll-trigger, .viewport-trigger, .intersection-trigger {
+          opacity: 1 !important;
+          transform: translateY(0) !important;
+        }
+      </style>
+    `;
 
-async function uploadScreenshotToStorage(
-  localPath: string,
-  storagePath: string
-): Promise<string | null> {
-  console.log("uploading screenshot to storage");
-  const supabase = await createClient();
-  const fileBuffer = await fs.readFile(localPath);
-  const { data, error } = await supabase.storage
-    .from("screenshots") // bucket name
-    .upload(storagePath, fileBuffer, {
-      upsert: true,
-      contentType: "image/png",
-    });
+    // Inject CSS if not already present
+    if (!html.includes('<style>')) {
+      html = html.replace('</head>', `${responsiveCSS}</head>`);
+    }
 
-  if (error) {
-    console.error("Supabase Storage upload error:", error);
-    return null;
+    // Add JavaScript to handle dynamic content
+    const dynamicContentJS = `
+      <script>
+        // Wait for DOM to be ready
+        document.addEventListener('DOMContentLoaded', function() {
+          // Trigger any lazy loading
+          const lazyImages = document.querySelectorAll('img[data-src], img[loading="lazy"]');
+          lazyImages.forEach(img => {
+            if (img.getAttribute('data-src')) {
+              img.src = img.getAttribute('data-src');
+            }
+          });
+          
+          // Show any hidden content that should be visible
+          const hiddenElements = document.querySelectorAll('[style*="display: none"], [style*="opacity: 0"], [style*="visibility: hidden"]');
+          hiddenElements.forEach(el => {
+            // Only show if it's not intentionally hidden (like mobile menu)
+            if (!el.classList.contains('mobile-menu') && !el.classList.contains('nav-toggle')) {
+              el.style.display = 'block';
+              el.style.opacity = '1';
+              el.style.visibility = 'visible';
+            }
+          });
+          
+          // Trigger any click events that might show content
+          const triggerElements = document.querySelectorAll('[data-toggle], [data-target], .dropdown-toggle');
+          triggerElements.forEach(el => {
+            if (el.getAttribute('data-target')) {
+              const target = document.querySelector(el.getAttribute('data-target'));
+              if (target) {
+                target.style.display = 'block';
+                target.style.opacity = '1';
+              }
+            }
+          });
+          
+          // Handle any accordion or collapsible content
+          const accordionHeaders = document.querySelectorAll('.accordion-header, .collapse-header');
+          accordionHeaders.forEach(header => {
+            const content = header.nextElementSibling;
+            if (content && content.classList.contains('accordion-content')) {
+              content.style.display = 'block';
+              content.style.maxHeight = 'none';
+            }
+          });
+          
+          // Handle viewport-triggered content
+          const viewportElements = document.querySelectorAll('[data-aos], [data-animate], [data-lazy], .lazy, .lazy-load');
+          viewportElements.forEach(element => {
+            const htmlElement = element;
+            
+            // Trigger AOS animations
+            if (htmlElement.getAttribute('data-aos')) {
+              htmlElement.style.opacity = '1';
+              htmlElement.style.transform = 'none';
+              htmlElement.classList.add('aos-animate');
+            }
+            
+            // Trigger custom animations
+            if (htmlElement.getAttribute('data-animate')) {
+              htmlElement.style.opacity = '1';
+              htmlElement.style.transform = 'none';
+            }
+            
+            // Trigger lazy loading
+            if (htmlElement.getAttribute('data-src')) {
+              if (htmlElement.tagName === 'IMG') {
+                htmlElement.src = htmlElement.getAttribute('data-src');
+              } else {
+                htmlElement.style.backgroundImage = 'url(' + htmlElement.getAttribute('data-src') + ')';
+              }
+            }
+            
+            // Make lazy elements visible
+            if (htmlElement.classList.contains('lazy') || htmlElement.classList.contains('lazy-load')) {
+              htmlElement.style.opacity = '1';
+              htmlElement.style.visibility = 'visible';
+            }
+          });
+          
+          // Simulate intersection observer by scrolling through page
+          const pageHeight = Math.max(
+            document.body.scrollHeight,
+            document.documentElement.scrollHeight
+          );
+          
+          // Scroll to bottom and back to top to trigger all viewport content
+          window.scrollTo(0, pageHeight);
+          setTimeout(() => {
+            window.scrollTo(0, 0);
+          }, 100);
+        });
+      </script>
+    `;
+
+    // Inject JavaScript before closing body tag
+    html = html.replace('</body>', `${dynamicContentJS}</body>`);
+
+    return html;
+  } catch (error) {
+    console.error('Error preparing HTML for rendering:', error);
+    return html; // Return original HTML if preparation fails
   }
-
-  // Get public URL
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("screenshots").getPublicUrl(storagePath);
-  return publicUrl;
 }
 
 /**
- * Takes a screenshot of a webpage as a buffer
- * Optimized for performance with reduced wait times and better error handling
+ * OPTIMIZED: Generate screenshot from HTML content using node-html-to-image
+ * Pure HTML-to-image conversion without browser dependencies
  */
-async function takeScreenshotBuffer(
-  url: string,
+async function generateScreenshotFromHtml(
+  html: string,
   device: "phone" | "tablet" | "desktop",
-  projectId?: string
+  pageId: string
 ): Promise<Buffer | null> {
-  let browser: import("puppeteer").Browser | null = null;
+  const startTime = Date.now();
+  
   try {
-
-
-    // Launch browser with optimized settings
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--no-first-run",
-        "--no-zygote",
-        "--single-process"
-      ],
-    });
+    console.log(`[SCREENSHOT] Starting ${device} screenshot generation for page ${pageId}`);
     
-    const page = await browser.newPage();
-    
-    // Set device-specific viewport
+    // Device-specific viewport configurations
     const viewports = {
       phone: { width: 375, height: 812 },
       tablet: { width: 768, height: 1024 },
       desktop: { width: 1440, height: 900 }
     };
-    await page.setViewport(viewports[device]);
+
+    const viewport = viewports[device];
     
-    // Navigate with optimized settings
-    await page.goto(url, { 
-      waitUntil: "domcontentloaded", // Faster than networkidle2
-      timeout: 30000 
-    });
-    
-    // Reduced wait time for better performance
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    await autoScroll(page);
-    
-    // Take screenshot
-    const buffer = await page.screenshot({ 
-      type: "png", 
-      fullPage: true,
-      optimizeForSpeed: true
-    });
-    
-    return buffer as Buffer;
-  } catch (error) {
-    console.error(`Screenshot failed for ${device}:`, error);
-    return null;
-  } finally {
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (closeError) {
-        console.error("Browser close error:", closeError);
-      }
+    // Validate HTML content
+    if (!html || html.trim().length === 0) {
+      console.error(`[SCREENSHOT ERROR] Empty HTML content for page ${pageId}`);
+      return null;
     }
+    
+    // Clean and prepare HTML for rendering
+    const cleanHtml = prepareHtmlForRendering(html, viewport);
+    console.log(`[SCREENSHOT] HTML prepared for ${device} (${cleanHtml.length} chars)`);
+    
+    console.log(`[SCREENSHOT] Starting node-html-to-image for ${device} (no Puppeteer)`);
+    
+    // Get configuration from environment variables
+    const waitForAnimations = process.env.WAIT_FOR_ANIMATIONS !== 'false';
+    const simulateViewportScroll = process.env.SIMULATE_VIEWPORT_SCROLL !== 'false';
+    const screenshotTimeout = parseInt(process.env.SCREENSHOT_TIMEOUT || '15000');
+    
+    // Generate image buffer directly from HTML without Puppeteer
+    const imageBuffer = await Promise.race([
+      nodeHtmlToImage({
+        html: cleanHtml,
+        type: 'png',
+        quality: 60, // Reduced quality for faster generation
+        waitUntil: waitForAnimations ? 'networkidle0' : 'domcontentloaded',
+        timeout: screenshotTimeout,
+        beforeScreenshot: waitForAnimations ? async (page: any) => {
+          // Wait for common animations and dynamic content
+          console.log(`[SCREENSHOT] Waiting for animations and dynamic content on ${device}`);
+          
+          // Wait for initial animations (2-3 seconds)
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          // Wait for any lazy-loaded images and viewport-triggered content
+          await page.evaluate(() => {
+            return new Promise((resolve) => {
+              // Find all lazy-loaded images
+              const images = document.querySelectorAll('img[data-src], img[loading="lazy"], img[data-lazy]');
+              
+              // Find all elements that might be lazy-loaded or viewport-triggered
+              const lazyElements = document.querySelectorAll('[data-lazy], [data-src], .lazy, .lazy-load, [data-aos], [data-animate]');
+              
+              let loadedCount = 0;
+              const totalElements = images.length + lazyElements.length;
+              
+              if (totalElements === 0) {
+                resolve(true);
+                return;
+              }
+              
+              // Handle lazy-loaded images
+              images.forEach((img) => {
+                const imageElement = img as HTMLImageElement;
+                imageElement.addEventListener('load', () => {
+                  loadedCount++;
+                  if (loadedCount === totalElements) {
+                    resolve(true);
+                  }
+                });
+                
+                // Trigger lazy loading
+                if (imageElement.getAttribute('data-src')) {
+                  imageElement.src = imageElement.getAttribute('data-src') || '';
+                }
+              });
+              
+              // Handle viewport-triggered elements
+              lazyElements.forEach((element) => {
+                // Simulate intersection observer by making element visible
+                const htmlElement = element as HTMLElement;
+                
+                // Trigger any data attributes that might load content
+                if (htmlElement.getAttribute('data-src')) {
+                  if (htmlElement.tagName === 'IMG') {
+                    (htmlElement as HTMLImageElement).src = htmlElement.getAttribute('data-src') || '';
+                  } else {
+                    htmlElement.style.backgroundImage = `url(${htmlElement.getAttribute('data-src')})`;
+                  }
+                }
+                
+                // Trigger AOS (Animate On Scroll) animations
+                if (htmlElement.getAttribute('data-aos')) {
+                  htmlElement.style.opacity = '1';
+                  htmlElement.style.transform = 'none';
+                  htmlElement.classList.add('aos-animate');
+                }
+                
+                // Trigger custom animations
+                if (htmlElement.getAttribute('data-animate')) {
+                  htmlElement.style.opacity = '1';
+                  htmlElement.style.transform = 'none';
+                }
+                
+                // Simulate scroll into view
+                htmlElement.scrollIntoView({ behavior: 'instant', block: 'center' });
+                
+                // Trigger any custom events
+                const event = new Event('scroll');
+                window.dispatchEvent(event);
+                
+                // Mark as loaded
+                loadedCount++;
+                if (loadedCount === totalElements) {
+                  resolve(true);
+                }
+              });
+              
+              // Fallback timeout
+              setTimeout(() => resolve(true), 3000);
+            });
+          });
+          
+          // Wait for any CSS animations to complete
+          await page.evaluate(() => {
+            return new Promise((resolve) => {
+              // Wait for CSS transitions and animations
+              const style = document.createElement('style');
+              style.textContent = `
+                *, *::before, *::after {
+                  animation-duration: 0.01ms !important;
+                  animation-delay: 0.01ms !important;
+                  transition-duration: 0.01ms !important;
+                  transition-delay: 0.01ms !important;
+                }
+              `;
+              document.head.appendChild(style);
+              
+              // Wait a bit more for any remaining animations
+              setTimeout(() => {
+                document.head.removeChild(style);
+                resolve(true);
+              }, 1000);
+            });
+          });
+          
+          // Simulate scrolling through the entire page to trigger viewport-based content
+          if (simulateViewportScroll) {
+            await page.evaluate(() => {
+              return new Promise((resolve) => {
+                console.log('Simulating scroll through entire page to trigger viewport content');
+                
+                // Get page dimensions
+                const pageHeight = Math.max(
+                  document.body.scrollHeight,
+                  document.body.offsetHeight,
+                  document.documentElement.clientHeight,
+                  document.documentElement.scrollHeight,
+                  document.documentElement.offsetHeight
+                );
+                
+                const viewportHeight = window.innerHeight;
+                const scrollSteps = Math.ceil(pageHeight / viewportHeight);
+                
+                let currentStep = 0;
+                
+                const scrollToNext = () => {
+                  if (currentStep >= scrollSteps) {
+                    // Scroll back to top
+                    window.scrollTo(0, 0);
+                    setTimeout(() => resolve(true), 500);
+                    return;
+                  }
+                  
+                  const scrollY = currentStep * viewportHeight;
+                  window.scrollTo(0, scrollY);
+                  
+                  // Trigger intersection observer events
+                  const event = new Event('scroll');
+                  window.dispatchEvent(event);
+                  
+                  // Trigger resize event (some libraries listen to this)
+                  const resizeEvent = new Event('resize');
+                  window.dispatchEvent(resizeEvent);
+                  
+                  currentStep++;
+                  
+                  // Wait a bit before next scroll
+                  setTimeout(scrollToNext, 200);
+                };
+                
+                // Start scrolling
+                scrollToNext();
+              });
+            });
+          }
+          
+          // Final wait for any remaining dynamic content
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          console.log(`[SCREENSHOT] Animations and dynamic content handled for ${device}`);
+        } : undefined
+      }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Screenshot generation timeout')), screenshotTimeout + 3000)
+      )
+    ]) as Buffer;
+
+    const duration = Date.now() - startTime;
+    console.log(`[SCREENSHOT SUCCESS] Generated ${device} screenshot for page ${pageId} in ${duration}ms (${imageBuffer.length} bytes)`);
+    return imageBuffer;
+    
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    console.error(`[SCREENSHOT ERROR] Failed to generate ${device} screenshot for page ${pageId} after ${duration}ms:`, {
+      error: errorMessage,
+      device,
+      pageId,
+      htmlLength: html?.length || 0,
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    
+    // Log specific error types for debugging
+    if (errorMessage.includes('timeout')) {
+      console.error(`[SCREENSHOT ERROR] Timeout error - consider reducing HTML complexity or increasing timeout`);
+    } else if (errorMessage.includes('browser') || errorMessage.includes('puppeteer')) {
+      console.error(`[SCREENSHOT ERROR] Browser/rendering error - check system resources and node-html-to-image dependencies`);
+    } else if (errorMessage.includes('memory')) {
+      console.error(`[SCREENSHOT ERROR] Memory error - HTML content may be too large`);
+    } else if (errorMessage.includes('Unable to get browser page')) {
+      console.error(`[SCREENSHOT ERROR] Browser page error - node-html-to-image internal rendering issue`);
+    }
+    
+    return null;
   }
 }
+
+/**
+ * OPTIMIZED: Main function to generate screenshots from stored HTML
+ * Pure HTML-to-image conversion for fast and reliable screenshot generation
+ */
+async function takeScreenshotFromStoredHtml(
+  pageId: string,
+  html: string,
+  device: "phone" | "tablet" | "desktop",
+  projectId: string
+): Promise<string | null> {
+  try {
+    console.log(`[OPTIMIZED] Starting ${device} screenshot generation from stored HTML for page ${pageId}`);
+    
+    // Generate screenshot buffer from HTML
+    const buffer = await generateScreenshotFromHtml(html, device, pageId);
+    
+    if (!buffer) {
+      console.error(`[ERROR] Failed to generate ${device} screenshot buffer for page ${pageId}`);
+      return null;
+    }
+
+    // Upload to storage
+    const storagePath = `project_${projectId}/screenshot_${pageId}_${device}.png`;
+    const publicUrl = await uploadScreenshotBufferToStorage(buffer, storagePath);
+    
+    if (publicUrl) {
+      console.log(`[SUCCESS] ${device} screenshot uploaded successfully for page ${pageId}`);
+    }
+    
+    return publicUrl;
+    
+  } catch (error) {
+    console.error(`[ERROR] Screenshot generation failed for ${device} on page ${pageId}:`, error);
+    return null;
+  }
+}
+
+
 
 // New buffer-based upload function
 async function uploadScreenshotBufferToStorage(

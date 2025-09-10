@@ -18,25 +18,7 @@ export function getRedisConnection(): Redis {
         connectTimeout: 10000,
         commandTimeout: 5000,
         enableOfflineQueue: false,
-        maxLoadingTimeout: 10000,
-        // Connection pool settings
-        family: 4, // IPv4
-        // Error handling
-        onError: (error: Error) => {
-          console.error('Redis connection error:', error);
-        },
-        onConnect: () => {
-          console.log('✅ Redis connected successfully');
-        },
-        onReady: () => {
-          console.log('✅ Redis ready for operations');
-        },
-        onClose: () => {
-          console.log('⚠️ Redis connection closed');
-        },
-        onReconnecting: () => {
-          console.log('🔄 Redis reconnecting...');
-        }
+        family: 4 // IPv4
       });
 
       // Test connection

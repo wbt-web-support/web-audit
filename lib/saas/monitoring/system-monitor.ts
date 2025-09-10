@@ -99,32 +99,25 @@ export class SystemMonitor {
         return acc;
       }, {} as Record<string, number>) || {};
 
+      // Get project IDs for tenant
+      const { data: projects } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('tenant_id', tenantId);
+      
+      const projectIds = projects?.map(p => p.id) || [];
+      
       // Get page counts
       const { count: totalPages } = await supabase
         .from('scraped_pages')
         .select('*', { count: 'exact', head: true })
-        .in('project_id', 
-          supabase
-            .from('projects')
-            .select('id')
-            .eq('tenant_id', tenantId)
-        );
+        .in('project_id', projectIds);
 
       // Get analysis results
       const { count: completedAnalyses } = await supabase
         .from('analysis_results')
         .select('*', { count: 'exact', head: true })
-        .in('page_id',
-          supabase
-            .from('scraped_pages')
-            .select('id')
-            .in('project_id',
-              supabase
-                .from('projects')
-                .select('id')
-                .eq('tenant_id', tenantId)
-            )
-        );
+        .in('page_id', projectIds);
 
       // Get queue stats for tenant
       const tenantQueueStats = await tenantQueueManager.getTenantQueueStats(tenantId, 'web-scraping');
@@ -236,7 +229,18 @@ export class SystemMonitor {
       // Get all active tenants
       const tenants = await tenantManager.getActiveTenants();
       
-      const utilization = {
+      const utilization: {
+        tenants: number;
+        totalUsage: Record<string, number>;
+        totalLimits: Record<string, number>;
+        utilizationPercentages: Record<string, number>;
+        topTenants: Array<{
+          tenantId: string;
+          tenantName: string;
+          plan: string;
+          utilization: Record<string, number>;
+        }>;
+      } = {
         tenants: tenants.length,
         totalUsage: {
           projects: 0,
@@ -259,7 +263,7 @@ export class SystemMonitor {
           workers: 0,
           storage: 0,
         },
-        topTenants: [] as any[],
+        topTenants: [],
       };
 
       // Calculate totals

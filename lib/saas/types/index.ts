@@ -127,6 +127,34 @@ export interface ProjectMetrics {
   lastCrawledAt: Date;
 }
 
+export interface CrawlOptions {
+  maxPages?: number;
+  maxDepth?: number;
+  respectRobotsTxt?: boolean;
+  userAgent?: string;
+  delay?: number;
+  timeout?: number;
+  followRedirects?: boolean;
+  followExternal?: boolean;
+  customHeaders?: Record<string, string>;
+}
+
+export interface PageData {
+  url: string;
+  title: string;
+  content: string;
+  html: string;
+  statusCode: number;
+  loadTime: number;
+  links: string[];
+  images: string[];
+  scripts: string[];
+  stylesheets: string[];
+  meta: Record<string, string>;
+  headers: Record<string, string>;
+  timestamp: Date;
+}
+
 export interface CrawlJob {
   id: string;
   tenantId: string;

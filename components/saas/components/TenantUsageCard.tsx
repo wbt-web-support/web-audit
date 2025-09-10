@@ -12,7 +12,32 @@ import {
   TrendingUp,
   AlertTriangle
 } from 'lucide-react';
-import { TenantInfo } from '../types';
+interface TenantInfo {
+  id: string;
+  name: string;
+  slug: string;
+  plan: {
+    name: string;
+    tier: 'free' | 'starter' | 'professional' | 'enterprise';
+    limits: {
+      maxProjects: number;
+      maxPagesPerProject: number;
+      maxConcurrentCrawls: number;
+      maxWorkers: number;
+      rateLimitPerMinute: number;
+      storageGB: number;
+    };
+  };
+  usage: {
+    currentProjects: number;
+    currentPages: number;
+    currentCrawls: number;
+    currentWorkers: number;
+    currentStorageGB: number;
+    monthlyCrawls: number;
+  };
+  status: 'active' | 'suspended' | 'cancelled';
+}
 
 interface TenantUsageCardProps {
   tenant: TenantInfo;

@@ -5,10 +5,10 @@ import { rateLimiter } from '@/lib/saas/core/rate-limiter';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { slug: string } }
+  { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const { slug } = params;
+    const { slug } = await params;
     
     // Check rate limits
     const rateLimitInfo = await rateLimiter.checkRateLimit(
@@ -68,10 +68,10 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { slug: string } }
+  { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const { slug } = params;
+    const { slug } = await params;
     const body = await request.json();
     
     // Check authentication

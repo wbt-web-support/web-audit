@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { queueManager } from '@/lib/queue/queue-manager';
 import { getAllQueueConfigs, updateQueueConfig } from '@/lib/queue/queue-config';
-import { errorLogger } from '@/lib/logging/error-logger';
+import { logInfo, logError, errorLogger } from '@/lib/logging/error-logger';
 
 export async function GET(request: NextRequest) {
   try {
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    await errorLogger.logError('error', 'Failed to get queue management data', error as Error);
+    await logError('Failed to get queue management data', error as Error);
     return NextResponse.json(
       { error: 'Failed to get queue management data' },
       { status: 500 }
@@ -105,7 +105,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    await errorLogger.logInfo(`Queue configuration updated for ${queueName}`, {
+    await logInfo(`Queue configuration updated for ${queueName}`, {
       queueName,
       config,
       updatedBy: user.id,
@@ -117,7 +117,7 @@ export async function PUT(request: NextRequest) {
     });
 
   } catch (error) {
-    await errorLogger.logError('error', 'Failed to update queue configuration', error as Error);
+    await logError('Failed to update queue configuration', error as Error);
     return NextResponse.json(
       { error: 'Failed to update queue configuration' },
       { status: 500 }

@@ -151,7 +151,15 @@ export function PagesTable({
   // Check if a page analysis has timed out
   const isPageTimedOut = (analyzedPage: AnalyzedPage) => {
     return analyzedPage.page.error_message && 
-           analyzedPage.page.error_message.includes('timeout');
+           (analyzedPage.page.error_message.includes('timeout') || 
+            analyzedPage.page.error_message.includes('Analysis timeout'));
+  };
+
+  // Check if a page analysis failed due to screenshot issues
+  const isPageScreenshotFailed = (analyzedPage: AnalyzedPage) => {
+    return analyzedPage.page.error_message && 
+           (analyzedPage.page.error_message.includes('screenshot') ||
+            analyzedPage.page.error_message.includes('Unable to get browser page'));
   };
 
   // Check if a page analysis was stopped by user
@@ -210,7 +218,7 @@ export function PagesTable({
           <div>
             <CardTitle>Pages</CardTitle>
             <CardDescription>
-              {isCrawling ? "Pages are being crawled - analysis will be available when crawling completes" : "Select pages to analyze (max 3 minutes per page)"}
+              {isCrawling ? "Pages are being crawled - analysis will be available when crawling completes" : "Select pages to analyze (max 2 minutes per page)"}
             </CardDescription>
             {isCrawling && (
               <div className="mt-2 flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
@@ -449,8 +457,8 @@ export function PagesTable({
                             <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
                             <span className="text-xs text-blue-600 dark:text-blue-400">
                               {analyzingPages.size > 1 
-                                ? `Re-scraping & batch analyzing with AI (${analyzingPages.size} pages total)...` 
-                                : 'Re-scraping & analyzing with AI...'}
+                                ? `Analyzing with AI (${analyzingPages.size} pages total)...` 
+                                : 'Analyzing with AI (2 min timeout)...'}
                             </span>
                           </div>
                         )}
@@ -458,7 +466,15 @@ export function PagesTable({
                           <div className="flex items-center gap-1 mt-1">
                             <Clock className="h-3 w-3 text-red-500" />
                             <span className="text-xs text-red-600 dark:text-red-400">
-                              Analysis timed out after 3 minutes
+                              Analysis timed out after 2 minutes
+                            </span>
+                          </div>
+                        )}
+                        {isPageScreenshotFailed(analyzedPage) && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <AlertTriangle className="h-3 w-3 text-yellow-500" />
+                            <span className="text-xs text-yellow-600 dark:text-yellow-400">
+                              Screenshot generation failed - analysis completed with HTML-only fallback
                             </span>
                           </div>
                         )}
@@ -484,6 +500,12 @@ export function PagesTable({
                           <Clock className="h-3 w-3 mr-1" />
                           <span className="hidden sm:inline">Timeout</span>
                           <span className="sm:hidden">TO</span>
+                        </Badge>
+                      ) : isPageScreenshotFailed(analyzedPage) ? (
+                        <Badge variant="outline" className="text-xs px-1.5 py-0.5 bg-yellow-50 dark:bg-yellow-950 text-yellow-600 dark:text-yellow-400">
+                          <AlertTriangle className="h-3 w-3 mr-1" />
+                          <span className="hidden sm:inline">HTML-Only</span>
+                          <span className="sm:hidden">HTML</span>
                         </Badge>
                       ) : isPageStopped(analyzedPage) ? (
                         <Badge variant="outline" className="text-xs px-1.5 py-0.5 bg-orange-50 dark:bg-orange-950 text-orange-600 dark:text-orange-400">
@@ -535,26 +557,39 @@ export function PagesTable({
                             <span className="sm:hidden">Del</span>
                           </Button>
                         ) : isPageAnalyzing(analyzedPage) ? (
-                          <Button 
-                            size="sm" 
-                            className="h-7 px-3 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400 w-full sm:w-auto"
-                            onClick={() => handleStopAnalysis(analyzedPage.page.id)}
-                            disabled={stoppingPages.has(analyzedPage.page.id)}
-                          >
-                            {stoppingPages.has(analyzedPage.page.id) ? (
-                              <>
-                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                <span className="hidden sm:inline">Stopping...</span>
-                                <span className="sm:hidden">Stop...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Square className="h-3 w-3 mr-1" />
-                                <span className="hidden sm:inline">Stop</span>
-                                <span className="sm:hidden">Stop</span>
-                              </>
+                          <>
+                            <Button 
+                              size="sm" 
+                              className="h-7 px-3 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400 w-full sm:w-auto"
+                              onClick={() => handleStopAnalysis(analyzedPage.page.id)}
+                              disabled={stoppingPages.has(analyzedPage.page.id)}
+                            >
+                              {stoppingPages.has(analyzedPage.page.id) ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  <span className="hidden sm:inline">Stopping...</span>
+                                  <span className="sm:hidden">Stop...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Square className="h-3 w-3 mr-1" />
+                                  <span className="hidden sm:inline">Stop</span>
+                                  <span className="sm:hidden">Stop</span>
+                                </>
+                              )}
+                            </Button>
+                            {analyzedPage.resultCount > 0 && (
+                              <Button
+                                size="sm"
+                                className="h-7 px-3 w-full sm:w-auto"
+                                onClick={() => router.push(`/audit/${analyzedPage.page.id}`)}
+                              >
+                                <Eye className="h-3 w-3 mr-1" />
+                                <span className="hidden sm:inline">View</span>
+                                <span className="sm:hidden">View</span>
+                              </Button>
                             )}
-                          </Button>
+                          </>
                         ) : isPageTimedOut(analyzedPage) ? (
                           <Button
                             size="sm"
@@ -562,6 +597,18 @@ export function PagesTable({
                             onClick={() => onAnalyzeSinglePage(analyzedPage.page.id)}
                             disabled={isAnalysisDisabled()}
                             title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : "Retry analysis after timeout"}
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            <span className="hidden sm:inline">Retry</span>
+                            <span className="sm:hidden">Retry</span>
+                          </Button>
+                        ) : isPageScreenshotFailed(analyzedPage) ? (
+                          <Button
+                            size="sm"
+                            className="h-7 px-3 w-full sm:w-auto"
+                            onClick={() => onAnalyzeSinglePage(analyzedPage.page.id)}
+                            disabled={isAnalysisDisabled()}
+                            title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : "Retry analysis (screenshot generation failed)"}
                           >
                             <RefreshCw className="h-3 w-3 mr-1" />
                             <span className="hidden sm:inline">Retry</span>
@@ -595,10 +642,11 @@ export function PagesTable({
                               className="h-7 px-3 w-full sm:w-auto"
                               onClick={() => onAnalyzeSinglePage(analyzedPage.page.id)}
                               disabled={isAnalysisDisabled()}
-                              title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : ""}
+                              title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : "Recrawl and re-analyze this page"}
                             >
                               <RefreshCw className="h-3 w-3 mr-1" />
-                             
+                              <span className="hidden sm:inline">Recrawl</span>
+                              <span className="sm:hidden">Recrawl</span>
                             </Button>
                           </>
                         ) : (

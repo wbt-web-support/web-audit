@@ -57,15 +57,15 @@ import {
 
 // Import sub-components
 import { ProjectHeader } from '../components/ProjectHeader';
-import { ProjectMetrics } from '../components/ProjectMetrics';
-import { ProcessStatusCard } from '../components';
-import { CustomUrlsCard } from '../components';
-import { PagesTable } from '../components/PagesTable';
+import { ProjectMetrics } from '@/components/audit/components';
+import { ProcessStatusCard } from '@/components/audit/components';
+import { CustomUrlsCard } from '@/components/audit/components';
+import { PagesTable } from '@/components/audit/components';
 import { TenantUsageCard } from '../components/TenantUsageCard';
 import { TenantLimitsCard } from '../components/TenantLimitsCard';
 
-import { ImageAnalysisTable } from '../image-analysis-table';
-import { LinksAnalysisTable } from '../links-analysis-table';
+import { ImageAnalysisTable } from '@/components/audit';
+import { LinksAnalysisTable } from '@/components/audit';
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -118,10 +118,11 @@ interface AnalyzedPage {
 
 interface Project {
   id: string;
-  tenantId: string;
+  user_id: string;
+  tenant_id: string;
   name: string;
-  baseUrl: string;
-  status: 'pending' | 'crawling' | 'completed' | 'failed' | 'paused';
+  base_url: string;
+  status: 'pending' | 'crawling' | 'analyzing' | 'completed' | 'failed';
   settings: {
     maxPages: number;
     maxDepth: number;
@@ -132,19 +133,23 @@ interface Project {
     analysisTypes: string[];
     customUrls: string[];
   };
-  metrics: {
-    pagesCrawled: number;
-    totalPages: number;
-    totalImages: number;
-    totalLinks: number;
-    internalLinks: number;
-    externalLinks: number;
-    averageLoadTime: number;
-    lastCrawledAt: Date;
-  };
-  createdAt: Date;
-  updatedAt: Date;
-  createdBy: string;
+  total_pages: number;
+  pages_crawled: number;
+  pages_analyzed: number;
+  all_image_analysis: any[];
+  all_links_analysis: any[];
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  error_message: string | null;
+  company_name: string | null;
+  phone_number: string | null;
+  email: string | null;
+  address: string | null;
+  custom_info: any | null;
+  created_by: string;
+  // Additional properties to match AuditProject
+  [key: string]: any;
 }
 
 // ============================================================================
@@ -361,7 +366,7 @@ export function TenantAuditMain() {
             page: pageResult.page,
             project: {
               id: projectId,
-              base_url: projects[0]?.baseUrl || '',
+              base_url: projects[0]?.base_url || '',
               status: projects[0]?.status || 'pending'
             },
             resultCount: completedAnalyses,
@@ -448,11 +453,8 @@ export function TenantAuditMain() {
         p.id === projects[0].id 
           ? { 
               ...p, 
-              metrics: {
-                ...p.metrics,
-                pagesCrawled: data.project.pages_crawled,
-                totalPages: data.project.total_pages
-              }
+            pages_crawled: data.project.pages_crawled,
+            total_pages: data.project.total_pages
             }
           : p
       ));
@@ -467,11 +469,11 @@ export function TenantAuditMain() {
             status_code: page.status_code,
             analysis_status: 'pending'
           },
-          project: {
-            id: projects[0]?.id || selectedProjectId,
-            base_url: projects[0]?.baseUrl || '',
-            status: projects[0]?.status || 'crawling'
-          },
+            project: {
+              id: projects[0]?.id || selectedProjectId,
+              base_url: projects[0]?.base_url || '',
+              status: projects[0]?.status || 'crawling'
+            },
           resultCount: 0,
           overallScore: 0,
           overallStatus: 'pending'
@@ -535,11 +537,8 @@ export function TenantAuditMain() {
         ? { 
             ...p, 
             status: 'crawling',
-            metrics: {
-              ...p.metrics,
-              pagesCrawled: 0,
-              totalPages: 0,
-            }
+            pages_crawled: 0,
+            total_pages: 0
           }
         : p
     ));
@@ -788,7 +787,14 @@ export function TenantAuditMain() {
         {projects.length > 0 && projects[0] && (
           <div className="my-6">
             <ProjectMetrics 
-              project={projects[0]}
+              project={{
+                ...projects[0],
+                base_url: projects[0].base_url,
+                pages_crawled: projects[0].pages_crawled,
+                total_pages: projects[0].total_pages,
+                all_image_analysis: projects[0].all_image_analysis || [],
+                all_links_analysis: projects[0].all_links_analysis || []
+              }}
               currentSession={currentSession}
               onToggleImageAnalysis={(show) => dispatch(toggleImageAnalysis({ projectId: projects[0].id, show }))}
               onToggleLinksAnalysis={(show) => dispatch(toggleLinksAnalysis({ projectId: projects[0].id, show }))}
@@ -799,7 +805,7 @@ export function TenantAuditMain() {
         {/* Custom URLs */}
         {projects[0] && projects[0].settings.customUrls && Array.isArray(projects[0].settings.customUrls) && projects[0].settings.customUrls.length > 0 && (
           <div className="mb-6">
-            <CustomUrlsCard customUrls={projects[0].settings.customUrls} />
+            <CustomUrlsCard customUrls={projects[0].settings.customUrls.map(url => ({ pageLink: url, isPresent: false }))} />
           </div>
         )}
 

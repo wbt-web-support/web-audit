@@ -290,11 +290,22 @@ export function getSaaSConfig(): SaaSConfig {
 export const environmentConfigs = {
   development: {
     system: {
+      name: 'WebAudit SaaS',
+      version: '1.0.0',
+      environment: 'development' as const,
       debug: true,
       logLevel: 'debug' as const,
     },
     monitoring: {
       enabled: false,
+      metricsInterval: 60000,
+      healthCheckInterval: 30000,
+      alertThresholds: {
+        cpu: 80,
+        memory: 85,
+        disk: 90,
+        errorRate: 5,
+      },
     },
     features: {
       multiTenancy: true,
@@ -309,11 +320,22 @@ export const environmentConfigs = {
 
   staging: {
     system: {
+      name: 'WebAudit SaaS',
+      version: '1.0.0',
+      environment: 'staging' as const,
       debug: false,
       logLevel: 'info' as const,
     },
     monitoring: {
       enabled: true,
+      metricsInterval: 60000,
+      healthCheckInterval: 30000,
+      alertThresholds: {
+        cpu: 80,
+        memory: 85,
+        disk: 90,
+        errorRate: 5,
+      },
     },
     features: {
       multiTenancy: true,
@@ -328,11 +350,22 @@ export const environmentConfigs = {
 
   production: {
     system: {
+      name: 'WebAudit SaaS',
+      version: '1.0.0',
+      environment: 'production' as const,
       debug: false,
       logLevel: 'warn' as const,
     },
     monitoring: {
       enabled: true,
+      metricsInterval: 60000,
+      healthCheckInterval: 30000,
+      alertThresholds: {
+        cpu: 80,
+        memory: 85,
+        disk: 90,
+        errorRate: 5,
+      },
     },
     features: {
       multiTenancy: true,

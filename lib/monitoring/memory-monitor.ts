@@ -1,4 +1,4 @@
-import { errorLogger } from '@/lib/logging/error-logger';
+import { logInfo, logError } from '@/lib/logging/error-logger';
 import { queueManager } from '@/lib/queue/queue-manager';
 
 export interface MemoryStats {
@@ -43,7 +43,7 @@ class MemoryMonitor {
       const queueMemoryUsage = await this.calculateQueueMemoryUsage();
       
       const totalQueueMemory = Object.values(queueMemoryUsage).reduce(
-        (sum, usage) => sum + usage.estimatedMemoryMB, 0
+        (sum, usage) => sum + usage, 0
       );
       
       const memoryUsagePercentage = (totalQueueMemory / (8 * 1024)) * 100; // 8GB in MB
@@ -64,7 +64,7 @@ class MemoryMonitor {
         recommendations,
       };
     } catch (error) {
-      await errorLogger.logError('error', 'Failed to get memory stats', error as Error);
+      await logError('Failed to get memory stats', error as Error);
       throw error;
     }
   }
@@ -178,7 +178,7 @@ class MemoryMonitor {
 
       return false;
     } catch (error) {
-      await errorLogger.logError('error', 'Failed to check memory and take action', error as Error);
+      await logError('Failed to check memory and take action', error as Error);
       return false;
     }
   }
@@ -195,7 +195,7 @@ class MemoryMonitor {
       await queueManager.clearQueue('seo-analysis');
       await queueManager.clearQueue('performance-analysis');
       
-      await errorLogger.logError('warning', 'Emergency memory reduction performed', undefined, {
+      await logError('Emergency memory reduction performed', undefined, {
         action: 'emergency_memory_reduction',
         pausedQueues: ['seo-analysis', 'performance-analysis'],
         clearedQueues: ['seo-analysis', 'performance-analysis'],
@@ -203,7 +203,7 @@ class MemoryMonitor {
       
       console.log('✅ Emergency memory reduction completed');
     } catch (error) {
-      await errorLogger.logError('error', 'Failed to perform emergency memory reduction', error as Error);
+      await logError('Failed to perform emergency memory reduction', error as Error);
     }
   }
 
@@ -217,7 +217,7 @@ class MemoryMonitor {
       // Clear old completed jobs
       await queueManager.clearQueue('seo-analysis');
       
-      await errorLogger.logError('warning', 'Critical memory reduction performed', undefined, {
+      await logError('Critical memory reduction performed', undefined, {
         action: 'critical_memory_reduction',
         pausedQueues: ['seo-analysis'],
         clearedQueues: ['seo-analysis'],
@@ -225,14 +225,14 @@ class MemoryMonitor {
       
       console.log('✅ Critical memory reduction completed');
     } catch (error) {
-      await errorLogger.logError('error', 'Failed to perform critical memory reduction', error as Error);
+      await logError('Failed to perform critical memory reduction', error as Error);
     }
   }
 
   private async warningMemoryOptimization(): Promise<void> {
     console.log('⚠️ WARNING: Memory usage high, monitoring...');
     
-    await errorLogger.logError('info', 'High memory usage detected', undefined, {
+    await logInfo('High memory usage detected', {
       action: 'memory_warning',
       recommendation: 'Monitor memory usage closely',
     });
@@ -259,7 +259,7 @@ class MemoryMonitor {
 
       return breakdown.sort((a, b) => b.estimatedMemoryMB - a.estimatedMemoryMB);
     } catch (error) {
-      await errorLogger.logError('error', 'Failed to get queue memory breakdown', error as Error);
+      await logError('Failed to get queue memory breakdown', error as Error);
       return [];
     }
   }
@@ -280,7 +280,7 @@ class MemoryMonitor {
         const now = new Date();
         if (now.getMinutes() % 5 === 0) {
           const memoryStats = await this.getMemoryStats();
-          await errorLogger.logInfo('Memory monitoring stats', {
+          await logInfo('Memory monitoring stats', {
             totalMemoryMB: memoryStats.totalMemory,
             usedMemoryMB: memoryStats.usedMemory,
             freeMemoryMB: memoryStats.freeMemory,

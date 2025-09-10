@@ -20,7 +20,6 @@ import { memoryMonitor } from '../lib/monitoring/memory-monitor';
 // Import job processors
 import { WebScraper } from '../lib/services/web-scraper';
 import { 
-  processImageExtractionJob, 
   processLinkExtractionJob 
 } from '../lib/services/extract-resources';
 
@@ -56,10 +55,6 @@ class QueueWorkerManager {
       {
         name: 'web-scraping',
         processor: this.createScrapingProcessor(),
-      },
-      {
-        name: 'image-extraction',
-        processor: processImageExtractionJob,
       },
       {
         name: 'content-analysis',
