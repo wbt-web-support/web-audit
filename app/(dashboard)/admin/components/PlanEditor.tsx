@@ -45,9 +45,182 @@ interface Plan {
   cancelled_users: number;
 }
 
+interface PlatformFeature {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  icon: string;
+  enabled: boolean;
+}
+
+interface FeatureCategory {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  features: PlatformFeature[];
+}
+
 interface PlanEditorProps {
   onRefresh?: () => void;
 }
+
+// Predefined Platform Features
+const PLATFORM_FEATURES: FeatureCategory[] = [
+  {
+    id: 'website_crawling',
+    name: 'Website Crawling',
+    description: 'Advanced website analysis and crawling capabilities',
+    icon: '🔍',
+    features: [
+      {
+        id: 'single_page_crawl',
+        name: 'Single Page Crawl',
+        description: 'Analyze one specific page',
+        category: 'website_crawling',
+        icon: '📄',
+        enabled: false
+      },
+      {
+        id: 'full_site_crawl',
+        name: 'Full Site Crawl',
+        description: 'Scan and audit all accessible pages',
+        category: 'website_crawling',
+        icon: '🌐',
+        enabled: false
+      },
+      {
+        id: 'hidden_urls_detection',
+        name: 'Hidden URLs Detection',
+        description: 'Identify unlinked or orphan pages',
+        category: 'website_crawling',
+        icon: '🔍',
+        enabled: false
+      }
+    ]
+  },
+  {
+    id: 'content_brand_insights',
+    name: 'Content & Brand Insights',
+    description: 'Content analysis and brand consistency checks',
+    icon: '📑',
+    features: [
+      {
+        id: 'brand_consistency_check',
+        name: 'Brand Consistency Check',
+        description: 'Ensure colors, fonts, and messaging align with brand guidelines',
+        category: 'content_brand_insights',
+        icon: '🎨',
+        enabled: false
+      },
+      {
+        id: 'grammar_content_analysis',
+        name: 'Grammar & Content Analysis',
+        description: 'Check for spelling, grammar, readability, and tone',
+        category: 'content_brand_insights',
+        icon: '📝',
+        enabled: false
+      },
+      {
+        id: 'seo_structure',
+        name: 'SEO & Structure',
+        description: 'Validate meta tags, heading hierarchy, schema markup, and keyword usage',
+        category: 'content_brand_insights',
+        icon: '🔍',
+        enabled: false
+      }
+    ]
+  },
+  {
+    id: 'security_compliance',
+    name: 'Security & Compliance',
+    description: 'Security audits and compliance checks',
+    icon: '💳',
+    features: [
+      {
+        id: 'stripe_public_key_detection',
+        name: 'Stripe Public Key Detection',
+        description: 'Identify exposed API keys',
+        category: 'security_compliance',
+        icon: '🔑',
+        enabled: false
+      },
+      {
+        id: 'google_tags_tracking_audit',
+        name: 'Google Tags & Tracking Audit',
+        description: 'Detect Google Analytics, Tag Manager, and third-party scripts',
+        category: 'security_compliance',
+        icon: '📊',
+        enabled: false
+      }
+    ]
+  },
+  {
+    id: 'media_asset_analysis',
+    name: 'Media & Asset Analysis',
+    description: 'Media optimization and asset management',
+    icon: '🖼️',
+    features: [
+      {
+        id: 'on_site_image_scan',
+        name: 'On-Site Image Scan',
+        description: 'Check alt tags, resolution, compression, and broken images',
+        category: 'media_asset_analysis',
+        icon: '🖼️',
+        enabled: false
+      },
+      {
+        id: 'link_scanner',
+        name: 'Link Scanner',
+        description: 'Validate internal/external links and detect broken redirects',
+        category: 'media_asset_analysis',
+        icon: '🔗',
+        enabled: false
+      },
+      {
+        id: 'social_share_preview',
+        name: 'Social Share Preview',
+        description: 'Generate how the site appears on platforms like Twitter, LinkedIn, and Facebook',
+        category: 'media_asset_analysis',
+        icon: '📱',
+        enabled: false
+      }
+    ]
+  },
+  {
+    id: 'technical_performance',
+    name: 'Technical & Performance',
+    description: 'Performance optimization and technical analysis',
+    icon: '⚙️',
+    features: [
+      {
+        id: 'performance_metrics',
+        name: 'Performance Metrics',
+        description: 'Page load time, Core Web Vitals, resource optimization',
+        category: 'technical_performance',
+        icon: '⚡',
+        enabled: false
+      },
+      {
+        id: 'ui_ux_quality_check',
+        name: 'UI/UX Quality Check',
+        description: 'Detect layout issues, responsiveness, and accessibility gaps',
+        category: 'technical_performance',
+        icon: '🎯',
+        enabled: false
+      },
+      {
+        id: 'technical_fix_recommendations',
+        name: 'Technical Fix Recommendations',
+        description: 'Actionable suggestions for speed, accessibility, and SEO',
+        category: 'technical_performance',
+        icon: '🔧',
+        enabled: false
+      }
+    ]
+  }
+];
 
 export function PlanEditor({ onRefresh }: PlanEditorProps) {
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -57,18 +230,24 @@ export function PlanEditor({ onRefresh }: PlanEditorProps) {
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [showFeatures, setShowFeatures] = useState<{ [key: string]: boolean }>({});
-  const [showAddFeatureModal, setShowAddFeatureModal] = useState(false);
-  const [newFeatureKey, setNewFeatureKey] = useState('');
-  const [newFeatureValue, setNewFeatureValue] = useState('');
-  const [isAddingLimit, setIsAddingLimit] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ planId: string; planName: string } | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [updateSuccess, setUpdateSuccess] = useState<string | null>(null);
+  const [planFeatures, setPlanFeatures] = useState<PlatformFeature[]>([]);
 
   useEffect(() => {
     fetchPlans();
   }, []);
+
+  // Initialize plan features when editing plan changes
+  useEffect(() => {
+    if (editingPlan) {
+      const initializedFeatures = initializePlanFeatures(editingPlan);
+      console.log('Initializing plan features from useEffect:', initializedFeatures);
+      setPlanFeatures(initializedFeatures);
+    }
+  }, [editingPlan]);
 
   const fetchPlans = async () => {
     try {
@@ -92,21 +271,67 @@ export function PlanEditor({ onRefresh }: PlanEditorProps) {
     }
   };
 
+  // Helper function to get all features from all categories
+  const getAllFeatures = (): PlatformFeature[] => {
+    return PLATFORM_FEATURES.flatMap(category => category.features);
+  };
+
+  // Helper function to initialize plan features based on current plan features
+  const initializePlanFeatures = (plan: Plan): PlatformFeature[] => {
+    const allFeatures = getAllFeatures();
+    return allFeatures.map(feature => ({
+      ...feature,
+      enabled: plan.features?.[feature.id] === true || false
+    }));
+  };
+
+  // Helper function to toggle feature enabled state
+  const toggleFeature = (featureId: string) => {
+    console.log('Toggling feature:', featureId);
+    setPlanFeatures(prev => {
+      const updated = prev.map(feature => 
+        feature.id === featureId 
+          ? { ...feature, enabled: !feature.enabled }
+          : feature
+      );
+      console.log('Updated features:', updated);
+      return updated;
+    });
+  };
+
+  // Helper function to get enabled features as object
+  const getEnabledFeatures = (): Record<string, boolean> => {
+    const enabledFeatures: Record<string, boolean> = {};
+    planFeatures.forEach(feature => {
+      if (feature.enabled) {
+        enabledFeatures[feature.id] = true;
+      }
+    });
+    return enabledFeatures;
+  };
+
   const updatePlan = async (planId: string, updatedData: any) => {
     try {
       setIsUpdating(true);
       setUpdateError(null);
       setUpdateSuccess(null);
 
-      console.log('Updating plan with data:', updatedData);
-      console.log('Features being saved:', updatedData.features);
+      // Include enabled features in the update
+      const enabledFeatures = getEnabledFeatures();
+      const finalUpdateData = {
+        ...updatedData,
+        features: enabledFeatures
+      };
+
+      console.log('Updating plan with data:', finalUpdateData);
+      console.log('Features being saved:', enabledFeatures);
 
       const response = await fetch(`/api/admin/plans/${planId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(updatedData)
+        body: JSON.stringify(finalUpdateData)
       });
 
       const responseData = await response.json();
@@ -206,109 +431,14 @@ export function PlanEditor({ onRefresh }: PlanEditorProps) {
     return 'bg-purple-100 text-purple-800';
   };
 
-  const isLimitKey = (key: string) => {
-    const limitKeywords = [
-      'max_', 'min_', 'limit', 'quota', 'threshold', 'capacity', 
-      'rate', 'per_', 'allowed', 'restricted', 'constraint',
-      'queue_priority', 'wait_time', 'api_calls', 'storage',
-      'concurrent', 'timeout', 'retry', 'backoff'
-    ];
-    return limitKeywords.some(keyword => key.toLowerCase().includes(keyword));
-  };
-
-  const handleFeatureChange = (planId: string, featureKey: string, value: any, isLimit: boolean = false) => {
-    setEditingPlan(prev => {
-      if (!prev) return null;
-      
-      if (isLimit) {
-        return {
-          ...prev,
-          limitations: {
-            ...prev.limitations,
-            [featureKey]: value
-          }
-        };
-      } else {
-        return {
-          ...prev,
-          features: {
-            ...prev.features,
-            [featureKey]: value
-          }
-        };
-      }
-    });
-  };
-
-  const addFeature = () => {
-    if (!newFeatureKey.trim() || !editingPlan) return;
-    
-    let processedValue: any = newFeatureValue;
-    
-    // Smart parsing: try JSON first, then number, then boolean, then string
-    try {
-      processedValue = JSON.parse(newFeatureValue);
-    } catch {
-      if (!isNaN(Number(newFeatureValue)) && newFeatureValue !== '') {
-        processedValue = Number(newFeatureValue);
-      } else if (newFeatureValue.toLowerCase() === 'true') {
-        processedValue = true;
-      } else if (newFeatureValue.toLowerCase() === 'false') {
-        processedValue = false;
-      } else {
-        processedValue = newFeatureValue;
-      }
-    }
-    
-    setEditingPlan(prev => {
-      if (!prev) return null;
-      
-      if (isAddingLimit) {
-        return {
-          ...prev,
-          limitations: {
-            ...prev.limitations,
-            [newFeatureKey]: processedValue
-          }
-        };
-      } else {
-        return {
-          ...prev,
-          features: {
-            ...prev.features,
-            [newFeatureKey]: processedValue
-          }
-        };
-      }
-    });
-    
-    // Reset form
-    setNewFeatureKey('');
-    setNewFeatureValue('');
-    setIsAddingLimit(false);
-    setShowAddFeatureModal(false);
-  };
-
-  const removeFeature = (planId: string, key: string, isLimit: boolean = false) => {
-    setEditingPlan(prev => {
-      if (!prev) return null;
-      
-      if (isLimit) {
-        const newLimitations = { ...prev.limitations };
-        delete newLimitations[key];
-        return {
-          ...prev,
-          limitations: newLimitations
-        };
-      } else {
-        const newFeatures = { ...prev.features };
-        delete newFeatures[key];
-        return {
-          ...prev,
-          features: newFeatures
-        };
-      }
-    });
+  // Initialize plan features when editing starts
+  const startEditing = (plan: Plan) => {
+    setEditingPlan(plan);
+    const initializedFeatures = initializePlanFeatures(plan);
+    console.log('Initializing plan features:', initializedFeatures);
+    setPlanFeatures(initializedFeatures);
+    setUpdateError(null);
+    setUpdateSuccess(null);
   };
 
   if (loading) {
@@ -449,7 +579,7 @@ export function PlanEditor({ onRefresh }: PlanEditorProps) {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-blue-600">
-                    Features ({Object.entries(plan.features || {}).length})
+                    Platform Features ({Object.entries(plan.features || {}).filter(([_, enabled]) => enabled).length})
                   </span>
                   <Button
                     size="sm"
@@ -462,71 +592,42 @@ export function PlanEditor({ onRefresh }: PlanEditorProps) {
                 
                 {showFeatures[plan.id] && (
                   <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {Object.entries(plan.features || {}).map(([key, value]) => (
-                      <div key={key} className="flex justify-between text-xs p-1 bg-blue-50 rounded">
-                        <span className="text-muted-foreground font-medium">{key}:</span>
-                        <span className="font-mono text-blue-800">
-                          {typeof value === 'boolean' ? (value ? '✓' : '✗') : 
-                           typeof value === 'object' ? JSON.stringify(value) : 
-                           String(value)}
+                    {PLATFORM_FEATURES.map(category => 
+                      category.features.map(feature => {
+                        const isEnabled = plan.features?.[feature.id] === true;
+                        return (
+                          <div key={feature.id} className={`flex items-center justify-between text-xs p-2 rounded ${
+                            isEnabled ? 'bg-green-50 border border-green-200' : 'bg-gray-50'
+                          }`}>
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg">{feature.icon}</span>
+                              <span className={`font-medium ${isEnabled ? 'text-green-800' : 'text-gray-500'}`}>
+                                {feature.name}
                         </span>
                       </div>
-                    ))}
-                    {Object.entries(plan.features || {}).length === 0 && (
+                            <span className={`text-xs ${isEnabled ? 'text-green-600' : 'text-gray-400'}`}>
+                              {isEnabled ? '✓ Enabled' : '✗ Disabled'}
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                    {Object.entries(plan.features || {}).filter(([_, enabled]) => enabled).length === 0 && (
                       <div className="text-center py-2 text-gray-500 text-xs">
-                        No features added yet
+                        No features enabled
                       </div>
                     )}
                   </div>
                 )}
               </div>
 
-              {/* Limitations Preview */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-orange-600">
-                    Limitations ({Object.entries(plan.limitations || {}).length})
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setShowFeatures(prev => ({ ...prev, [`${plan.id}_limits`]: !prev[`${plan.id}_limits`] }))}
-                  >
-                    {showFeatures[`${plan.id}_limits`] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                  </Button>
-                </div>
-                
-                {showFeatures[`${plan.id}_limits`] && (
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {Object.entries(plan.limitations || {}).map(([key, value]) => (
-                      <div key={key} className="flex justify-between text-xs p-1 bg-orange-50 rounded">
-                        <span className="text-muted-foreground font-medium">{key}:</span>
-                        <span className="font-mono text-orange-800">
-                          {typeof value === 'boolean' ? (value ? '✓' : '✗') : 
-                           typeof value === 'object' ? JSON.stringify(value) : 
-                           String(value)}
-                        </span>
-                      </div>
-                    ))}
-                    {Object.entries(plan.limitations || {}).length === 0 && (
-                      <div className="text-center py-2 text-gray-500 text-xs">
-                        No limitations set yet
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
 
               {/* Action Buttons */}
               <div className="flex gap-2 pt-2">
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    setEditingPlan(plan);
-                    setUpdateError(null);
-                    setUpdateSuccess(null);
-                  }}
+                  onClick={() => startEditing(plan)}
                   className="flex-1"
                 >
                   <Edit className="h-3 w-3 mr-1" />
@@ -567,7 +668,7 @@ export function PlanEditor({ onRefresh }: PlanEditorProps) {
       {/* Edit Plan Modal */}
       {editingPlan && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-semibold">Edit Plan: {editingPlan.name}</h3>
@@ -604,17 +705,15 @@ export function PlanEditor({ onRefresh }: PlanEditorProps) {
                   amount: parseInt(formData.get('amount') as string) * 100,
                   interval: formData.get('interval') as string,
                   description: formData.get('description') as string,
-                  features: editingPlan.features,
-                  limitations: editingPlan.limitations,
                   is_active: (formData.get('is_active') as string) === 'on'
                 };
                 
                 await updatePlan(editingPlan.id, updatedData);
               }}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* Basic Information */}
                   <div className="space-y-4">
-                    <h4 className="font-medium">Basic Information</h4>
+                    <h4 className="font-medium text-lg">Basic Information</h4>
                     
                     <div>
                       <label className="block text-sm font-medium mb-1">Plan Name</label>
@@ -650,180 +749,75 @@ export function PlanEditor({ onRefresh }: PlanEditorProps) {
                     </div>
                   </div>
 
-                  {/* Features Editor */}
-                  <div className="space-y-6">
-                    {/* Features Section */}
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-medium text-blue-600">Features</h4>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setIsAddingLimit(false);
-                            setShowAddFeatureModal(true);
-                          }}
-                        >
-                          <Plus className="h-3 w-3 mr-1" />
-                          Add Feature
-                        </Button>
-                      </div>
-                    
-                      <div className="space-y-2 max-h-48 overflow-y-auto border rounded p-3 bg-blue-50">
-                        {Object.entries(editingPlan.features || {}).map(([key, value]) => (
-                            <div key={key} className="flex items-center gap-2 p-3 border rounded bg-white">
-                              <div className="flex-1">
-                                <label className="block text-xs font-medium text-gray-600 mb-1">Key</label>
-                                <Input
-                                  value={key}
-                                  onChange={(e) => {
-                                    const newKey = e.target.value;
-                                    const newFeatures = { ...editingPlan.features };
-                                    delete newFeatures[key];
-                                    newFeatures[newKey] = value;
-                                    setEditingPlan(prev => prev ? { ...prev, features: newFeatures } : null);
-                                  }}
-                                  className="text-sm"
-                                  placeholder="Feature key"
-                                />
-                              </div>
-                              <div className="flex-1">
-                                <label className="block text-xs font-medium text-gray-600 mb-1">Value</label>
-                                <Input
-                                  value={typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                                  onChange={(e) => {
-                                    let newValue: any = e.target.value;
-                                    // Try to parse as JSON first, then number, then keep as string
-                                    try {
-                                      newValue = JSON.parse(e.target.value);
-                                    } catch {
-                                      if (!isNaN(Number(e.target.value)) && e.target.value !== '') {
-                                        newValue = Number(e.target.value);
-                                      } else if (e.target.value.toLowerCase() === 'true') {
-                                        newValue = true;
-                                      } else if (e.target.value.toLowerCase() === 'false') {
-                                        newValue = false;
-                                      } else {
-                                        newValue = e.target.value;
-                                      }
-                                    }
-                                    handleFeatureChange(editingPlan.id, key, newValue, false);
-                                  }}
-                                  className="text-sm"
-                                  placeholder="Enter value (string, number, true/false, or JSON)"
-                                />
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => removeFeature(editingPlan.id, key, false)}
-                                  className="text-red-600 hover:text-red-700"
-                                  title="Remove feature"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        
-                        {Object.entries(editingPlan.features || {}).length === 0 && (
-                          <div className="text-center py-8 text-gray-500">
-                            <Settings className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                            <p className="text-sm">No features added yet</p>
-                            <p className="text-xs">Click "Add Feature" to get started</p>
-                          </div>
-                        )}
+                  {/* Platform Features */}
+                  <div className="lg:col-span-2 space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium text-lg">Platform Features</h4>
+                      <div className="text-sm text-gray-600">
+                        {planFeatures.filter(f => f.enabled).length} of {planFeatures.length} enabled
                       </div>
                     </div>
+                    
+                    {/* Debug info - remove this later */}
+                    <div className="text-xs text-gray-500 mb-4 p-2 bg-gray-100 rounded">
+                      Debug: planFeatures.length = {planFeatures.length}, 
+                      enabled = {planFeatures.filter(f => f.enabled).map(f => f.id).join(', ')}
+                    </div>
 
-                    {/* Limits Section */}
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-medium text-orange-600">Limits & Constraints</h4>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setIsAddingLimit(true);
-                            setShowAddFeatureModal(true);
-                          }}
-                        >
-                          <Plus className="h-3 w-3 mr-1" />
-                          Add Limit
-                        </Button>
-                      </div>
-                      
-                      <div className="space-y-2 max-h-48 overflow-y-auto border rounded p-3 bg-orange-50">
-                        {Object.entries(editingPlan.limitations || {}).map(([key, value]) => (
-                            <div key={key} className="flex items-center gap-2 p-3 border rounded bg-white">
-                              <div className="flex-1">
-                                <label className="block text-xs font-medium text-gray-600 mb-1">Key</label>
-                                <Input
-                                  value={key}
-                                  onChange={(e) => {
-                                    const newKey = e.target.value;
-                                    const newLimitations = { ...editingPlan.limitations };
-                                    delete newLimitations[key];
-                                    newLimitations[newKey] = value;
-                                    setEditingPlan(prev => prev ? { ...prev, limitations: newLimitations } : null);
-                                  }}
-                                  className="text-sm"
-                                  placeholder="Limit key"
-                                />
-                              </div>
-                              <div className="flex-1">
-                                <label className="block text-xs font-medium text-gray-600 mb-1">Value</label>
-                                <Input
-                                  value={typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                                  onChange={(e) => {
-                                    let newValue: any = e.target.value;
-                                    // Try to parse as JSON first, then number, then keep as string
-                                    try {
-                                      newValue = JSON.parse(e.target.value);
-                                    } catch {
-                                      if (!isNaN(Number(e.target.value)) && e.target.value !== '') {
-                                        newValue = Number(e.target.value);
-                                      } else if (e.target.value.toLowerCase() === 'true') {
-                                        newValue = true;
-                                      } else if (e.target.value.toLowerCase() === 'false') {
-                                        newValue = false;
-                                      } else {
-                                        newValue = e.target.value;
-                                      }
-                                    }
-                                    handleFeatureChange(editingPlan.id, key, newValue, true);
-                                  }}
-                                  className="text-sm"
-                                  placeholder="Enter value (string, number, true/false, or JSON)"
-                                />
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => removeFeature(editingPlan.id, key, true)}
-                                  className="text-red-600 hover:text-red-700"
-                                  title="Remove limit"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                              </div>
+                    <div className="space-y-6 max-h-96 overflow-y-auto">
+                      {PLATFORM_FEATURES.map(category => (
+                        <div key={category.id} className="border rounded-lg p-4">
+                          <div className="flex items-center gap-3 mb-4">
+                            <span className="text-2xl">{category.icon}</span>
+                            <div>
+                              <h5 className="font-medium text-lg">{category.name}</h5>
+                              <p className="text-sm text-gray-600">{category.description}</p>
                             </div>
-                          ))}
-                        
-                        {Object.entries(editingPlan.limitations || {}).length === 0 && (
-                          <div className="text-center py-8 text-gray-500">
-                            <Settings className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                            <p className="text-sm">No limits set yet</p>
-                            <p className="text-xs">Click "Add Limit" to get started</p>
                           </div>
-                        )}
-                      </div>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {category.features.map(feature => {
+                              const planFeature = planFeatures.find(f => f.id === feature.id);
+                              const isEnabled = planFeature?.enabled || false;
+                              console.log(`Feature ${feature.id}: planFeature=${planFeature}, isEnabled=${isEnabled}`);
+                              
+                              return (
+                                <div
+                                  key={feature.id}
+                                  className={`p-3 border rounded-lg cursor-pointer transition-all ${
+                                    isEnabled 
+                                      ? 'border-green-300 bg-green-50' 
+                                      : 'border-gray-200 bg-white hover:border-gray-300'
+                                  }`}
+                                  onClick={() => toggleFeature(feature.id)}
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div className="flex-shrink-0 mt-1">
+                                      <input
+                                        type="checkbox"
+                                        checked={isEnabled}
+                                        onChange={(e) => {
+                                          e.stopPropagation();
+                                          toggleFeature(feature.id);
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                                      />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-lg">{feature.icon}</span>
+                                        <h6 className="font-medium text-sm">{feature.name}</h6>
+                                      </div>
+                                      <p className="text-xs text-gray-600">{feature.description}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -861,108 +855,6 @@ export function PlanEditor({ onRefresh }: PlanEditorProps) {
         </div>
       )}
 
-      {/* Add Feature Modal */}
-      {showAddFeatureModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">
-                  {isAddingLimit ? 'Add New Limit' : 'Add New Feature'}
-                </h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setShowAddFeatureModal(false);
-                    setNewFeatureKey('');
-                    setNewFeatureValue('');
-                    setIsAddingLimit(false);
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    {isAddingLimit ? 'Limit Key' : 'Feature Key'}
-                  </label>
-                  <Input
-                    placeholder={isAddingLimit 
-                      ? "e.g., max_projects, api_calls_per_month, queue_priority" 
-                      : "e.g., screenshots, ai_analysis, priority_support"
-                    }
-                    value={newFeatureKey}
-                    onChange={(e) => setNewFeatureKey(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">Value</label>
-                  <Input
-                    placeholder="Enter value (string, number, true/false, or JSON)"
-                    value={newFeatureValue}
-                    onChange={(e) => setNewFeatureValue(e.target.value)}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Examples: "text", 10, true, false, ["item1", "item2"], {"{"}"key": "value"{"}"}
-                  </p>
-                </div>
-
-                <div className={`p-3 rounded ${isAddingLimit ? 'bg-orange-50' : 'bg-blue-50'}`}>
-                  <h4 className="text-sm font-medium mb-2">
-                    {isAddingLimit ? 'Common Limit Examples:' : 'Common Feature Examples:'}
-                  </h4>
-                  <div className="text-xs space-y-1">
-                    {isAddingLimit ? (
-                      <>
-                        <div><strong>max_projects:</strong> 10 (number)</div>
-                        <div><strong>api_calls_per_month:</strong> 1000 (number)</div>
-                        <div><strong>queue_priority:</strong> 2 (number)</div>
-                        <div><strong>storage_gb:</strong> 10 (number)</div>
-                        <div><strong>concurrent_requests:</strong> 5 (number)</div>
-                        <div><strong>limits:</strong> {`{"api_calls": 1000, "storage_gb": 10}`} (object)</div>
-                      </>
-                    ) : (
-                      <>
-                        <div><strong>screenshots:</strong> true (boolean)</div>
-                        <div><strong>ai_analysis:</strong> true (boolean)</div>
-                        <div><strong>priority_support:</strong> true (boolean)</div>
-                        <div><strong>features:</strong> ["SEO Analysis", "Screenshots"] (array)</div>
-                        <div><strong>support_level:</strong> "Email" (string)</div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setShowAddFeatureModal(false);
-                    setNewFeatureKey('');
-                    setNewFeatureValue('');
-                    setIsAddingLimit(false);
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  onClick={addFeature}
-                  disabled={!newFeatureKey.trim() || !newFeatureValue.trim()}
-                >
-                  Add Feature
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
