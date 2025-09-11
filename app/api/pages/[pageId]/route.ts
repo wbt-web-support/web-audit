@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ pageId: string }> }
-) {
+): Promise<Response> {
   try {
     // Add timeout to prevent hanging requests
     const timeoutPromise = new Promise((_, reject) => 
@@ -66,7 +66,7 @@ export async function GET(
     })();
     
     // Race between data fetching and timeout
-    return await Promise.race([dataPromise, timeoutPromise]);
+    return await Promise.race([dataPromise, timeoutPromise]) as Response;
   } catch (error) {
     return NextResponse.json(
       { error: 'Internal server error' },

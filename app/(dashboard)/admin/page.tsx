@@ -45,6 +45,8 @@ import { RevenueAnalytics } from './components/RevenueAnalytics';
 import { SystemAlerts } from './components/SystemAlerts';
 import { SupportTickets } from './components/SupportTickets';
 import { ProjectAnalytics } from './components/ProjectAnalytics';
+import { PlanManagement } from './components/PlanManagement';
+import { UserPlanManagement } from './components/UserPlanManagement';
 
 interface UserProfile {
   id: string;
@@ -250,6 +252,8 @@ export default function AdminPage() {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             {activeTab === 'overview' && 'Admin Overview'}
             {activeTab === 'users' && 'User Management'}
+            {activeTab === 'plans' && 'Plan Management'}
+            {activeTab === 'user-plans' && 'User Plan Management'}
             {activeTab === 'projects' && 'Project Analytics'}
             {activeTab === 'analytics' && 'System Analytics'}
             {activeTab === 'subscriptions' && 'Subscription Management'}
@@ -260,6 +264,8 @@ export default function AdminPage() {
           <p className="text-gray-600 dark:text-gray-400 mt-2">
             {activeTab === 'overview' && 'Monitor system performance and key metrics'}
             {activeTab === 'users' && 'Manage user accounts and permissions'}
+            {activeTab === 'plans' && 'Manage subscription plans and pricing'}
+            {activeTab === 'user-plans' && 'Assign and manage user plan subscriptions'}
             {activeTab === 'projects' && 'Track project performance and analytics'}
             {activeTab === 'analytics' && 'View detailed system analytics and reports'}
             {activeTab === 'subscriptions' && 'Manage user subscriptions and billing'}
@@ -282,6 +288,14 @@ export default function AdminPage() {
               regularUsers={regularUsers}
               onRefresh={checkAccessAndFetchUsers}
             />
+          )}
+          
+          {activeTab === 'plans' && (
+            <PlanManagement onRefresh={checkAccessAndFetchUsers} />
+          )}
+          
+          {activeTab === 'user-plans' && (
+            <UserPlanManagement onRefresh={checkAccessAndFetchUsers} />
           )}
           
           {activeTab === 'projects' && (
