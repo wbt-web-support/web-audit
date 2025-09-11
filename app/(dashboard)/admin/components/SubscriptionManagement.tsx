@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,52 +19,115 @@ import {
   Filter,
   Download,
   Plus,
-  Settings
+  Settings,
+  RefreshCw
 } from 'lucide-react';
 
-// Mock subscription data
-const subscriptionData = [
-  { id: '1', user: 'john@example.com', plan: 'Pro', status: 'active', amount: 29, startDate: '2024-01-15', endDate: '2024-02-15', autoRenew: true },
-  { id: '2', user: 'sarah@test.com', plan: 'Enterprise', status: 'active', amount: 99, startDate: '2024-01-10', endDate: '2024-02-10', autoRenew: true },
-  { id: '3', user: 'mike@demo.org', plan: 'Free', status: 'active', amount: 0, startDate: '2024-01-20', endDate: null, autoRenew: false },
-  { id: '4', user: 'lisa@sample.net', plan: 'Pro', status: 'cancelled', amount: 29, startDate: '2024-01-05', endDate: '2024-02-05', autoRenew: false },
-  { id: '5', user: 'alex@website.io', plan: 'Enterprise', status: 'active', amount: 99, startDate: '2024-01-12', endDate: '2024-02-12', autoRenew: true }
-];
+interface Subscription {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  razorpay_subscription_id: string;
+  status: string;
+  current_start: string;
+  current_end: string;
+  amount: number;
+  currency: string;
+  created_at: string;
+  updated_at: string;
+  user_profiles: {
+    email: string;
+    full_name: string | null;
+  };
+  plans: {
+    name: string;
+    amount: number;
+    interval: string;
+  };
+}
 
-const planStats = [
-  { plan: 'Free', users: 234, revenue: 0, growth: 12 },
-  { plan: 'Pro', users: 156, revenue: 4524, growth: 8 },
-  { plan: 'Enterprise', users: 45, revenue: 4455, growth: 15 }
-];
+interface PlanStats {
+  plan_name: string;
+  name?: string; // Fallback field from database
+  user_count: number;
+  active_users: number;
+  free_users: number;
+  expired_users: number;
+  cancelled_users: number;
+  total_revenue: number;
+  average_revenue: number;
+  new_subscriptions_30d: number;
+  new_subscriptions_7d: number;
+}
 
 export function SubscriptionManagement() {
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [planStats, setPlanStats] = useState<PlanStats[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterPlan, setFilterPlan] = useState('all');
 
-  const totalSubscriptions = subscriptionData.length;
-  const activeSubscriptions = subscriptionData.filter(s => s.status === 'active').length;
-  const totalRevenue = subscriptionData.reduce((sum, s) => sum + s.amount, 0);
-  const monthlyRecurringRevenue = subscriptionData.filter(s => s.autoRenew).reduce((sum, s) => sum + s.amount, 0);
+  useEffect(() => {
+    fetchSubscriptionData();
+  }, []);
 
-  const filteredSubscriptions = subscriptionData.filter(sub => {
-    const matchesSearch = sub.user.toLowerCase().includes(searchTerm.toLowerCase());
+  const fetchSubscriptionData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fetch subscriptions and plan stats in parallel
+      const [subscriptionsResponse, planStatsResponse] = await Promise.all([
+        fetch('/api/admin/subscriptions'),
+        fetch('/api/admin/plan-statistics')
+      ]);
+
+      if (subscriptionsResponse.ok && planStatsResponse.ok) {
+        const subscriptionsData = await subscriptionsResponse.json();
+        const planStatsData = await planStatsResponse.json();
+        
+        console.log('Plan stats data received:', planStatsData.planStats);
+        setSubscriptions(subscriptionsData.subscriptions || []);
+        setPlanStats(planStatsData.planStats || []);
+      } else {
+        const errorData = await subscriptionsResponse.json();
+        setError(errorData.error || 'Failed to fetch subscription data');
+      }
+    } catch (error) {
+      console.error('Error fetching subscription data:', error);
+      setError('An unexpected error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const totalSubscriptions = subscriptions.length;
+  const activeSubscriptions = subscriptions.filter(s => s.status === 'active').length;
+  const totalRevenue = subscriptions.reduce((sum, s) => sum + s.amount, 0);
+  const monthlyRecurringRevenue = subscriptions.filter(s => s.status === 'active').reduce((sum, s) => sum + s.amount, 0);
+
+  const filteredSubscriptions = subscriptions.filter(sub => {
+    const matchesSearch = sub.user_profiles.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (sub.user_profiles.full_name && sub.user_profiles.full_name.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesStatus = filterStatus === 'all' || sub.status === filterStatus;
-    const matchesPlan = filterPlan === 'all' || sub.plan === filterPlan;
+    const matchesPlan = filterPlan === 'all' || sub.plans.name === filterPlan;
     return matchesSearch && matchesStatus && matchesPlan;
   });
 
   const exportSubscriptionData = () => {
     const csvContent = [
-      ['User', 'Plan', 'Status', 'Amount', 'Start Date', 'End Date', 'Auto Renew'],
+      ['User', 'Plan', 'Status', 'Amount', 'Start Date', 'End Date', 'Currency', 'Razorpay ID'],
       ...filteredSubscriptions.map(sub => [
-        sub.user,
-        sub.plan,
+        sub.user_profiles.email,
+        sub.plans.name,
         sub.status,
-        sub.amount.toString(),
-        sub.startDate,
-        sub.endDate || 'N/A',
-        sub.autoRenew ? 'Yes' : 'No'
+        (sub.amount / 100).toString(), // Convert from paise to rupees
+        new Date(sub.current_start).toLocaleDateString(),
+        new Date(sub.current_end).toLocaleDateString(),
+        sub.currency,
+        sub.razorpay_subscription_id
       ])
     ].map(row => row.join(',')).join('\n');
 
@@ -76,6 +139,48 @@ export function SubscriptionManagement() {
     a.click();
     window.URL.revokeObjectURL(url);
   };
+
+  const formatAmount = (amount: number) => {
+    return `₹${(amount / 100).toLocaleString()}`;
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'bg-green-100 text-green-800';
+      case 'cancelled': return 'bg-red-100 text-red-800';
+      case 'expired': return 'bg-orange-100 text-orange-800';
+      case 'paused': return 'bg-yellow-100 text-yellow-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+          <div className="h-96 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Error</h3>
+              <p className="text-gray-600 mb-4">{error}</p>
+              <Button onClick={fetchSubscriptionData}>Try Again</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -113,7 +218,7 @@ export function SubscriptionManagement() {
             <DollarSign className="h-4 w-4 text-muted-foreground ml-auto" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${totalRevenue.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{formatAmount(totalRevenue)}</div>
             <div className="text-xs text-muted-foreground">
               All time
             </div>
@@ -126,7 +231,7 @@ export function SubscriptionManagement() {
             <TrendingUp className="h-4 w-4 text-muted-foreground ml-auto" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${monthlyRecurringRevenue.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{formatAmount(monthlyRecurringRevenue)}</div>
             <div className="text-xs text-muted-foreground">
               Recurring monthly
             </div>
@@ -137,30 +242,34 @@ export function SubscriptionManagement() {
       {/* Plan Distribution */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {planStats.map((plan, index) => (
-          <Card key={index}>
+          <Card key={`plan-card-${index}-${plan.plan_name || plan.name || 'unknown'}`}>
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
-                <span>{plan.plan} Plan</span>
-                <Badge variant={plan.plan === 'Free' ? 'secondary' : 'default'}>
-                  {plan.users} users
+                <span>{plan.plan_name || plan.name || 'Unknown Plan'}</span>
+                <Badge variant={(plan.plan_name || plan.name) === 'Free Plan' ? 'secondary' : 'default'}>
+                  {plan.user_count} users
                 </Badge>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Users:</span>
-                  <span className="font-medium">{plan.users}</span>
+                  <span className="text-sm text-muted-foreground">Total Users:</span>
+                  <span className="font-medium">{plan.user_count}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Active Users:</span>
+                  <span className="font-medium text-green-600">{plan.active_users}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Revenue:</span>
-                  <span className="font-medium">${plan.revenue.toLocaleString()}</span>
+                  <span className="font-medium">{formatAmount(plan.total_revenue)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Growth:</span>
+                  <span className="text-sm text-muted-foreground">New (30d):</span>
                   <span className="flex items-center text-sm">
                     <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
-                    +{plan.growth}%
+                    {plan.new_subscriptions_30d}
                   </span>
                 </div>
               </div>
@@ -199,10 +308,15 @@ export function SubscriptionManagement() {
             className="px-3 py-2 border border-gray-300 rounded-md text-sm"
           >
             <option value="all">All Plans</option>
-            <option value="Free">Free</option>
-            <option value="Pro">Pro</option>
-            <option value="Enterprise">Enterprise</option>
+            {planStats.map((plan, index) => (
+              <option key={`plan-${index}-${plan.plan_name}`} value={plan.plan_name}>{plan.plan_name}</option>
+            ))}
           </select>
+          
+          <Button onClick={fetchSubscriptionData} variant="outline" className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
           
           <Button onClick={exportSubscriptionData} variant="outline" className="flex items-center gap-2">
             <Download className="h-4 w-4" />
@@ -221,8 +335,8 @@ export function SubscriptionManagement() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {filteredSubscriptions.map((subscription) => (
-              <div key={subscription.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+            {filteredSubscriptions.map((subscription, index) => (
+              <div key={`subscription-${subscription.id}-${index}`} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
                 <div className="flex items-center space-x-4">
                   <div className="flex-shrink-0">
                     <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -230,26 +344,32 @@ export function SubscriptionManagement() {
                     </div>
                   </div>
                   <div>
-                    <div className="font-medium">{subscription.user}</div>
+                    <div className="font-medium">{subscription.user_profiles.email}</div>
                     <div className="text-sm text-muted-foreground">
-                      Started {new Date(subscription.startDate).toLocaleDateString()}
+                      {subscription.user_profiles.full_name || 'No name'}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Started {new Date(subscription.current_start).toLocaleDateString()}
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center space-x-4">
                   <div className="text-right">
-                    <div className="font-medium">{subscription.plan}</div>
+                    <div className="font-medium">{subscription.plans.name}</div>
                     <div className="text-sm text-muted-foreground">
-                      ${subscription.amount}/month
+                      {formatAmount(subscription.amount)}/{subscription.plans.interval}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      ID: {subscription.razorpay_subscription_id}
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Badge variant={subscription.status === 'active' ? 'default' : 'secondary'}>
+                    <Badge className={getStatusColor(subscription.status)}>
                       {subscription.status}
                     </Badge>
-                    {subscription.autoRenew && (
+                    {subscription.status === 'active' && (
                       <Badge className="bg-green-100 text-green-800">
-                        Auto-renew
+                        Active
                       </Badge>
                     )}
                   </div>

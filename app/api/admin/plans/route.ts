@@ -21,9 +21,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    // Get all plans with statistics
+    // Get all plans with basic statistics
     const { data: plans, error } = await supabase
-      .from('plan_statistics')
+      .from('plans')
       .select('*')
       .order('amount', { ascending: true });
 
@@ -32,7 +32,50 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch plans' }, { status: 500 });
     }
 
-    return NextResponse.json({ plans });
+    // Get user statistics for each plan
+    const plansWithStats = await Promise.all(
+      plans.map(async (plan) => {
+        const { count: userCount } = await supabase
+          .from('user_profiles')
+          .select('*', { count: 'exact', head: true })
+          .eq('plan_id', plan.id);
+
+        const { count: activeUsers } = await supabase
+          .from('user_profiles')
+          .select('*', { count: 'exact', head: true })
+          .eq('plan_id', plan.id)
+          .eq('plan_status', 'active');
+
+        const { count: freeUsers } = await supabase
+          .from('user_profiles')
+          .select('*', { count: 'exact', head: true })
+          .eq('plan_id', plan.id)
+          .eq('plan_status', 'free');
+
+        const { count: expiredUsers } = await supabase
+          .from('user_profiles')
+          .select('*', { count: 'exact', head: true })
+          .eq('plan_id', plan.id)
+          .eq('plan_status', 'expired');
+
+        const { count: cancelledUsers } = await supabase
+          .from('user_profiles')
+          .select('*', { count: 'exact', head: true })
+          .eq('plan_id', plan.id)
+          .eq('plan_status', 'cancelled');
+
+        return {
+          ...plan,
+          user_count: userCount || 0,
+          active_users: activeUsers || 0,
+          free_users: freeUsers || 0,
+          expired_users: expiredUsers || 0,
+          cancelled_users: cancelledUsers || 0,
+        };
+      })
+    );
+
+    return NextResponse.json({ plans: plansWithStats });
   } catch (error) {
     console.error('Error in GET /api/admin/plans:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -60,7 +103,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, razorpay_plan_id, amount, interval, description, features, is_active } = body;
+    const { name, razorpay_plan_id, amount, interval, description, features, limitations, is_active } = body;
 
     // Validate required fields
     if (!name || !razorpay_plan_id || amount === undefined || !interval) {
@@ -79,6 +122,7 @@ export async function POST(request: NextRequest) {
         interval,
         description,
         features: features || {},
+        limitations: limitations || {},
         is_active: is_active !== undefined ? is_active : true
       })
       .select()

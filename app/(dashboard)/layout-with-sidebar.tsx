@@ -18,7 +18,9 @@ import {
   Shield,
   HelpCircle,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Star,
+  Zap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -35,6 +37,11 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileExpanded, setProfileExpanded] = useState(pathname.startsWith('/profile'));
+  const [userPlan, setUserPlan] = useState<{
+    name: string;
+    status: string;
+    queue_priority: number;
+  } | null>(null);
 
   // Auto-expand profile section when on profile pages
   useEffect(() => {
@@ -42,6 +49,42 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
       setProfileExpanded(true);
     }
   }, [pathname]);
+
+  // Fetch user plan data
+  useEffect(() => {
+    const fetchUserPlan = async () => {
+      try {
+        const response = await fetch('/api/profile/data');
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Profile data with plan:', data.profile);
+          
+          if (data.profile?.plans) {
+            setUserPlan({
+              name: data.profile.plans.name || 'Free Plan temp',
+              status: data.profile.plan_status || 'free temp',
+              queue_priority: data.profile.queue_priority || 3
+            });
+          } else {
+            setUserPlan({
+              name: 'Free Plan dummy',
+              status: 'free',
+              queue_priority: 3
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user plan:', error);
+        setUserPlan({
+          name: 'Free Plan',
+          status: 'free',
+          queue_priority: 3
+        });
+      }
+    };
+
+    fetchUserPlan();
+  }, []);
 
   // Memoize navigation items to prevent recreation on every render
   const navigation = useMemo(() => [
@@ -96,6 +139,7 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
           onCloseSidebar={closeSidebar}
           profileExpanded={profileExpanded}
           onToggleProfile={toggleProfile}
+          userPlan={userPlan}
         />
 
         {/* Main Content */}
@@ -155,7 +199,8 @@ const Sidebar = React.memo(({
   sidebarOpen, 
   onCloseSidebar,
   profileExpanded,
-  onToggleProfile
+  onToggleProfile,
+  userPlan
 }: { 
   navigation: Array<{ name: string; href: string; icon: any }>;
   isActive: (href: string) => boolean;
@@ -163,13 +208,18 @@ const Sidebar = React.memo(({
   onCloseSidebar: () => void;
   profileExpanded: boolean;
   onToggleProfile: () => void;
+  userPlan: {
+    name: string;
+    status: string;
+    queue_priority: number;
+  } | null;
 }) => {
   const pathname = usePathname();
   const isProfileActive = pathname.startsWith('/profile');
   
   return (
     <div className={cn(
-      "fixed inset-y-0 left-0 z-50 w-64 bg-white border-r transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 lg:flex-shrink-0 lg:sticky lg:top-0",
+      "fixed inset-y-0 left-0 z-50 w-64 bg-white border-r transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 lg:flex-shrink-0 lg:top-0",
       sidebarOpen ? "translate-x-0" : "-translate-x-full"
     )}>
       <div className="flex flex-col h-full">
@@ -240,6 +290,13 @@ const Sidebar = React.memo(({
           
           <AdminNavigation onCloseSidebar={onCloseSidebar} />
         </nav>
+
+        {/* User Plan Indicator */}
+        {userPlan && (
+          <div className="px-4 py-3 border-t border-gray-200">
+            <PlanIndicator userPlan={userPlan} />
+          </div>
+        )}
 
         {/* Bottom Section - Theme Switcher and Logout */}
         <div className="border-t p-4 flex-shrink-0">
@@ -420,4 +477,58 @@ const NavigationItem = React.memo(({
   );
 });
 
-NavigationItem.displayName = 'NavigationItem'; 
+NavigationItem.displayName = 'NavigationItem';
+
+// Plan Indicator Component
+const PlanIndicator = React.memo(({ 
+  userPlan 
+}: { 
+  userPlan: {
+    name: string;
+    status: string;
+    queue_priority: number;
+  };
+}) => {
+  const getPlanIcon = (priority: number) => {
+    if (priority === 1) return <Crown className="h-4 w-4" />;
+    if (priority === 2) return <Star className="h-4 w-4" />;
+    return <Zap className="h-4 w-4" />;
+  };
+
+  const getPlanColor = (status: string, priority: number) => {
+    if (status === 'active') {
+      if (priority === 1) return 'bg-purple-100 text-purple-800 border-purple-200';
+      if (priority === 2) return 'bg-blue-100 text-blue-800 border-blue-200';
+      return 'bg-green-100 text-green-800 border-green-200';
+    }
+    return 'bg-gray-100 text-gray-600 border-gray-200';
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'active': return 'Active';
+      case 'expired': return 'Expired';
+      case 'cancelled': return 'Cancelled';
+      default: return 'Free';
+    }
+  };
+
+  return (
+    <div className={cn(
+      "flex items-center gap-3 px-3 py-2 rounded-lg border text-sm font-medium",
+      getPlanColor(userPlan.status, userPlan.queue_priority)
+    )}>
+      <div className="flex-shrink-0">
+        {getPlanIcon(userPlan.queue_priority)}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-medium truncate">{userPlan.name}</div>
+        <div className="text-xs opacity-75">
+          {getStatusText(userPlan.status)} • Priority {userPlan.queue_priority}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+PlanIndicator.displayName = 'PlanIndicator'; 

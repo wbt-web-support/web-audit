@@ -415,6 +415,166 @@ export function PlanManagement({ onRefresh }: PlanManagementProps) {
           </div>
         )}
       </div>
+
+      {/* Create Plan Modal */}
+      {showCreateForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold mb-4">Create New Plan</h3>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const formData = new FormData(e.target as HTMLFormElement);
+              const planData = {
+                name: formData.get('name') as string,
+                razorpay_plan_id: formData.get('razorpay_plan_id') as string,
+                amount: parseInt(formData.get('amount') as string) * 100, // Convert to paise
+                interval: formData.get('interval') as string,
+                description: formData.get('description') as string,
+                features: JSON.parse(formData.get('features') as string || '{}'),
+                is_active: true
+              };
+
+              try {
+                const response = await fetch('/api/admin/plans', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(planData)
+                });
+
+                if (response.ok) {
+                  setShowCreateForm(false);
+                  fetchPlans();
+                  onRefresh?.();
+                } else {
+                  const errorData = await response.json();
+                  setError(errorData.error || 'Failed to create plan');
+                }
+              } catch (error) {
+                console.error('Error creating plan:', error);
+                setError('An unexpected error occurred');
+              }
+            }}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Plan Name</label>
+                  <Input name="name" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Razorpay Plan ID</label>
+                  <Input name="razorpay_plan_id" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Amount (₹)</label>
+                  <Input name="amount" type="number" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Interval</label>
+                  <select name="interval" className="w-full p-2 border rounded" required>
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Description</label>
+                  <textarea name="description" className="w-full p-2 border rounded" rows={3}></textarea>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Features (JSON)</label>
+                  <textarea name="features" className="w-full p-2 border rounded" rows={3} defaultValue='{"max_projects": 1, "screenshots": false}'></textarea>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <Button type="button" variant="outline" onClick={() => setShowCreateForm(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">Create Plan</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Plan Modal */}
+      {editingPlan && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold mb-4">Edit Plan</h3>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const formData = new FormData(e.target as HTMLFormElement);
+              const planData = {
+                name: formData.get('name') as string,
+                razorpay_plan_id: formData.get('razorpay_plan_id') as string,
+                amount: parseInt(formData.get('amount') as string) * 100, // Convert to paise
+                interval: formData.get('interval') as string,
+                description: formData.get('description') as string,
+                features: JSON.parse(formData.get('features') as string || '{}'),
+                is_active: formData.get('is_active') === 'on'
+              };
+
+              try {
+                const response = await fetch(`/api/admin/plans/${editingPlan.id}`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(planData)
+                });
+
+                if (response.ok) {
+                  setEditingPlan(null);
+                  fetchPlans();
+                  onRefresh?.();
+                } else {
+                  const errorData = await response.json();
+                  setError(errorData.error || 'Failed to update plan');
+                }
+              } catch (error) {
+                console.error('Error updating plan:', error);
+                setError('An unexpected error occurred');
+              }
+            }}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Plan Name</label>
+                  <Input name="name" defaultValue={editingPlan.name} required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Razorpay Plan ID</label>
+                  <Input name="razorpay_plan_id" defaultValue={editingPlan.razorpay_plan_id} required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Amount (₹)</label>
+                  <Input name="amount" type="number" defaultValue={editingPlan.amount / 100} required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Interval</label>
+                  <select name="interval" className="w-full p-2 border rounded" defaultValue={editingPlan.interval} required>
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Description</label>
+                  <textarea name="description" className="w-full p-2 border rounded" rows={3} defaultValue={editingPlan.description}></textarea>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Features (JSON)</label>
+                  <textarea name="features" className="w-full p-2 border rounded" rows={3} defaultValue={JSON.stringify(editingPlan.features, null, 2)}></textarea>
+                </div>
+                <div className="flex items-center">
+                  <input type="checkbox" name="is_active" defaultChecked={editingPlan.is_active} className="mr-2" />
+                  <label className="text-sm font-medium">Active</label>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <Button type="button" variant="outline" onClick={() => setEditingPlan(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit">Update Plan</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

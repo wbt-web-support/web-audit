@@ -84,7 +84,23 @@ export async function PUT(
 
     const { id } = await params;
     const body = await request.json();
-    const { name, razorpay_plan_id, amount, interval, description, features, is_active } = body;
+    const { name, razorpay_plan_id, amount, interval, description, features, limitations, is_active } = body;
+
+    // Validate required fields
+    if (!name || !razorpay_plan_id || amount === undefined || !interval) {
+      return NextResponse.json({ 
+        error: 'Missing required fields: name, razorpay_plan_id, amount, and interval are required' 
+      }, { status: 400 });
+    }
+
+    // Validate amount is a positive number
+    if (amount < 0) {
+      return NextResponse.json({ 
+        error: 'Amount must be a positive number' 
+      }, { status: 400 });
+    }
+
+    console.log('Updating plan:', { id, name, amount, features, limitations });
 
     // Update plan
     const { data: plan, error } = await supabase
@@ -94,8 +110,9 @@ export async function PUT(
         razorpay_plan_id,
         amount,
         interval,
-        description,
+        description: description || '',
         features: features || {},
+        limitations: limitations || {},
         is_active: is_active !== undefined ? is_active : true,
         updated_at: new Date().toISOString()
       })
@@ -105,13 +122,27 @@ export async function PUT(
 
     if (error) {
       console.error('Error updating plan:', error);
-      return NextResponse.json({ error: 'Failed to update plan' }, { status: 500 });
+      return NextResponse.json({ 
+        error: `Failed to update plan: ${error.message}` 
+      }, { status: 500 });
     }
 
-    return NextResponse.json({ plan });
+    if (!plan) {
+      return NextResponse.json({ 
+        error: 'Plan not found' 
+      }, { status: 404 });
+    }
+
+    console.log('Plan updated successfully:', plan.id);
+    return NextResponse.json({ 
+      plan,
+      message: 'Plan updated successfully' 
+    });
   } catch (error) {
     console.error('Error in PUT /api/admin/plans/[id]:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'Internal server error' 
+    }, { status: 500 });
   }
 }
 
@@ -159,7 +190,45 @@ export async function DELETE(
       }, { status: 400 });
     }
 
-    // Delete plan (this will cascade to queue_priorities)
+    // First, delete related records that reference this plan
+    // Delete queue priorities
+    const { error: queueError } = await supabase
+      .from('queue_priorities')
+      .delete()
+      .eq('plan_id', id);
+
+    if (queueError) {
+      console.error('Error deleting queue priorities:', queueError);
+      return NextResponse.json({ error: 'Failed to delete related queue priorities' }, { status: 500 });
+    }
+
+    // Delete subscriptions
+    const { error: subscriptionError } = await supabase
+      .from('subscriptions')
+      .delete()
+      .eq('plan_id', id);
+
+    if (subscriptionError) {
+      console.error('Error deleting subscriptions:', subscriptionError);
+      return NextResponse.json({ error: 'Failed to delete related subscriptions' }, { status: 500 });
+    }
+
+    // Update user_profiles to remove plan references
+    const { error: userError } = await supabase
+      .from('user_profiles')
+      .update({ 
+        plan_id: null, 
+        plan_status: 'free',
+        queue_priority: 3 
+      })
+      .eq('plan_id', id);
+
+    if (userError) {
+      console.error('Error updating user profiles:', userError);
+      return NextResponse.json({ error: 'Failed to update user profiles' }, { status: 500 });
+    }
+
+    // Now delete the plan
     const { error } = await supabase
       .from('plans')
       .delete()

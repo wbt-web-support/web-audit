@@ -35,7 +35,11 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
-  Info
+  Info,
+  ArrowLeft,
+  HelpCircle,
+  FolderOpen,
+  Banknote
 } from 'lucide-react';
 
 import { UserManagement } from './components/UserManagement';
@@ -46,6 +50,7 @@ import { SystemAlerts } from './components/SystemAlerts';
 import { SupportTickets } from './components/SupportTickets';
 import { ProjectAnalytics } from './components/ProjectAnalytics';
 import { PlanManagement } from './components/PlanManagement';
+import { PlanEditor } from './components/PlanEditor';
 import { UserPlanManagement } from './components/UserPlanManagement';
 
 interface UserProfile {
@@ -236,6 +241,41 @@ export default function AdminPage() {
     <div className="w-full px-6 py-8 bg-gray-50 min-h-screen">
       {/* Header */}
       <div className="mb-8">
+          {/* Navigation Tabs */}
+          <div className="mb-6">
+            <div className="flex flex-wrap gap-2 border-b border-gray-200">
+              {[
+                { id: 'overview', label: 'Overview', icon: BarChart3 },
+                { id: 'users', label: 'Users', icon: Users },
+                { id: 'plans', label: 'Plans', icon: CreditCard },
+                { id: 'plan-editor', label: 'Plan Editor', icon: Settings },
+                { id: 'user-plans', label: 'User Plans', icon: UserCheck },
+                { id: 'subscriptions', label: 'Subscriptions', icon: DollarSign },
+                { id: 'projects', label: 'Projects', icon: FolderOpen },
+                { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+                { id: 'revenue', label: 'Revenue', icon: Banknote },
+                { id: 'alerts', label: 'Alerts', icon: AlertTriangle },
+                { id: 'support', label: 'Support', icon: HelpCircle }
+              ].map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => changeTab(tab.id)}
+                    className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === tab.id
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Breadcrumb Navigation */}
           {activeTab !== 'overview' && (
             <div className="mb-4">
@@ -252,7 +292,8 @@ export default function AdminPage() {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             {activeTab === 'overview' && 'Admin Overview'}
             {activeTab === 'users' && 'User Management'}
-            {activeTab === 'plans' && 'Plan Management'}
+            {activeTab === 'plans' && 'Plans Management'}
+            {activeTab === 'plan-editor' && 'Plan Editor'}
             {activeTab === 'user-plans' && 'User Plan Management'}
             {activeTab === 'projects' && 'Project Analytics'}
             {activeTab === 'analytics' && 'System Analytics'}
@@ -265,6 +306,7 @@ export default function AdminPage() {
             {activeTab === 'overview' && 'Monitor system performance and key metrics'}
             {activeTab === 'users' && 'Manage user accounts and permissions'}
             {activeTab === 'plans' && 'Manage subscription plans and pricing'}
+            {activeTab === 'plan-editor' && 'Edit plan features, limits, and configurations'}
             {activeTab === 'user-plans' && 'Assign and manage user plan subscriptions'}
             {activeTab === 'projects' && 'Track project performance and analytics'}
             {activeTab === 'analytics' && 'View detailed system analytics and reports'}
@@ -292,6 +334,10 @@ export default function AdminPage() {
           
           {activeTab === 'plans' && (
             <PlanManagement onRefresh={checkAccessAndFetchUsers} />
+          )}
+          
+          {activeTab === 'plan-editor' && (
+            <PlanEditor onRefresh={checkAccessAndFetchUsers} />
           )}
           
           {activeTab === 'user-plans' && (

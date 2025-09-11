@@ -16,10 +16,21 @@ export async function GET() {
 
     // Fetch all data in parallel for better performance
     const [profileResult, projectsResult, statsResult] = await Promise.all([
-      // Fetch user profile
+      // Fetch user profile with plan information
       supabase
         .from('user_profiles')
-        .select('*')
+        .select(`
+          *,
+          plans (
+            id,
+            name,
+            amount,
+            interval,
+            features,
+            limitations,
+            is_active
+          )
+        `)
         .eq('id', user.id)
         .single(),
       
