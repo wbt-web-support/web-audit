@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   Loader2, 
   Globe, 
@@ -18,7 +19,9 @@ import {
   RefreshCw,
   Square,
   AlertTriangle,
-  Clock
+  Clock,
+  Settings,
+  Send
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { AuditProject } from '@/lib/types/database';
@@ -63,6 +66,7 @@ interface PagesTableProps {
   getStatusBadge: (status: string) => ReactElement;
   getAnalysisStatus: (page: AnalyzedPage) => string;
   onStopAnalysis?: (pageId: string) => void;
+  onCustomAnalysis?: (pageId: string, customInstructions: string) => void;
 }
 
 // Progress indicator component for analyzing pages
@@ -101,10 +105,14 @@ export function PagesTable({
   onDeletePage,
   getStatusBadge,
   getAnalysisStatus,
-  onStopAnalysis
+  onStopAnalysis,
+  onCustomAnalysis
 }: PagesTableProps) {
   const router = useRouter();
   const [stoppingPages, setStoppingPages] = useState<Set<string>>(new Set());
+  const [showCustomInstructions, setShowCustomInstructions] = useState(false);
+  const [customInstructions, setCustomInstructions] = useState('');
+  const [customAnalyzingPages, setCustomAnalyzingPages] = useState<Set<string>>(new Set());
 
   // Utility functions
   const toggleStatusFilter = (status: string) => {
@@ -188,6 +196,25 @@ export function PagesTable({
     }
   };
 
+  // Handle custom analysis
+  const handleCustomAnalysis = async (pageId: string) => {
+    if (!onCustomAnalysis || !customInstructions.trim()) return;
+    
+    setCustomAnalyzingPages(prev => new Set(prev).add(pageId));
+    
+    try {
+      await onCustomAnalysis(pageId, customInstructions.trim());
+    } catch (error) {
+      console.error('Error running custom analysis:', error);
+    } finally {
+      setCustomAnalyzingPages(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(pageId);
+        return newSet;
+      });
+    }
+  };
+
   const hasActiveFilters = () => {
     return searchTerm !== '' || 
            statusFilter.length > 0 || 
@@ -228,8 +255,16 @@ export function PagesTable({
             )}
           </div>
           <div className="flex items-center gap-2">
-
-            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCustomInstructions(!showCustomInstructions)}
+              className={showCustomInstructions ? 'bg-primary/5 border-primary/20' : ''}
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              <span className="hidden sm:inline">Custom Analysis</span>
+              <span className="sm:hidden">Custom</span>
+            </Button>
           </div>
         </div>
       </CardHeader>
@@ -274,6 +309,37 @@ export function PagesTable({
               )}
             </div>
           </div>
+
+          {/* Custom Instructions Panel */}
+          {showCustomInstructions && (
+            <div className="p-4 border rounded-lg bg-blue-50 dark:bg-blue-950/20 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-blue-900 dark:text-blue-100">Custom Analysis Instructions</h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowCustomInstructions(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="custom-instructions" className="text-sm">
+                  Enter custom instructions for Gemini analysis
+                </Label>
+                <Textarea
+                  id="custom-instructions"
+                  placeholder="e.g., Analyze the color scheme and accessibility of this page..."
+                  value={customInstructions}
+                  onChange={(e) => setCustomInstructions(e.target.value)}
+                  className="min-h-[80px] resize-none"
+                />
+                <p className="text-xs text-muted-foreground">
+                  These instructions will be sent to Gemini for custom analysis of selected pages.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Filter Panel */}
           {showFilters && (
@@ -578,17 +644,15 @@ export function PagesTable({
                                 </>
                               )}
                             </Button>
-                            {analyzedPage.resultCount > 0 && (
-                              <Button
-                                size="sm"
-                                className="h-7 px-3 w-full sm:w-auto"
-                                onClick={() => router.push(`/audit/${analyzedPage.page.id}`)}
-                              >
-                                <Eye className="h-3 w-3 mr-1" />
-                                <span className="hidden sm:inline">View</span>
-                                <span className="sm:hidden">View</span>
-                              </Button>
-                            )}
+                            <Button
+                              size="sm"
+                              className="h-7 px-3 w-full sm:w-auto"
+                              onClick={() => router.push(`/audit/${analyzedPage.page.id}`)}
+                            >
+                              <Eye className="h-3 w-3 mr-1" />
+                              <span className="hidden sm:inline">View</span>
+                              <span className="sm:hidden">View</span>
+                            </Button>
                           </>
                         ) : isPageTimedOut(analyzedPage) ? (
                           <Button
@@ -648,19 +712,67 @@ export function PagesTable({
                               <span className="hidden sm:inline">Recrawl</span>
                               <span className="sm:hidden">Recrawl</span>
                             </Button>
+                            {customInstructions.trim() && onCustomAnalysis && (
+                              <Button
+                                size="sm"
+                                className="h-7 px-3 w-full sm:w-auto bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900"
+                                onClick={() => handleCustomAnalysis(analyzedPage.page.id)}
+                                disabled={customAnalyzingPages.has(analyzedPage.page.id) || isAnalysisDisabled()}
+                                title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : "Run custom analysis with Gemini"}
+                              >
+                                {customAnalyzingPages.has(analyzedPage.page.id) ? (
+                                  <>
+                                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                    <span className="hidden sm:inline">Analyzing...</span>
+                                    <span className="sm:hidden">...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Zap className="h-3 w-3 mr-1" />
+                                    <span className="hidden sm:inline">Custom</span>
+                                    <span className="sm:hidden">Custom</span>
+                                  </>
+                                )}
+                              </Button>
+                            )}
                           </>
                         ) : (
-                          <Button
-                            size="sm"
-                            className="h-7 px-3 w-full sm:w-auto"
-                            onClick={() => onAnalyzeSinglePage(analyzedPage.page.id)}
-                            disabled={isAnalysisDisabled()}
-                            title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : ""}
-                          >
-                            <BarChart3 className="h-3 w-3 mr-1" />
-                            <span className="hidden sm:inline">Analyze</span>
-                            <span className="sm:hidden">Analyze</span>
-                          </Button>
+                          <div className="flex flex-col sm:flex-row items-center justify-center gap-1">
+                            <Button
+                              size="sm"
+                              className="h-7 px-3 w-full sm:w-auto"
+                              onClick={() => onAnalyzeSinglePage(analyzedPage.page.id)}
+                              disabled={isAnalysisDisabled()}
+                              title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : ""}
+                            >
+                              <BarChart3 className="h-3 w-3 mr-1" />
+                              <span className="hidden sm:inline">Analyze</span>
+                              <span className="sm:hidden">Analyze</span>
+                            </Button>
+                            {customInstructions.trim() && onCustomAnalysis && (
+                              <Button
+                                size="sm"
+                                className="h-7 px-3 w-full sm:w-auto bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900"
+                                onClick={() => handleCustomAnalysis(analyzedPage.page.id)}
+                                disabled={customAnalyzingPages.has(analyzedPage.page.id) || isAnalysisDisabled()}
+                                title={isAnalysisDisabled() ? "Analysis disabled while crawling is in progress" : "Run custom analysis with Gemini"}
+                              >
+                                {customAnalyzingPages.has(analyzedPage.page.id) ? (
+                                  <>
+                                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                    <span className="hidden sm:inline">Analyzing...</span>
+                                    <span className="sm:hidden">...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Zap className="h-3 w-3 mr-1" />
+                                    <span className="hidden sm:inline">Custom</span>
+                                    <span className="sm:hidden">Custom</span>
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                          </div>
                         )}
                       </div>
                     </td>

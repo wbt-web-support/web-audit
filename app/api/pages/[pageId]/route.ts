@@ -6,8 +6,14 @@ export async function GET(
   { params }: { params: Promise<{ pageId: string }> }
 ) {
   try {
-    const supabase = await createClient();
-    const { pageId } = await params;
+    // Add timeout to prevent hanging requests
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Request timeout')), 60000) // 1 minute timeout
+    );
+    
+    const dataPromise = (async () => {
+      const supabase = await createClient();
+      const { pageId } = await params;
     
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -52,11 +58,15 @@ export async function GET(
       .eq('id', page.audit_project_id)
       .single();
 
-    return NextResponse.json({ 
-      page,
-      results: results || null,
-      project: project || null
-    });
+      return NextResponse.json({ 
+        page,
+        results: results || null,
+        project: project || null
+      });
+    })();
+    
+    // Race between data fetching and timeout
+    return await Promise.race([dataPromise, timeoutPromise]);
   } catch (error) {
     return NextResponse.json(
       { error: 'Internal server error' },

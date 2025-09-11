@@ -332,7 +332,7 @@ export function AuditMain() {
   const fetchAnalyzedPages = async (projectId: string, retryCount: number) => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
           
       const resultsResponse = await fetch(`/api/audit-projects/${projectId}/results`, {
         signal: controller.signal

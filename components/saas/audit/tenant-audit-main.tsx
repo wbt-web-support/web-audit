@@ -347,7 +347,7 @@ export function TenantAuditMain() {
   const fetchAnalyzedPages = async (projectId: string, retryCount: number) => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
           
       const resultsResponse = await fetch(`/api/saas/tenants/${tenantSlug}/projects/${projectId}/results`, {
         signal: controller.signal

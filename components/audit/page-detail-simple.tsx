@@ -200,6 +200,9 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   const [analysis, setAnalysis] = useState<PageAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
+  const [retryCount, setRetryCount] = useState(0);
+  const [retryingDevices, setRetryingDevices] = useState<Set<string>>(new Set());
+  const [isRetryingFetch, setIsRetryingFetch] = useState(false);
   const [activeAnalysisTab, setActiveAnalysisTab] = useState("grammar");
   const [activeGrammarTab, setActiveGrammarTab] = useState("grammar");
   const [grammarAnalyzing, setGrammarAnalyzing] = useState(false);
@@ -223,8 +226,6 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   const [performanceCached, setPerformanceCached] = useState(false);
   const [performanceCachedAt, setPerformanceCachedAt] = useState<string | null>(null);
   const [customInstructionsAnalyzing, setCustomInstructionsAnalyzing] = useState(false);
-  const [customInstructionsCached, setCustomInstructionsCached] = useState(false);
-  const [customInstructionsCachedAt, setCustomInstructionsCachedAt] = useState<string | null>(null);
   const [activeTechnicalTab, setActiveTechnicalTab] = useState("tags_analysis");
   const [imagesAnalyzing, setImagesAnalyzing] = useState(false);
   const [technicalAnalyzing, setTechnicalAnalyzing] = useState(false);
@@ -233,9 +234,23 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   const [customInstructionResult, setCustomInstructionResult] = useState<any>(null);
 
   // Fetch results from audit_results table
-  const fetchAnalysisResults = useCallback(async () => {
+  const fetchAnalysisResults = useCallback(async (retryCount = 0): Promise<void> => {
+    const maxRetries = 3;
+    
     try {
-      const response = await fetch(`/api/pages/${pageId}`);
+      const response = await fetch(`/api/pages/${pageId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // Add timeout to prevent hanging requests
+        signal: AbortSignal.timeout(120000), // 2 minute timeout
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
 
       if (response.ok && data.results) {
@@ -244,6 +259,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
         setAnalysis((prev) => {
           const newAnalysis = prev || analyzePage(data.page);
 
+          // Update each analysis type individually as they become available
           if (data.results.grammar_analysis) {
             newAnalysis.grammarCheck = data.results.grammar_analysis;
             setGrammarCached(true);
@@ -255,26 +271,38 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
 
           if (data.results.seo_analysis) {
             newAnalysis.seoAnalysis = data.results.seo_analysis;
-
             setSeoCached(true);
             setSeoCachedAt(data.results.created_at || data.results.updated_at);
             setSeoAnalyzing(false);
           }
-          if (data.results.tags_analysis) {
+          
+          if (data.results?.tags_analysis) {
             newAnalysis.tags_analysis = data.results.tags_analysis;
+            setTechnicalAnalyzing(false);
           }
-          if (data.results.social_meta_analysis) {
+          
+          if (data.results?.social_meta_analysis) {
             newAnalysis.social_meta_analysis = data.results.social_meta_analysis;
+            setTechnicalAnalyzing(false);
           }
-          if (data.results.image_analysis) {
+          
+          if (data.results?.image_analysis) {
             newAnalysis.image_analysis = data.results.image_analysis;
+            setImagesAnalyzing(false);
           }
-          if (data.results.link_analysis) {
+          
+          if (data.results?.link_analysis) {
             newAnalysis.link_analysis = data.results.link_analysis;
+            setTechnicalAnalyzing(false);
           }
+          
           if (data.results.performance_analysis) {
             newAnalysis.performance_analysis = data.results.performance_analysis;
+            setPerformanceCached(true);
+            setPerformanceCachedAt(data.results.created_at || data.results.updated_at);
+            setPerformanceAnalyzing(false);
           }
+          
           if (data.results.phone_ui_quality_analysis) {
             newAnalysis.phone_ui_quality_analysis =
               data.results.phone_ui_quality_analysis;
@@ -287,67 +315,88 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             newAnalysis.desktop_ui_quality_analysis =
               data.results.desktop_ui_quality_analysis;
           }
-          setUiQualityCached(
-            !!(
-              data.results.phone_ui_quality_analysis ||
-              data.results.tablet_ui_quality_analysis ||
-              data.results.desktop_ui_quality_analysis
-            )
+          
+          // Update UI quality cache status
+          const hasAnyUiAnalysis = !!(
+            data.results.phone_ui_quality_analysis ||
+            data.results.tablet_ui_quality_analysis ||
+            data.results.desktop_ui_quality_analysis
           );
-          setUiQualityCachedAt(
-            data.results.created_at || data.results.updated_at
-          );
-          setUiAnalyzing(false);
-
-          // Performance analysis
-          if (data.results.performance_analysis) {
-            newAnalysis.performance_analysis = data.results.performance_analysis;
-            setPerformanceCached(true);
-            setPerformanceCachedAt(data.results.created_at || data.results.updated_at);
-            setPerformanceAnalyzing(false);
+          
+          if (hasAnyUiAnalysis) {
+            setUiQualityCached(true);
+            setUiQualityCachedAt(
+              data.results.created_at || data.results.updated_at
+            );
+            setUiAnalyzing(false);
           }
 
-          if (data.results.instructions) {
-            newAnalysis.custom_instructions_analysis = data.results.instructions;
-            setCustomInstructionsCached(true);
-            setCustomInstructionsCachedAt(data.results.created_at || data.results.updated_at);
-            setCustomInstructionsAnalyzing(false);
-          }
-
-          if (data.results.image_analysis) {
-            newAnalysis.image_analysis = data.results.image_analysis;
-            setImagesAnalyzing(false);
-          }
-          if (data.results.link_analysis) {
-            newAnalysis.link_analysis = data.results.link_analysis;
-            setTechnicalAnalyzing(false);
-          }
-          if (data.results.tags_analysis) {
-            newAnalysis.tags_analysis = data.results.tags_analysis;
-            setTechnicalAnalyzing(false);
-          }
-          if (data.results.social_meta_analysis) {
-            newAnalysis.social_meta_analysis = data.results.social_meta_analysis;
-            setTechnicalAnalyzing(false);
-          }
-          if (data.results.performance_analysis) {
-            newAnalysis.performance_analysis = data.results.performance_analysis;
-          }
+          // Custom instructions are handled separately - no need to cache
 
           return newAnalysis;
         });
 
-        // Clear analyzing states
-        setIsAnalysisRunning(false);
+        // Check if all analyses are complete to clear the main analyzing state
+        const results = data.results || {};
+        const hasGrammar = !!results.grammar_analysis;
+        const hasSeo = !!results.seo_analysis;
+        const hasPerformance = !!results.performance_analysis;
+        const hasUi = !!(
+          results.phone_ui_quality_analysis ||
+          results.tablet_ui_quality_analysis ||
+          results.desktop_ui_quality_analysis
+        );
+        const hasCustomInstructions = false; // Custom instructions are always available
+        const hasImages = !!results.image_analysis;
+        const hasTechnical = !!(
+          results.tags_analysis ||
+          results.social_meta_analysis ||
+          results.link_analysis
+        );
+
+        // Only clear main analyzing state if we have at least some analyses
+        if (hasGrammar || hasSeo || hasPerformance || hasUi || hasCustomInstructions || hasImages || hasTechnical) {
+          setIsAnalysisRunning(false);
+        }
       }
     } catch (error) {
       console.error("Error fetching analysis results:", error);
+      
+      // Handle different types of errors
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          console.warn('Request timed out - server may be busy');
+        } else if (error.message.includes('Failed to fetch')) {
+          console.warn('Network error - server may be unavailable');
+        } else {
+          console.error('API error:', error.message);
+        }
+      }
+      
+      // Retry logic for network errors
+      if (retryCount < maxRetries && (error instanceof Error && 
+          (error.name === 'AbortError' || error.message.includes('Failed to fetch')))) {
+        console.log(`Retrying fetchAnalysisResults (attempt ${retryCount + 1}/${maxRetries})...`);
+        setIsRetryingFetch(true);
+        await new Promise(resolve => setTimeout(resolve, 2000 * (retryCount + 1))); // Exponential backoff
+        await fetchAnalysisResults(retryCount + 1);
+        setIsRetryingFetch(false);
+        return;
+      } else {
+        setIsRetryingFetch(false);
+      }
     }
   }, [pageId]);
 
   const fetchPageData = useCallback(async () => {
     try {
-      const response = await fetch(`/api/pages/${pageId}`);
+      const response = await fetch(`/api/pages/${pageId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(120000), // 2 minute timeout
+      });
       const data = await response.json();
       if (response.ok) {
         setProject(data.project);
@@ -369,7 +418,8 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             await fetch(`/api/pages/${pageId}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ analysis_status: 'pending' })
+              body: JSON.stringify({ analysis_status: 'pending' }),
+              signal: AbortSignal.timeout(120000), // 2 minute timeout
             });
           } catch (error) {
             console.error('Failed to reset stuck page status:', error);
@@ -386,10 +436,10 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
           let hasSeoCache = false;
           let hasUiQualityCache = false;
           let hasPerformanceCache = false;
-          let hasCustomInstructionsCache = false;
-
+          // Custom instructions don't need caching
+          
           // Check for cached results and merge them
-          if (data.results) {
+          if (data.results && Object.keys(data.results).length > 0) {
             if (data.results.grammar_analysis) {
               basicAnalysis.grammarCheck = data.results.grammar_analysis;
               setGrammarCached(true);
@@ -453,19 +503,14 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               setPerformanceCachedAt(data.results.created_at || data.results.updated_at);
               hasPerformanceCache = true;
             }
-            if (data.results.instructions) {
-              basicAnalysis.custom_instructions_analysis = data.results.instructions;
-              setCustomInstructionsCached(true);
-              setCustomInstructionsCachedAt(data.results.created_at || data.results.updated_at);
-              hasCustomInstructionsCache = true;
-            }
+            // Custom instructions are handled separately - no need to cache
           }
 
           setAnalysis(basicAnalysis);
 
           // Determine if we need to start analysis or show analyzing state
           if (isPageAnalyzing) {
-            // Page is being analyzed - show analyzing state for missing analyses
+            // Page is being analyzed - show analyzing state only for missing analyses
             if (!hasGrammarCache) {
               setGrammarAnalyzing(true);
             }
@@ -478,8 +523,12 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             if (!hasPerformanceCache) {
               setPerformanceAnalyzing(true);
             }
-            if (!hasCustomInstructionsCache) {
-              setCustomInstructionsAnalyzing(true);
+            // Custom instructions don't need analyzing state
+            if (!(data.results || {}).image_analysis) {
+              setImagesAnalyzing(true);
+            }
+            if (!(data.results || {}).tags_analysis && !(data.results || {}).social_meta_analysis && !(data.results || {}).link_analysis) {
+              setTechnicalAnalyzing(true);
             }
           } else if (
             data.page.analysis_status === "pending" ||
@@ -498,14 +547,27 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
           }
         }
       } else {
+        console.error('API returned error:', data.error, 'Status:', response.status);
         setError(data.error || "Failed to fetch page data");
       }
     } catch (error) {
-      setError("Failed to fetch page data");
+      console.error('Network or parsing error:', error);
+      
+      // Retry logic for analyzing pages
+      if (retryCount < 3) {
+        console.log(`Retrying fetch (attempt ${retryCount + 1}/3)...`);
+        setRetryCount(prev => prev + 1);
+        setTimeout(() => {
+          fetchPageData();
+        }, 2000 * (retryCount + 1)); // Exponential backoff: 2s, 4s, 6s
+        return;
+      }
+      
+      setError("Failed to fetch page data - please check your connection and try again");
     } finally {
       setLoading(false);
     }
-  }, [pageId, grammarCached, seoCached, performanceCached, customInstructionsCached]);
+  }, [pageId, grammarCached, seoCached, performanceCached, retryCount]);
 
   useEffect(() => {
     fetchPageData();
@@ -541,7 +603,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               if (!seoCached) setSeoAnalyzing(true);
               if (!uiQualityCached) setUiAnalyzing(true);
               if (!performanceCached) setPerformanceAnalyzing(true);
-              if (!customInstructionsCached) setCustomInstructionsAnalyzing(true);
+              // Custom instructions don't need analyzing state
             } else if (updatedPage.analysis_status === "completed") {
               // Fetch the completed results
 
@@ -552,7 +614,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               setSeoAnalyzing(false);
               setUiAnalyzing(false);
               setPerformanceAnalyzing(false);
-              setCustomInstructionsAnalyzing(false);
+              // Custom instructions don't need analyzing state
             }
           }
         )
@@ -572,12 +634,108 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             filter: `scraped_page_id=eq.${pageId}`,
           },
           async (payload) => {
-
+            console.log("Realtime update received:", payload);
             if (
               payload.eventType === "INSERT" ||
               payload.eventType === "UPDATE"
             ) {
-              // Fetch the latest results
+              // Immediately update individual analysis states based on what's available
+              const newData = payload.new as any;
+              
+              // Update individual analysis states as they become available
+              if (newData.grammar_analysis && !grammarCached) {
+                setAnalysis((prev) => {
+                  if (prev) {
+                    prev.grammarCheck = newData.grammar_analysis;
+                    setGrammarCached(true);
+                    setGrammarCachedAt(newData.updated_at || newData.created_at);
+                    setGrammarAnalyzing(false);
+                  }
+                  return prev;
+                });
+              }
+              
+              if (newData.seo_analysis && !seoCached) {
+                setAnalysis((prev) => {
+                  if (prev) {
+                    prev.seoAnalysis = newData.seo_analysis;
+                    setSeoCached(true);
+                    setSeoCachedAt(newData.updated_at || newData.created_at);
+                    setSeoAnalyzing(false);
+                  }
+                  return prev;
+                });
+              }
+              
+              if (newData.performance_analysis && !performanceCached) {
+                setAnalysis((prev) => {
+                  if (prev) {
+                    prev.performance_analysis = newData.performance_analysis;
+                    setPerformanceCached(true);
+                    setPerformanceCachedAt(newData.updated_at || newData.created_at);
+                    setPerformanceAnalyzing(false);
+                  }
+                  return prev;
+                });
+              }
+              
+              if (newData.phone_ui_quality_analysis || newData.tablet_ui_quality_analysis || newData.desktop_ui_quality_analysis) {
+                console.log("UI analysis update received:", {
+                  phone: !!newData.phone_ui_quality_analysis,
+                  tablet: !!newData.tablet_ui_quality_analysis,
+                  desktop: !!newData.desktop_ui_quality_analysis,
+                  phone_status: newData.phone_ui_quality_analysis?.screenshot_status,
+                  tablet_status: newData.tablet_ui_quality_analysis?.screenshot_status,
+                  desktop_status: newData.desktop_ui_quality_analysis?.screenshot_status
+                });
+                setAnalysis((prev) => {
+                  if (prev) {
+                    if (newData.phone_ui_quality_analysis) prev.phone_ui_quality_analysis = newData.phone_ui_quality_analysis;
+                    if (newData.tablet_ui_quality_analysis) prev.tablet_ui_quality_analysis = newData.tablet_ui_quality_analysis;
+                    if (newData.desktop_ui_quality_analysis) prev.desktop_ui_quality_analysis = newData.desktop_ui_quality_analysis;
+                    
+                    // Only set cached and stop analyzing if all screenshots are complete
+                    const allScreenshotsComplete = !(
+                      newData.phone_ui_quality_analysis?.screenshot_status === "generating" ||
+                      newData.tablet_ui_quality_analysis?.screenshot_status === "generating" ||
+                      newData.desktop_ui_quality_analysis?.screenshot_status === "generating"
+                    );
+                    
+                    if (allScreenshotsComplete) {
+                      setUiQualityCached(true);
+                      setUiQualityCachedAt(newData.updated_at || newData.created_at);
+                      setUiAnalyzing(false);
+                    }
+                  }
+                  return prev;
+                });
+              }
+              
+              if (newData.image_analysis) {
+                setAnalysis((prev) => {
+                  if (prev) {
+                    prev.image_analysis = newData.image_analysis;
+                    setImagesAnalyzing(false);
+                  }
+                  return prev;
+                });
+              }
+              
+              if (newData.tags_analysis || newData.social_meta_analysis || newData.link_analysis) {
+                setAnalysis((prev) => {
+                  if (prev) {
+                    if (newData.tags_analysis) prev.tags_analysis = newData.tags_analysis;
+                    if (newData.social_meta_analysis) prev.social_meta_analysis = newData.social_meta_analysis;
+                    if (newData.link_analysis) prev.link_analysis = newData.link_analysis;
+                    setTechnicalAnalyzing(false);
+                  }
+                  return prev;
+                });
+              }
+              
+              // Custom instructions are handled separately - no need to cache
+              
+              // Also fetch complete results for any missing data
               await fetchAnalysisResults();
             }
           }
@@ -624,6 +782,34 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
     }
   }, [isAnalysisRunning, fetchPageData]);
 
+  // Additional polling for UI analysis specifically
+  useEffect(() => {
+    if (uiAnalyzing) {
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      const pollInterval = setInterval(async () => {
+        try {
+          await fetchAnalysisResults();
+          retryCount = 0; // Reset retry count on success
+        } catch (error) {
+          retryCount++;
+          console.warn(`Polling attempt ${retryCount} failed:`, error);
+          
+          if (retryCount >= maxRetries) {
+            console.error('Max polling retries reached, stopping UI analysis polling');
+            setUiAnalyzing(false);
+            clearInterval(pollInterval);
+          }
+        }
+      }, 3000); // Poll every 3 seconds for UI analysis
+
+      return () => {
+        clearInterval(pollInterval);
+      };
+    }
+  }, [uiAnalyzing, fetchAnalysisResults]);
+
   // Manual analysis trigger for both
   const startFullAnalysis = async () => {
     if (!project?.id) return;
@@ -648,6 +834,8 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             background: false,
             force_refresh: true,
           }),
+          // Add timeout to prevent hanging requests
+          signal: AbortSignal.timeout(120000) // 2 minute timeout, // 30 second timeout for analysis start
         }
       );
 
@@ -656,6 +844,18 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
       }
     } catch (error) {
       console.error("Failed to start analysis:", error);
+      
+      // Handle different types of errors
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          console.warn('Analysis start timed out - server may be busy');
+        } else if (error.message.includes('Failed to fetch')) {
+          console.warn('Network error - server may be unavailable');
+        } else {
+          console.error('Analysis start error:', error.message);
+        }
+      }
+      
       setIsAnalysisRunning(false);
       setGrammarAnalyzing(false);
       setSeoAnalyzing(false);
@@ -746,7 +946,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
       );
       if (response.ok) {
         // UI analysis is async, results will come via realtime or polling
-        setUiAnalyzing(false); // Optionally keep true until realtime update
+        // Keep uiAnalyzing true until we get the results
         setIsAnalysisRunning(false);
       }
     } catch (error) {
@@ -844,40 +1044,74 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
   };
 
   // Handle custom instruction analysis without saving to DB
+  const retryDeviceScreenshot = useCallback(async (device: string) => {
+    if (!page || !project) return;
+    
+    setRetryingDevices(prev => new Set(prev).add(device));
+    
+    try {
+      const response = await fetch(`/api/audit-projects/${project.id}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageId: page.id, device }),
+        signal: AbortSignal.timeout(120000) // 2 minute timeout
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Retry failed: ${response.statusText}`);
+      }
+      
+      // Refresh the page data to get updated analysis
+      await fetchPageData();
+      
+    } catch (err) {
+      console.error(`Failed to retry ${device} screenshot:`, err);
+      setError(`Failed to retry ${device} screenshot: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setRetryingDevices(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(device);
+        return newSet;
+      });
+    }
+  }, [page, project, fetchPageData]);
+
+  // Handle custom instruction analysis - simple analysis of existing data
   const analyzeCustomInstruction = async () => {
-    if (!customInstructionInput.trim() || !project?.id) return;
+    if (!customInstructionInput.trim() || !page?.html) return;
     
     setIsCustomInstructionLoading(true);
     setCustomInstructionResult(null);
     
     try {
-      const response = await fetch(
-        `/api/audit-projects/${project.id}/analyze`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            page_ids: [pageId],
-            analysis_types: ["custom_instructions"],
-            custom_instruction: customInstructionInput.trim(),
-            use_cache: false,
-            background: false,
-            force_refresh: true,
-          }),
-        }
-      );
-      
+      // Simple API call to analyze existing page data with custom instruction
+      const response = await fetch('/api/instructions', {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          instruction: customInstructionInput.trim(),
+          pageData: {
+            title: page.title,
+            url: page.url,
+            html: page.html,
+            content: page.content,
+            analysis: analysis
+          }
+        }),
+      });
+
       if (response.ok) {
         const result = await response.json();
-        console.log("Custom instruction result:", result);
-        setCustomInstructionResult(result.custom_instructions_analysis);
+        setCustomInstructionResult(result);
       } else {
         console.error("Custom instruction analysis failed");
+        setCustomInstructionResult({ error: "Failed to analyze custom instruction" });
       }
     } catch (error) {
       console.error("Custom instruction analysis error:", error);
+      setCustomInstructionResult({ error: "Error analyzing custom instruction" });
     } finally {
       setIsCustomInstructionLoading(false);
     }
@@ -1278,7 +1512,31 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
       
       {error && (
         <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-lg p-4">
-          {error}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Error loading page data</p>
+              <p className="text-sm mt-1">{error}</p>
+              {isRetryingFetch && (
+                <p className="text-sm mt-2 text-blue-600 dark:text-blue-400">
+                  🔄 Retrying connection... Please wait
+                </p>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setError("");
+                setRetryCount(0);
+                setLoading(true);
+                fetchPageData();
+              }}
+              className="ml-4"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
+          </div>
         </div>
       )}
 
@@ -1330,7 +1588,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               </Badge>
 
               {/* Real-time analysis status */}
-              {isAnalysisRunning && (
+              {(isAnalysisRunning || grammarAnalyzing || seoAnalyzing || uiAnalyzing || performanceAnalyzing || imagesAnalyzing || technicalAnalyzing || customInstructionsAnalyzing) && (
                 <Badge
                   variant="outline"
                   className="bg-blue-50 dark:bg-blue-950 text-xs"
@@ -1345,7 +1603,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
           {/* Action Buttons */}
           <div className="flex items-center gap-2 flex-shrink-0">
             {/* Analysis Status Indicator */}
-            {isAnalysisRunning && (
+            {(isAnalysisRunning || grammarAnalyzing || seoAnalyzing || uiAnalyzing || performanceAnalyzing || imagesAnalyzing || technicalAnalyzing || customInstructionsAnalyzing) && (
               <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950">
                 <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                 Analysis Running
@@ -1355,13 +1613,13 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
             {/* Manual Refresh Button */}
             <Button
               onClick={fetchPageData}
-              disabled={grammarAnalyzing || seoAnalyzing}
+              disabled={grammarAnalyzing || seoAnalyzing || uiAnalyzing || performanceAnalyzing || imagesAnalyzing || technicalAnalyzing || customInstructionsAnalyzing}
               variant="outline"
               size="sm"
             >
               <RefreshCw
                 className={`h-4 w-4 mr-2 ${
-                  grammarAnalyzing || seoAnalyzing ? "animate-spin" : ""
+                  (grammarAnalyzing || seoAnalyzing || uiAnalyzing || performanceAnalyzing || imagesAnalyzing || technicalAnalyzing || customInstructionsAnalyzing) ? "animate-spin" : ""
                 }`}
               />
               Refresh
@@ -1370,14 +1628,14 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
               size="sm"
               className="h-7 px-3"
               onClick={startFullAnalysis}
-              disabled={grammarAnalyzing || seoAnalyzing || uiAnalyzing}
+              disabled={grammarAnalyzing || seoAnalyzing || uiAnalyzing || performanceAnalyzing || imagesAnalyzing || technicalAnalyzing || customInstructionsAnalyzing}
             >
               <RefreshCw className="h-3 w-3 mr-1" />
               Re-Analyze
             </Button>
 
             {/* Start Analysis Button - show when no analysis is running and no results */}
-            {!isAnalysisRunning && (!grammarCached || !seoCached) && (
+            {!isAnalysisRunning && !grammarAnalyzing && !seoAnalyzing && !uiAnalyzing && !performanceAnalyzing && !imagesAnalyzing && !technicalAnalyzing && !customInstructionsAnalyzing && (!grammarCached || !seoCached) && (
               <Button onClick={startFullAnalysis} variant="default" size="sm">
                 <BarChart3 className="h-4 w-4 mr-2" />
                 Start Analysis
@@ -1388,7 +1646,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
       )}
 
       {/* Main Content - Side by Side Layout */}
-      <div className="grid grid-cols-1  gap-6">
+      <div className="grid grid-cols-1 mt-6 gap-6">
       
         <div className="">
           <Card>
@@ -1409,6 +1667,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       icon: FileText,
                       analyzing: grammarAnalyzing,
                       cached: grammarCached,
+                      hasData: !!analysis?.grammarCheck,
                     },
                     {
                       id: "seo",
@@ -1416,6 +1675,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       icon: Tag,
                       analyzing: seoAnalyzing,
                       cached: seoCached,
+                      hasData: !!analysis?.seoAnalysis,
                     },
                     {
                       id: "performance_analysis",
@@ -1423,20 +1683,27 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       icon: BarChart3,
                       analyzing: performanceAnalyzing,
                       cached: performanceCached,
+                      hasData: !!(analysis as any)?.performance_analysis,
                     },
                     {
                       id: "ui_quality",
                       label: "UI Quality",
                       icon: Eye,
-                      analyzing: uiAnalyzing,
+                      analyzing: uiAnalyzing || (
+                        (analysis as any)?.phone_ui_quality_analysis?.screenshot_status === "generating" ||
+                        (analysis as any)?.tablet_ui_quality_analysis?.screenshot_status === "generating" ||
+                        (analysis as any)?.desktop_ui_quality_analysis?.screenshot_status === "generating"
+                      ),
                       cached: uiQualityCached,
+                      hasData: !!(analysis as any)?.phone_ui_quality_analysis || !!(analysis as any)?.tablet_ui_quality_analysis || !!(analysis as any)?.desktop_ui_quality_analysis,
                     },
                     {
                       id: "custom_instructions",
                       label: "Custom Instructions",
                       icon: Settings,
-                      analyzing: customInstructionsAnalyzing,
-                      cached: customInstructionsCached,
+                      analyzing: false, // No analyzing state needed
+                      cached: false, // No caching needed
+                      hasData: true, // Always available
                     },
                     {
                       id: "images",
@@ -1444,6 +1711,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       icon: Image,
                       analyzing: imagesAnalyzing,
                       cached: false,
+                      hasData: !!(analysis as any)?.image_analysis,
                     },
                     {
                       id: "technical_fixes",
@@ -1451,6 +1719,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       icon: Shield,
                       analyzing: technicalAnalyzing,
                       cached: false,
+                      hasData: !!(analysis as any)?.tags_analysis || !!(analysis as any)?.social_meta_analysis || !!(analysis as any)?.link_analysis,
                     },
                   ].map((tab) => {
                     const IconComponent = tab.icon;
@@ -1461,6 +1730,8 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                         className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
                           activeAnalysisTab === tab.id
                             ? "border-primary text-primary bg-primary/10"
+                            : tab.hasData
+                            ? "border-transparent text-foreground hover:text-foreground hover:border-border"
                             : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
                         }`}
                       >
@@ -1470,8 +1741,18 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
                         )}
                         {tab.cached && !tab.analyzing && (
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 dark:bg-green-950/20 dark:text-green-400 dark:border-green-800">
                             Cached
+                          </Badge>
+                        )}
+                        {tab.hasData && !tab.analyzing && !tab.cached && (
+                          <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-800">
+                            Ready
+                          </Badge>
+                        )}
+                        {!tab.hasData && !tab.analyzing && (
+                          <Badge variant="outline" className="text-xs bg-gray-50 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700">
+                            Pending
                           </Badge>
                         )}
                       </button>
@@ -1513,20 +1794,35 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                         : "Content readability and writing quality analysis"}
                     </p>
 
-                    {!analysis.grammarCheck || grammarAnalyzing ? (
+                    {grammarAnalyzing ? (
                       <div className="flex items-center justify-center py-12">
                         <div className="text-center">
                           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
                           <p className="text-sm text-muted-foreground">
-                            {grammarAnalyzing
-                              ? "Analyzing Fresh Content with AI..."
-                              : "Loading..."}
+                            Analyzing Fresh Content with AI...
                           </p>
-                          {grammarAnalyzing && (
-                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                              Re-scraping page for latest content
-                            </p>
-                          )}
+                          <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                            Re-scraping page for latest content
+                          </p>
+                        </div>
+                      </div>
+                    ) : !analysis.grammarCheck ? (
+                      <div className="flex items-center justify-center py-12">
+                        <div className="text-center">
+                          <div className="p-4 bg-muted/10 rounded-full mb-4">
+                            <FileText className="h-8 w-8 text-muted-foreground" />
+                          </div>
+                          <p className="text-sm text-muted-foreground mb-2">
+                            Grammar analysis not started yet
+                          </p>
+                          <Button 
+                            onClick={() => analyzeGrammarOnly()} 
+                            size="sm"
+                            className="mt-2"
+                          >
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Start Grammar Analysis
+                          </Button>
                         </div>
                       </div>
                     ) : (
@@ -2052,6 +2348,25 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           </p>
                         </div>
                       </div>
+                    ) : !analysis.seoAnalysis ? (
+                      <div className="flex items-center justify-center py-12">
+                        <div className="text-center">
+                          <div className="p-4 bg-muted/10 rounded-full mb-4">
+                            <Tag className="h-8 w-8 text-muted-foreground" />
+                          </div>
+                          <p className="text-sm text-muted-foreground mb-2">
+                            SEO analysis not started yet
+                          </p>
+                          <Button 
+                            onClick={() => analyzeSeoWithAPI()} 
+                            size="sm"
+                            className="mt-2"
+                          >
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Start SEO Analysis
+                          </Button>
+                        </div>
+                      </div>
                     ) : (
                       <>
                         {/* SEO Content Grid */}
@@ -2414,29 +2729,55 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                         )}
                       </div>
                       {/* Refresh Button for UI Quality */}
-
+                      <Button
+                        onClick={refreshUiQualityAnalysis}
+                        disabled={uiAnalyzing}
+                        variant="outline"
+                        size="sm"
+                      >
+                        <RefreshCw
+                          className={`h-4 w-4 mr-2 ${
+                            uiAnalyzing ? "animate-spin" : ""
+                          }`}
+                        />
+                        Refresh
+                      </Button>
                     </div>
 
                     {/* UI Device Tabs */}
                     <div className="border-b mb-4">
                       <div className="flex gap-1">
-                        {["phone", "tablet", "desktop"].map((device) => (
-                          <button
-                            key={device}
-                            onClick={() =>
-                              setActiveUiTab(
-                                device as "phone" | "tablet" | "desktop"
-                              )
-                            }
-                            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                              activeUiTab === device
-                                ? "border-primary text-primary bg-primary/10"
-                                : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-                            }`}
-                          >
-                            {device.charAt(0).toUpperCase() + device.slice(1)}
-                          </button>
-                        ))}
+                        {["phone", "tablet", "desktop"].map((device) => {
+                          const deviceKey = `${device}_ui_quality_analysis` as keyof PageAnalysis;
+                          const deviceAnalysis = analysis?.[deviceKey];
+                          const isGenerating = deviceAnalysis?.screenshot_status === "generating";
+                          const isFailed = deviceAnalysis?.screenshot_status === "failed";
+                          const isDeviceRetrying = retryingDevices.has(device);
+                          const isCompleted = deviceAnalysis?.screenshot_status === "completed" || 
+                            (deviceAnalysis && !isGenerating && !isFailed);
+                          
+                          return (
+                            <button
+                              key={device}
+                              onClick={() =>
+                                setActiveUiTab(
+                                  device as "phone" | "tablet" | "desktop"
+                                )
+                              }
+                              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                                activeUiTab === device
+                                  ? "border-primary text-primary bg-primary/10"
+                                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                              }`}
+                            >
+                              {device.charAt(0).toUpperCase() + device.slice(1)}
+                              {isDeviceRetrying && <Loader2 className="h-3 w-3 animate-spin text-blue-500" />}
+                              {isGenerating && !isDeviceRetrying && <Loader2 className="h-3 w-3 animate-spin text-blue-500" />}
+                              {isFailed && !isDeviceRetrying && <AlertTriangle className="h-3 w-3 text-amber-500" />}
+                              {isCompleted && <div className="h-2 w-2 rounded-full bg-green-500" />}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                     {/* Tab Content */}
@@ -2449,23 +2790,126 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           </p>
                         </div>
                       </div>
-                    ) : (
-                      (() => {
+                    ) : (() => {
                         const deviceKey =
                           `${activeUiTab}_ui_quality_analysis` as keyof PageAnalysis;
                         const deviceAnalysis = analysis?.[deviceKey];
-                        if (!deviceAnalysis) {
+                        
+                        // Check if screenshots are still generating
+                        const isScreenshotGenerating = deviceAnalysis?.screenshot_status === "generating";
+                        
+                        // Check if this is a screenshot generation error that should show loading
+                        const isScreenshotGenerationError = deviceAnalysis?.issues && 
+                          deviceAnalysis.issues.some((issue: any) => 
+                            issue.type === "Screenshot Generation" && 
+                            issue.description.includes('node-html-to-image rendering failed')
+                          );
+                        
+                        // Check if this device is being retried
+                        const isCurrentDeviceRetrying = retryingDevices.has(activeUiTab);
+                        
+                        // Show loading state if screenshots are generating, retrying, or if it's a screenshot generation error
+                        if (isScreenshotGenerating || isScreenshotGenerationError || isCurrentDeviceRetrying) {
                           return (
-                            <div className="text-center py-12">
-                              <p className="text-muted-foreground">
-                                No UI Quality data available for this device.
-                              </p>
+                            <div className="flex items-center justify-center py-12">
+                              <div className="text-center">
+                                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
+                                <p className="text-sm text-muted-foreground">
+                                  {isCurrentDeviceRetrying 
+                                    ? `Retrying ${activeUiTab} screenshot generation...`
+                                    : isScreenshotGenerating 
+                                    ? `Generating ${activeUiTab} screenshot and analyzing UI...`
+                                    : `Analyzing ${activeUiTab} UI quality...`
+                                  }
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {isCurrentDeviceRetrying
+                                    ? "Retrying screenshot generation for this device..."
+                                    : isScreenshotGenerating 
+                                    ? "This may take up to 5 minutes for complex pages"
+                                    : "Screenshot analysis in progress..."
+                                  }
+                                </p>
+                              </div>
                             </div>
                           );
                         }
+                        
+                        if (!deviceAnalysis) {
+                          return (
+                            <div className="text-center py-12">
+                              <div className="p-4 bg-muted/10 rounded-full mb-4">
+                                <Eye className="h-8 w-8 text-muted-foreground" />
+                              </div>
+                              <p className="text-sm text-muted-foreground mb-2">
+                                UI Quality analysis not started yet
+                              </p>
+                              <Button 
+                                onClick={() => analyzeUiQuality(activeUiTab)} 
+                                size="sm"
+                                className="mt-2"
+                              >
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                                Start UI Analysis
+                              </Button>
+                            </div>
+                          );
+                        }
+                        
+                        // Check if this is a completed screenshot error (not in progress)
+                        const hasScreenshotError = deviceAnalysis.overall_summary && 
+                          deviceAnalysis.overall_summary.includes('Screenshot generation failed') &&
+                          deviceAnalysis.overall_summary.includes('HTML structure analysis was performed');
+                        
+                        // Check if this device has a failed screenshot status
+                        const isScreenshotFailed = deviceAnalysis.screenshot_status === "failed";
+                        
                         return (
                           <>
-                            {deviceAnalysis.overall_summary && (
+                            {/* Screenshot Error Warning */}
+                            {(hasScreenshotError || isScreenshotFailed) && (
+                              <Card className="mb-6 border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+                                <CardHeader>
+                                  <CardTitle className="text-base flex items-center gap-2 text-amber-800 dark:text-amber-200">
+                                    <AlertTriangle className="h-5 w-5" />
+                                    {isScreenshotFailed ? `${activeUiTab.charAt(0).toUpperCase() + activeUiTab.slice(1)} Screenshot Failed` : 'Screenshot Generation Issue'}
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                                    {deviceAnalysis.overall_summary}
+                                  </p>
+                                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                                    {isScreenshotFailed 
+                                      ? `The ${activeUiTab} screenshot could not be generated. You can retry this specific device.`
+                                      : "Analysis was completed using HTML structure review instead of visual screenshot analysis."
+                                    }
+                                  </p>
+                                  {isScreenshotFailed && (
+                                    <Button
+                                      onClick={() => retryDeviceScreenshot(activeUiTab)}
+                                      disabled={isCurrentDeviceRetrying}
+                                      size="sm"
+                                      className="mt-3 bg-amber-600 hover:bg-amber-700 text-white"
+                                    >
+                                      {isCurrentDeviceRetrying ? (
+                                        <>
+                                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                          Retrying...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <RefreshCw className="h-4 w-4 mr-2" />
+                                          Retry {activeUiTab.charAt(0).toUpperCase() + activeUiTab.slice(1)} Screenshot
+                                        </>
+                                      )}
+                                    </Button>
+                                  )}
+                                </CardContent>
+                              </Card>
+                            )}
+
+                            {deviceAnalysis.overall_summary && !hasScreenshotError && (
                               <Card className="mb-6">
                                 <CardHeader>
                                   <CardTitle className="text-base">
@@ -2538,7 +2982,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           </>
                         );
                       })()
-                    )}
+                    }
                   </div>
                 )}
                 {/* *********************************************************************************** */}
@@ -2560,7 +3004,16 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       </div>
 
                     </div>
-                    {(() => {
+                    {performanceAnalyzing ? (
+                      <div className="flex items-center justify-center py-12">
+                        <div className="text-center">
+                          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
+                          <p className="text-sm text-muted-foreground">
+                            Analyzing performance metrics...
+                          </p>
+                        </div>
+                      </div>
+                    ) : (() => {
                       let perf: any = (analysis as any)?.performance_analysis;
                       if (!perf && typeof (analysis as any)?.performance_analysis === 'string') {
                         try {
@@ -2571,8 +3024,21 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       }
                       if (!perf) {
                         return (
-                          <div className="text-center py-8">
-                            <p className="text-muted-foreground">No performance data available.</p>
+                          <div className="text-center py-12">
+                            <div className="p-4 bg-muted/10 rounded-full mb-4">
+                              <BarChart3 className="h-8 w-8 text-muted-foreground" />
+                            </div>
+                            <p className="text-sm text-muted-foreground mb-2">
+                              Performance analysis not started yet
+                            </p>
+                            <Button 
+                              onClick={() => analyzePerformanceWithAPI()} 
+                              size="sm"
+                              className="mt-2"
+                            >
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Start Performance Analysis
+                            </Button>
                           </div>
                         );
                       }
@@ -2752,24 +3218,19 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                         )}
                       </div>
                     </div>
-                    {((): React.ReactNode => {
-                      // Show loading state when analyzing
-                      if (imagesAnalyzing) {
-                        return (
-                          <div className="flex items-center justify-center py-12">
-                            <div className="text-center">
-                              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
-                              <p className="text-sm text-muted-foreground">
-                                Analyzing images...
-                              </p>
-                              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                Extracting and analyzing image data
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      }
-                      
+                    {imagesAnalyzing ? (
+                      <div className="flex items-center justify-center py-12">
+                        <div className="text-center">
+                          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
+                          <p className="text-sm text-muted-foreground">
+                            Analyzing images...
+                          </p>
+                          <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                            Extracting and analyzing image data
+                          </p>
+                        </div>
+                      </div>
+                    ) : ((): React.ReactNode => {
                       // Handle the detailed image analysis data structure
                       let imageAnalysis: any = analysis.image_analysis;
                       
@@ -2784,8 +3245,21 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       
                       if (!imageAnalysis) {
                         return (
-                          <div className="text-center py-8">
-                            <p className="text-muted-foreground">No image analysis data available.</p>
+                          <div className="text-center py-12">
+                            <div className="p-4 bg-muted/10 rounded-full mb-4">
+                              <Image className="h-8 w-8 text-muted-foreground" />
+                            </div>
+                            <p className="text-sm text-muted-foreground mb-2">
+                              Image analysis not started yet
+                            </p>
+                            <Button 
+                              onClick={() => refreshImagesAnalysis()} 
+                              size="sm"
+                              className="mt-2"
+                            >
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Start Image Analysis
+                            </Button>
                           </div>
                         );
                       }
@@ -2929,11 +3403,7 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                             <span>Analyzing...</span>
                           </div>
                         )}
-                        {customInstructionsCached && !customInstructionsAnalyzing && (
-                          <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 dark:bg-green-950/20 dark:text-green-400 dark:border-green-800">
-                            Cached
-                          </Badge>
-                        )}
+                        {/* Custom instructions don't need cached badge */}
                       </div>
                     </div>
 
@@ -2999,29 +3469,38 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                       </div>
                     </div>
 
-                                          {(() => {
-                        // Show temporary result if available, otherwise show saved analysis
-                        const analysisToShow = customInstructionResult || (analysis as any)?.custom_instructions_analysis;
-                        
-                        if (!analysisToShow) {
-                          return (
-                            <div className="text-center py-16">
-                              <div className="flex flex-col items-center gap-4">
-                                <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-full">
-                                  <Settings className="h-8 w-8 text-gray-400" />
-                                </div>
-                                <div className="max-w-md">
-                                  <h4 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-                                    No Analysis Available
-                                  </h4>
-                                  <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">
-                                    Ask a question above or wait for saved instructions analysis to complete.
-                                  </p>
-                                </div>
+                                          {customInstructionsAnalyzing ? (
+                            <div className="flex items-center justify-center py-12">
+                              <div className="text-center">
+                                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
+                                <p className="text-sm text-muted-foreground">
+                                  Analyzing custom instructions...
+                                </p>
                               </div>
                             </div>
-                          );
-                        }
+                          ) : (() => {
+                            // Show temporary result if available, otherwise show saved analysis
+                            const analysisToShow = customInstructionResult || (analysis as any)?.custom_instructions_analysis;
+                            
+                            if (!analysisToShow) {
+                              return (
+                                <div className="text-center py-16">
+                                  <div className="flex flex-col items-center gap-4">
+                                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-full">
+                                      <Settings className="h-8 w-8 text-gray-400" />
+                                    </div>
+                                    <div className="max-w-md">
+                                      <h4 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+                                        No Analysis Available
+                                      </h4>
+                                      <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">
+                                        Ask a question above or wait for saved instructions analysis to complete.
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
 
                                               // Handle error state
                         if (analysisToShow.error) {
@@ -3216,29 +3695,37 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                     {/* Sub-tab Content */}
                     {activeTechnicalTab === "tags_analysis" && (
                       <div>
-                        {(() => {
-                          // Show loading state when analyzing
-                          if (technicalAnalyzing) {
-                            return (
-                              <div className="flex items-center justify-center py-12">
-                                <div className="text-center">
-                                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
-                                  <p className="text-sm text-muted-foreground">
-                                    Analyzing technical elements...
-                                  </p>
-                                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                    Checking tags, social meta, and links
-                                  </p>
-                                </div>
-                              </div>
-                            );
-                          }
-                          
+                        {technicalAnalyzing ? (
+                          <div className="flex items-center justify-center py-12">
+                            <div className="text-center">
+                              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
+                              <p className="text-sm text-muted-foreground">
+                                Analyzing technical elements...
+                              </p>
+                              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                Checking tags, social meta, and links
+                              </p>
+                            </div>
+                          </div>
+                        ) : (() => {
                           const tagsAnalysis = (analysis as any)?.tags_analysis;
                           if (!tagsAnalysis || !tagsAnalysis.detectedTags || Object.keys(tagsAnalysis.detectedTags).length === 0) {
                             return (
                               <div className="text-center py-12">
-                                <p className="text-muted-foreground">No tags analysis data present.</p>
+                                <div className="p-4 bg-muted/10 rounded-full mb-4">
+                                  <Shield className="h-8 w-8 text-muted-foreground" />
+                                </div>
+                                <p className="text-sm text-muted-foreground mb-2">
+                                  Technical analysis not started yet
+                                </p>
+                                <Button 
+                                  onClick={() => refreshTechnicalAnalysis()} 
+                                  size="sm"
+                                  className="mt-2"
+                                >
+                                  <RefreshCw className="h-4 w-4 mr-2" />
+                                  Start Technical Analysis
+                                </Button>
                               </div>
                             );
                           }
@@ -3323,29 +3810,37 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                     )}
                     {activeTechnicalTab === "social_share_preview" && (
                       <div>
-                        {(() => {
-                          // Show loading state when analyzing
-                          if (technicalAnalyzing) {
-                            return (
-                              <div className="flex items-center justify-center py-12">
-                                <div className="text-center">
-                                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
-                                  <p className="text-sm text-muted-foreground">
-                                    Analyzing social meta tags...
-                                  </p>
-                                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                    Checking Open Graph and Twitter cards
-                                  </p>
-                                </div>
-                              </div>
-                            );
-                          }
-                          
+                        {technicalAnalyzing ? (
+                          <div className="flex items-center justify-center py-12">
+                            <div className="text-center">
+                              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
+                              <p className="text-sm text-muted-foreground">
+                                Analyzing social meta tags...
+                              </p>
+                              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                Checking Open Graph and Twitter cards
+                              </p>
+                            </div>
+                          </div>
+                        ) : (() => {
                           const socialMeta = (analysis as any)?.social_meta_analysis;
                           if (!socialMeta) {
                             return (
                               <div className="text-center py-12">
-                                <p className="text-muted-foreground">No social share preview data present.</p>
+                                <div className="p-4 bg-muted/10 rounded-full mb-4">
+                                  <Globe className="h-8 w-8 text-muted-foreground" />
+                                </div>
+                                <p className="text-sm text-muted-foreground mb-2">
+                                  Social meta analysis not started yet
+                                </p>
+                                <Button 
+                                  onClick={() => refreshTechnicalAnalysis()} 
+                                  size="sm"
+                                  className="mt-2"
+                                >
+                                  <RefreshCw className="h-4 w-4 mr-2" />
+                                  Start Social Analysis
+                                </Button>
                               </div>
                             );
                           }
@@ -3432,27 +3927,21 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                           </div>
                         </div>
 
-                        {(() => {
-                          // Show loading state when analyzing
-                          if (technicalAnalyzing) {
-                            return (
-                              <div className="flex items-center justify-center py-12">
-                                <div className="text-center">
-                                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
-                                  <p className="text-sm text-muted-foreground">
-                                    Analyzing links...
-                                  </p>
-                                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                    Extracting and categorizing page links
-                                  </p>
-                                </div>
-                              </div>
-                            );
-                          }
+                        {technicalAnalyzing ? (
+                          <div className="flex items-center justify-center py-12">
+                            <div className="text-center">
+                              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-500" />
+                              <p className="text-sm text-muted-foreground">
+                                Analyzing links...
+                              </p>
+                              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                Extracting and categorizing page links
+                              </p>
+                            </div>
+                          </div>
+                        ) : (() => {
                           // Handle the detailed link analysis data structure
                           let linkAnalysis: any = analysis.link_analysis;
-                          
-                          // Debug log removed to prevent continuous logging
                           
                           // If it's a string, try to parse it
                           if (typeof linkAnalysis === 'string') {
@@ -3493,21 +3982,23 @@ export function PageDetailSimple({ pageId }: PageDetailSimpleProps) {
                             }
                           }
                           
-                          
                           if (!linkAnalysis) {
                             return (
                               <div className="text-center py-12">
-                                <div className="max-w-md mx-auto">
-                                  <Globe className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                                  <h3 className="text-lg font-semibold mb-2">No Link Analysis Data</h3>
-                                  <p className="text-muted-foreground mb-4">
-                                    No link analysis data is available for this page. Run a full analysis to get detailed link insights.
-                                  </p>
-                                                                      <Button onClick={() => startFullAnalysis()}>
-                                      <RefreshCw className="h-4 w-4 mr-2" />
-                                      Run Full Analysis
-                                    </Button>
+                                <div className="p-4 bg-muted/10 rounded-full mb-4">
+                                  <Globe className="h-8 w-8 text-muted-foreground" />
                                 </div>
+                                <p className="text-sm text-muted-foreground mb-2">
+                                  Link analysis not started yet
+                                </p>
+                                <Button 
+                                  onClick={() => refreshTechnicalAnalysis()} 
+                                  size="sm"
+                                  className="mt-2"
+                                >
+                                  <RefreshCw className="h-4 w-4 mr-2" />
+                                  Start Link Analysis
+                                </Button>
                               </div>
                             );
                           }

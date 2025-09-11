@@ -2128,7 +2128,7 @@ async function generateScreenshotFromHtml(
     // Get configuration from environment variables
     const waitForAnimations = process.env.WAIT_FOR_ANIMATIONS !== 'false';
     const simulateViewportScroll = process.env.SIMULATE_VIEWPORT_SCROLL !== 'false';
-    const screenshotTimeout = parseInt(process.env.SCREENSHOT_TIMEOUT || '15000');
+    const screenshotTimeout = parseInt(process.env.SCREENSHOT_TIMEOUT || '1800000'); // 30 minutes
     
     // Generate image buffer directly from HTML without Puppeteer
     const imageBuffer = await Promise.race([
@@ -2136,7 +2136,7 @@ async function generateScreenshotFromHtml(
         html: cleanHtml,
         type: 'png',
         quality: 60, // Reduced quality for faster generation
-        waitUntil: waitForAnimations ? 'networkidle0' : 'domcontentloaded',
+        waitUntil: 'domcontentloaded', // Use faster wait condition
         timeout: screenshotTimeout,
         beforeScreenshot: waitForAnimations ? async (page: any) => {
           // Wait for common animations and dynamic content
