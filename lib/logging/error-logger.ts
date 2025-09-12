@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { workerSupabase } from '@/lib/supabase/workers';
 
 export interface ErrorLog {
   id?: string;
@@ -259,7 +259,12 @@ class ErrorLogger {
 
   private async saveToDatabase(log: ErrorLog): Promise<void> {
     try {
-      const supabase = await createClient();
+      const supabase = workerSupabase;
+      
+      if (!supabase) {
+        console.warn('⚠️ Cannot save error to database: Supabase client not available');
+        return;
+      }
       
       const { error } = await supabase
         .from('error_logs')

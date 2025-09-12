@@ -1,16 +1,24 @@
 {
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "concurrently --kill-others-on-fail --prefix \"[{name}]\" --names \"Next.js,Workers\" \"next dev\" \"npm run start:workers:dev\"",
+    "dev:app": "next dev",
+    "dev:workers": "npm run start:workers:dev",
+    "dev:custom": "node scripts/dev-with-workers.js",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "start:workers": "npx ts-node scripts/start-queue-workers.ts",
-    "start:workers:dev": "npx ts-node --watch scripts/start-queue-workers.ts",
-    "optimize:100-users": "npx ts-node scripts/optimize-for-100-users.ts",
-    "optimize:200-users-8gb": "npx ts-node scripts/optimize-for-200-users-8gb.ts",
-    "simulate:100-workers": "npx ts-node scripts/simulate-100-workers.ts",
-    "update:scaling": "npx ts-node scripts/update-scaling-config.ts",
+    "start:workers": "tsx scripts/start-queue-workers.ts",
+    "start:workers:dev": "tsx --watch scripts/start-queue-workers.ts",
+    "optimize:100-users": "npx ts-node --esm scripts/optimize-for-100-users.ts",
+    "optimize:200-users-8gb": "npx ts-node --esm scripts/optimize-for-200-users-8gb.ts",
+    "optimize:current-server": "npx ts-node --esm scripts/optimize-current-server.ts",
+    "optimize:100-users-fast": "npx ts-node --esm scripts/optimize-for-100-users-fast.ts",
+    "optimize:100-users-simultaneous": "npx ts-node --esm scripts/optimize-simultaneous-100-users.ts",
+    "optimize:100-users-staged": "npx ts-node --esm scripts/optimize-staged-100-users.ts",
+    "optimize:32gb-memory": "npx ts-node --esm scripts/optimize-for-32gb-memory.ts",
+    "simulate:100-workers": "npx ts-node --esm scripts/simulate-100-workers.ts",
+    "update:scaling": "npx ts-node --esm scripts/update-scaling-config.ts",
     "validate:scaling": "npx ts-node -e \"import { dynamicScalingManager } from './lib/saas/config/dynamic-scaling'; const validation = dynamicScalingManager.validateScalingConfig(); console.log(validation.valid ? '✅ Configuration valid' : '❌ Configuration invalid:', validation.errors);\""
   },
   "dependencies": {
@@ -55,6 +63,10 @@
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "tailwindcss-animate": "^1.0.7",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.7.0",
+    "dotenv-cli": "^7.4.2",
+    "concurrently": "^8.2.2",
     "typescript": "^5"
   }
 }

@@ -11,15 +11,18 @@ export function getRedisConnection(): Redis {
     }
 
     try {
-      redis = new Redis(redisUrl, {
-        maxRetriesPerRequest: 3,
-        lazyConnect: true,
-        keepAlive: 30000,
-        connectTimeout: 10000,
-        commandTimeout: 5000,
-        enableOfflineQueue: false,
-        family: 4 // IPv4
-      });
+            redis = new Redis(redisUrl, {
+              maxRetriesPerRequest: null, // Required by BullMQ for workers
+              lazyConnect: true,
+              keepAlive: 30000,
+              connectTimeout: 30000, // Increased for slow connections
+              commandTimeout: 15000, // Increased for slow Redis
+              enableOfflineQueue: false,
+              family: 4, // IPv4
+              tls: {
+                rejectUnauthorized: false // Allow self-signed certificates
+              }
+            });
 
       // Test connection
       redis.ping().then(() => {

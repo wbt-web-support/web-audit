@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { workerSupabase } from '@/lib/supabase/workers';
 
 export interface QueueConfig {
   queueName: string;
@@ -73,7 +73,13 @@ const DEFAULT_QUEUE_CONFIGS: Record<string, QueueConfig> = {
 
 export async function getQueueConfig(queueName: string): Promise<QueueConfig> {
   try {
-    const supabase = await createClient();
+    const supabase = workerSupabase;
+    
+    // If no Supabase client, use default configs
+    if (!supabase) {
+      console.log(`📋 Using default config for queue '${queueName}'`);
+      return DEFAULT_QUEUE_CONFIGS[queueName] || DEFAULT_QUEUE_CONFIGS['web-scraping'];
+    }
     
     const { data, error } = await supabase
       .from('redis_queue_management')
@@ -106,7 +112,12 @@ export async function getQueueConfig(queueName: string): Promise<QueueConfig> {
 
 export async function updateQueueConfig(queueName: string, config: Partial<QueueConfig>): Promise<boolean> {
   try {
-    const supabase = await createClient();
+    const supabase = workerSupabase;
+    
+    if (!supabase) {
+      console.warn('⚠️ Cannot update queue config: Supabase client not available');
+      return false;
+    }
     
     const updateData: any = {};
     if (config.maxWorkers !== undefined) updateData.max_workers = config.maxWorkers;
@@ -138,7 +149,12 @@ export async function updateQueueConfig(queueName: string, config: Partial<Queue
 
 export async function getAllQueueConfigs(): Promise<QueueConfig[]> {
   try {
-    const supabase = await createClient();
+    const supabase = workerSupabase;
+    
+    if (!supabase) {
+      console.log('📋 Using default queue configurations');
+      return Object.values(DEFAULT_QUEUE_CONFIGS);
+    }
     
     const { data, error } = await supabase
       .from('redis_queue_management')

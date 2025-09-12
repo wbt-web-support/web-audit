@@ -1,5 +1,5 @@
 import { Queue, Worker, Job, QueueEvents } from 'bullmq';
-import { getRedisConnection } from './redis-connection';
+import { getBullMQRedisConnection } from './redis-connection-bullmq';
 import { getQueueConfig, QueueConfig } from './queue-config';
 
 export interface JobData {
@@ -26,7 +26,7 @@ export class QueueManager {
   async createQueue(queueName: string, processor?: (job: Job<JobData>) => Promise<JobResult>): Promise<Queue> {
     try {
       const config = await getQueueConfig(queueName);
-      const redis = getRedisConnection();
+      const redis = getBullMQRedisConnection();
 
       // Create queue
       const queue = new Queue(queueName, {
@@ -71,7 +71,7 @@ export class QueueManager {
     config: QueueConfig
   ): Promise<Worker> {
     try {
-      const redis = getRedisConnection();
+      const redis = getBullMQRedisConnection();
 
       const worker = new Worker(
         queueName,
