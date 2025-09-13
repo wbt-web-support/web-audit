@@ -19,7 +19,9 @@
     "optimize:32gb-memory": "npx ts-node --esm scripts/optimize-for-32gb-memory.ts",
     "simulate:100-workers": "npx ts-node --esm scripts/simulate-100-workers.ts",
     "update:scaling": "npx ts-node --esm scripts/update-scaling-config.ts",
-    "validate:scaling": "npx ts-node -e \"import { dynamicScalingManager } from './lib/saas/config/dynamic-scaling'; const validation = dynamicScalingManager.validateScalingConfig(); console.log(validation.valid ? '✅ Configuration valid' : '❌ Configuration invalid:', validation.errors);\""
+    "validate:scaling": "npx ts-node -e \"import { dynamicScalingManager } from './lib/saas/config/dynamic-scaling'; const validation = dynamicScalingManager.validateScalingConfig(); console.log(validation.valid ? '✅ Configuration valid' : '❌ Configuration invalid:', validation.errors);\"",
+    "create:test-users": "tsx scripts/create-test-users.ts",
+    "create:test-users:demo": "node scripts/create-test-users-demo.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

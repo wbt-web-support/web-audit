@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { LogoutButton } from '@/components/logout-button';
 import { SimpleThemeSwitcher } from '@/components/simple-theme-switcher';
 import { AdminNavigation } from '@/components/admin-navigation';
+import { PLAN_HELPERS } from '@/lib/config/api';
 import React from 'react';
 
 interface SidebarLayoutProps {
@@ -41,6 +42,8 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
     name: string;
     status: string;
     queue_priority: number;
+    plan_uniq_name: string;
+    tier: string;
   } | null>(null);
 
   // Auto-expand profile section when on profile pages
@@ -60,16 +63,24 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
           console.log('Profile data with plan:', data.profile);
           
           if (data.profile?.plans) {
+            const planUniqName = data.profile.plans.plan_uniq_name || 'free';
+            const tier = PLAN_HELPERS.getUserTierFromPlan(planUniqName);
+            const priority = PLAN_HELPERS.getPriorityFromPlan(planUniqName);
+            
             setUserPlan({
-              name: data.profile.plans.name || 'Free Plan temp',
-              status: data.profile.plan_status || 'free temp',
-              queue_priority: data.profile.queue_priority || 3
+              name: data.profile.plans.name || 'Free Plan',
+              status: data.profile.plan_status || 'free',
+              queue_priority: priority,
+              plan_uniq_name: planUniqName,
+              tier: tier
             });
           } else {
             setUserPlan({
-              name: 'Free Plan dummy',
+              name: 'Free Plan',
               status: 'free',
-              queue_priority: 3
+              queue_priority: 3,
+              plan_uniq_name: 'free',
+              tier: 'FREE'
             });
           }
         }
@@ -78,7 +89,9 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
         setUserPlan({
           name: 'Free Plan',
           status: 'free',
-          queue_priority: 3
+          queue_priority: 3,
+          plan_uniq_name: 'free',
+          tier: 'FREE'
         });
       }
     };
@@ -212,6 +225,8 @@ const Sidebar = React.memo(({
     name: string;
     status: string;
     queue_priority: number;
+    plan_uniq_name: string;
+    tier: string;
   } | null;
 }) => {
   const pathname = usePathname();
@@ -487,6 +502,8 @@ const PlanIndicator = React.memo(({
     name: string;
     status: string;
     queue_priority: number;
+    plan_uniq_name: string;
+    tier: string;
   };
 }) => {
   const getPlanIcon = (priority: number) => {
@@ -495,10 +512,10 @@ const PlanIndicator = React.memo(({
     return <Zap className="h-4 w-4" />;
   };
 
-  const getPlanColor = (status: string, priority: number) => {
+  const getPlanColor = (status: string, priority: number, tier: string) => {
     if (status === 'active') {
-      if (priority === 1) return 'bg-purple-100 text-purple-800 border-purple-200';
-      if (priority === 2) return 'bg-blue-100 text-blue-800 border-blue-200';
+      if (priority === 1 || tier === 'ENTERPRISE') return 'bg-purple-100 text-purple-800 border-purple-200';
+      if (priority === 2 || tier === 'PRO') return 'bg-blue-100 text-blue-800 border-blue-200';
       return 'bg-green-100 text-green-800 border-green-200';
     }
     return 'bg-gray-100 text-gray-600 border-gray-200';
@@ -516,7 +533,7 @@ const PlanIndicator = React.memo(({
   return (
     <div className={cn(
       "flex items-center gap-3 px-3 py-2 rounded-lg border text-sm font-medium",
-      getPlanColor(userPlan.status, userPlan.queue_priority)
+      getPlanColor(userPlan.status, userPlan.queue_priority, userPlan.tier)
     )}>
       <div className="flex-shrink-0">
         {getPlanIcon(userPlan.queue_priority)}
@@ -524,7 +541,7 @@ const PlanIndicator = React.memo(({
       <div className="flex-1 min-w-0">
         <div className="font-medium truncate">{userPlan.name}</div>
         <div className="text-xs opacity-75">
-          {getStatusText(userPlan.status)} • Priority {userPlan.queue_priority}
+          {getStatusText(userPlan.status)} • {userPlan.tier} • Priority {userPlan.queue_priority}
         </div>
       </div>
     </div>

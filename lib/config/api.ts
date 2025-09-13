@@ -115,28 +115,52 @@ export const HTTP_STATUS = {
   GATEWAY_TIMEOUT: 504,
 } as const;
 
-// User tiers for different rate limits
+// Plan-based priority system
+export const PLAN_PRIORITIES = {
+  'enterprise_yearly': 1,
+  'enterprise_monthly': 1,
+  'pro_yearly': 2,
+  'pro_monthly': 2,
+  'free': 3,
+} as const;
+
+// User tiers for different rate limits based on plan priorities
 export const USER_TIERS = {
-  FREE: {
-    MAX_REQUESTS_PER_WINDOW: 100,
-    MAX_PROJECTS: 50,
-    BURST_LIMIT: 20,
-  },
-  BASIC: {
-    MAX_REQUESTS_PER_WINDOW: 200,
-    MAX_PROJECTS: 200,
-    BURST_LIMIT: 50,
-  },
-  PREMIUM: {
-    MAX_REQUESTS_PER_WINDOW: 500,
-    MAX_PROJECTS: 1000,
-    BURST_LIMIT: 100,
-  },
   ENTERPRISE: {
+    PRIORITY: 1,
     MAX_REQUESTS_PER_WINDOW: 1000,
     MAX_PROJECTS: 5000,
     BURST_LIMIT: 200,
+    WORKER_ALLOCATION: 'dedicated',
+    CONCURRENT_ANALYSES: 10,
+    QUEUE_TIMEOUT_MS: 300000, // 5 minutes
   },
+  PRO: {
+    PRIORITY: 2,
+    MAX_REQUESTS_PER_WINDOW: 500,
+    MAX_PROJECTS: 1000,
+    BURST_LIMIT: 100,
+    WORKER_ALLOCATION: 'shared',
+    CONCURRENT_ANALYSES: 5,
+    QUEUE_TIMEOUT_MS: 600000, // 10 minutes
+  },
+  FREE: {
+    PRIORITY: 3,
+    MAX_REQUESTS_PER_WINDOW: 100,
+    MAX_PROJECTS: 50,
+    BURST_LIMIT: 20,
+    WORKER_ALLOCATION: 'shared',
+    CONCURRENT_ANALYSES: 2,
+    QUEUE_TIMEOUT_MS: 1200000, // 20 minutes
+  },
+} as const;
+
+// Legacy tiers for backward compatibility
+export const LEGACY_USER_TIERS = {
+  FREE: USER_TIERS.FREE,
+  BASIC: USER_TIERS.PRO,
+  PREMIUM: USER_TIERS.PRO,
+  ENTERPRISE: USER_TIERS.ENTERPRISE,
 } as const;
 
 // Performance monitoring thresholds
@@ -157,5 +181,57 @@ export const PERFORMANCE_THRESHOLDS = {
     OPTIMAL: 200,
     HIGH: 400,
     CRITICAL: 500,
+  },
+} as const;
+
+// Helper functions for plan management
+export const PLAN_HELPERS = {
+  /**
+   * Get user tier based on plan unique name
+   */
+  getUserTierFromPlan: (planUniqName: string): keyof typeof USER_TIERS => {
+    if (planUniqName?.includes('enterprise')) return 'ENTERPRISE';
+    if (planUniqName?.includes('pro')) return 'PRO';
+    return 'FREE';
+  },
+
+  /**
+   * Get priority from plan unique name
+   */
+  getPriorityFromPlan: (planUniqName: string): number => {
+    return PLAN_PRIORITIES[planUniqName as keyof typeof PLAN_PRIORITIES] || 3;
+  },
+
+  /**
+   * Get tier configuration based on plan
+   */
+  getTierConfig: (planUniqName: string) => {
+    const tier = PLAN_HELPERS.getUserTierFromPlan(planUniqName);
+    return USER_TIERS[tier];
+  },
+
+  /**
+   * Check if plan has dedicated workers
+   */
+  hasDedicatedWorkers: (planUniqName: string): boolean => {
+    const config = PLAN_HELPERS.getTierConfig(planUniqName);
+    return config.WORKER_ALLOCATION === 'dedicated';
+  },
+
+  /**
+   * Get queue name based on priority
+   */
+  getQueueNameByPriority: (priority: number): string => {
+    if (priority === 1) return 'enterprise-queue';
+    if (priority === 2) return 'pro-queue';
+    return 'free-queue';
+  },
+
+  /**
+   * Get worker concurrency based on plan
+   */
+  getWorkerConcurrency: (planUniqName: string): number => {
+    const config = PLAN_HELPERS.getTierConfig(planUniqName);
+    return config.CONCURRENT_ANALYSES;
   },
 } as const;

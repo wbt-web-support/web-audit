@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { AuditProject } from '@/lib/types/database';
-import { API_CONFIG, ERROR_CODES, HTTP_STATUS, USER_TIERS, PERFORMANCE_THRESHOLDS } from '@/lib/config/api';
+import { API_CONFIG, ERROR_CODES, HTTP_STATUS, USER_TIERS, PERFORMANCE_THRESHOLDS, PLAN_HELPERS } from '@/lib/config/api';
 
 // Enhanced rate limiting store with burst support and user tiers
 interface RateLimitData {
@@ -24,18 +24,67 @@ setInterval(() => {
   }
 }, API_CONFIG.RATE_LIMIT.CLEANUP_INTERVAL_MS);
 
-// Helper function to get user tier (default to BASIC for now)
-function getUserTier(userId: string): keyof typeof USER_TIERS {
-  // TODO: Implement user tier detection from database/subscription
-  // For now, return BASIC tier
-  return 'BASIC';
+// Helper function to get user tier and plan information
+async function getUserTierAndPlan(supabase: any, userId: string): Promise<{
+  tier: keyof typeof USER_TIERS;
+  planUniqName: string;
+  priority: number;
+  tierConfig: any;
+}> {
+  try {
+    // Get user profile with plan information
+    const { data: profile, error } = await supabase
+      .from('user_profiles')
+      .select(`
+        plan_status,
+        queue_priority,
+        plans (
+          name,
+          plan_uniq_name
+        )
+      `)
+      .eq('id', userId)
+      .single();
+
+    if (error || !profile) {
+      console.warn('Could not fetch user plan, defaulting to FREE tier:', error);
+      return {
+        tier: 'FREE',
+        planUniqName: 'free',
+        priority: 3,
+        tierConfig: USER_TIERS.FREE
+      };
+    }
+
+    // Get plan unique name from database or default to 'free'
+    const planUniqName = profile.plans?.plan_uniq_name || 'free';
+    
+    // Determine tier and priority
+    const tier = PLAN_HELPERS.getUserTierFromPlan(planUniqName);
+    const priority = PLAN_HELPERS.getPriorityFromPlan(planUniqName);
+    const tierConfig = PLAN_HELPERS.getTierConfig(planUniqName);
+
+    return {
+      tier,
+      planUniqName,
+      priority,
+      tierConfig
+    };
+  } catch (error) {
+    console.error('Error fetching user tier and plan:', error);
+    return {
+      tier: 'FREE',
+      planUniqName: 'free',
+      priority: 3,
+      tierConfig: USER_TIERS.FREE
+    };
+  }
 }
 
 // Enhanced rate limiting with burst support and user tiers
-function checkRateLimit(userId: string): { allowed: boolean; retryAfter?: number; burstRetryAfter?: number } {
+async function checkRateLimit(supabase: any, userId: string): Promise<{ allowed: boolean; retryAfter?: number; burstRetryAfter?: number; tierConfig?: any }> {
   const now = Date.now();
-  const userTier = getUserTier(userId);
-  const tierConfig = USER_TIERS[userTier];
+  const { tier, tierConfig } = await getUserTierAndPlan(supabase, userId);
   
   let userLimit = rateLimitStore.get(userId);
   
@@ -80,7 +129,7 @@ function checkRateLimit(userId: string): { allowed: boolean; retryAfter?: number
   }
   
   userLimit.lastRequestTime = now;
-  return { allowed: true };
+  return { allowed: true, tierConfig };
 }
 
 // Enhanced validation with new limits
@@ -249,14 +298,23 @@ export async function GET() {
       );
     }
 
+    // Get user tier and plan information
+    const { tier, planUniqName, priority, tierConfig } = await getUserTierAndPlan(supabase, userId);
+    
+    // Log user queue entry for testing
+    console.log(`[QUEUE ENTRY] User ${userId} entered projects queue with plan: ${planUniqName}, priority: ${priority}, tier: ${tier}`);
+    console.log(`[QUEUE ENTRY] Rate limits - Max requests: ${tierConfig.MAX_REQUESTS_PER_WINDOW}, Burst: ${tierConfig.BURST_LIMIT}, Projects: ${tierConfig.MAX_PROJECTS}`);
+    
     logPerformanceMetrics(userId, 'GET projects', startTime);
     
     return NextResponse.json({ 
       projects: projects || [],
       count: projects?.length || 0,
-      userTier: getUserTier(userId),
+      userTier: tier,
+      planUniqName,
+      priority,
       rateLimitInfo: {
-        remaining: USER_TIERS[getUserTier(userId)].MAX_REQUESTS_PER_WINDOW - (rateLimitStore.get(userId)?.count || 0),
+        remaining: tierConfig.MAX_REQUESTS_PER_WINDOW - (rateLimitStore.get(userId)?.count || 0),
         resetTime: rateLimitStore.get(userId)?.resetTime || Date.now() + API_CONFIG.RATE_LIMIT.WINDOW_MS
       }
     });
@@ -327,10 +385,17 @@ export async function POST(request: Request) {
     userId = user.id;
 
     // Check rate limiting with enhanced features
-    const rateLimitCheck = checkRateLimit(user.id);
+    const rateLimitCheck = await checkRateLimit(supabase, user.id);
+    
+    // Log rate limit check for testing
+    console.log(`[RATE LIMIT CHECK] User ${user.id} - Allowed: ${rateLimitCheck.allowed}, Tier config: ${JSON.stringify(rateLimitCheck.tierConfig)}`);
+    
     if (!rateLimitCheck.allowed) {
       const retryAfter = rateLimitCheck.retryAfter || rateLimitCheck.burstRetryAfter;
       const errorCode = rateLimitCheck.burstRetryAfter ? ERROR_CODES.BURST_LIMIT_EXCEEDED : ERROR_CODES.RATE_LIMIT_EXCEEDED;
+      
+      // Get user tier information for error response
+      const { tier, planUniqName, priority, tierConfig } = await getUserTierAndPlan(supabase, user.id);
       
       return NextResponse.json(
         { 
@@ -339,8 +404,10 @@ export async function POST(request: Request) {
             : 'Rate limit exceeded. Please try again later.',
           code: errorCode,
           retryAfter,
-          userTier: getUserTier(user.id),
-          limits: USER_TIERS[getUserTier(user.id)]
+          userTier: tier,
+          planUniqName,
+          priority,
+          limits: tierConfig
         },
         { status: HTTP_STATUS.TOO_MANY_REQUESTS }
       );
@@ -359,8 +426,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check user project limit
-    const userTier = getUserTier(user.id);
+    // Get user tier and plan information for project limit check
+    const { tier, planUniqName, priority, tierConfig } = await getUserTierAndPlan(supabase, user.id);
+    
+    // Log project creation queue entry for testing
+    console.log(`[PROJECT CREATION QUEUE] User ${user.id} creating project with plan: ${planUniqName}, priority: ${priority}, tier: ${tier}`);
+    console.log(`[PROJECT CREATION QUEUE] Project limits - Max projects: ${tierConfig.MAX_PROJECTS}, Worker allocation: ${tierConfig.WORKER_ALLOCATION}`);
+    
+    // Check user project limit based on plan
     const { data: projectCount, error: countError } = await supabase
       .from('audit_projects')
       .select('id', { count: 'exact' })
@@ -368,14 +441,16 @@ export async function POST(request: Request) {
 
     if (countError) {
       console.error('Error counting user projects:', countError);
-    } else if (projectCount && projectCount.length >= USER_TIERS[userTier].MAX_PROJECTS) {
+    } else if (projectCount && projectCount.length >= tierConfig.MAX_PROJECTS) {
       return NextResponse.json(
         { 
-          error: 'Project limit reached for your tier',
+          error: 'Project limit reached for your plan',
           code: ERROR_CODES.TOO_MANY_PROJECTS,
           currentCount: projectCount.length,
-          maxAllowed: USER_TIERS[userTier].MAX_PROJECTS,
-          userTier
+          maxAllowed: tierConfig.MAX_PROJECTS,
+          userTier: tier,
+          planUniqName,
+          priority
         },
         { status: HTTP_STATUS.FORBIDDEN }
       );
@@ -488,15 +563,21 @@ export async function POST(request: Request) {
 
     logPerformanceMetrics(userId, 'POST project creation', startTime);
 
+    // Log successful project creation for testing
+    console.log(`[PROJECT CREATED] User ${user.id} successfully created project with plan: ${planUniqName}, priority: ${priority}, tier: ${tier}`);
+    console.log(`[PROJECT CREATED] Project ID: ${project.id}, URL: ${project.base_url}`);
+
     // Success response with enhanced information
     return NextResponse.json(
       { 
         project,
         message: 'Project created successfully',
         code: ERROR_CODES.SUCCESS,
-        userTier,
+        userTier: tier,
+        planUniqName,
+        priority,
         rateLimitInfo: {
-          remaining: USER_TIERS[userTier].MAX_REQUESTS_PER_WINDOW - (rateLimitStore.get(user.id)?.count || 0),
+          remaining: tierConfig.MAX_REQUESTS_PER_WINDOW - (rateLimitStore.get(user.id)?.count || 0),
           resetTime: rateLimitStore.get(user.id)?.resetTime || Date.now() + API_CONFIG.RATE_LIMIT.WINDOW_MS
         }
       },

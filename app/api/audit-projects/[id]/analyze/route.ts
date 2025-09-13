@@ -25,6 +25,8 @@ import axios from "axios";
 import nodeHtmlToImage from 'node-html-to-image';
 import { analyzePerformanceAndAccessibility } from "./analyzePerformanceWithPageSpeed";
 import { analyzeImagesDetailed, analyzeLinksDetailed } from '@/lib/services/extract-resources';
+import { PLAN_HELPERS, USER_TIERS } from '@/lib/config/api';
+import { queueManager } from '@/lib/queue/queue-manager';
 
 // Initialize AI models and API keys once for better performance
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -32,6 +34,85 @@ const PAGESPEED_API_KEY = process.env.PAGESPEED_API_KEY;
 
 // Cache Gemini model instance to avoid repeated initialization
 const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+
+/**
+ * Get user plan information for priority-based processing
+ */
+async function getUserPlanInfo(supabase: any, userId: string): Promise<{
+  tier: keyof typeof USER_TIERS;
+  planUniqName: string;
+  priority: number;
+  tierConfig: any;
+  hasDedicatedWorkers: boolean;
+  queueName: string;
+}> {
+  try {
+    // Get user profile with plan information
+    const { data: profile, error } = await supabase
+      .from('user_profiles')
+      .select(`
+        plan_status,
+        queue_priority,
+        plans (
+          name,
+          plan_uniq_name
+        )
+      `)
+      .eq('id', userId)
+      .single();
+
+    if (error || !profile) {
+      console.warn('Could not fetch user plan for analysis, defaulting to FREE tier:', error);
+      const planUniqName = 'free';
+      const tier = 'FREE';
+      const priority = 3;
+      const tierConfig = USER_TIERS.FREE;
+      
+      return {
+        tier,
+        planUniqName,
+        priority,
+        tierConfig,
+        hasDedicatedWorkers: false,
+        queueName: 'free-queue'
+      };
+    }
+
+    // Get plan unique name from database or default to 'free'
+    const planUniqName = profile.plans?.plan_uniq_name || 'free';
+    
+    // Determine tier and priority
+    const tier = PLAN_HELPERS.getUserTierFromPlan(planUniqName);
+    const priority = PLAN_HELPERS.getPriorityFromPlan(planUniqName);
+    const tierConfig = PLAN_HELPERS.getTierConfig(planUniqName);
+    const hasDedicatedWorkers = PLAN_HELPERS.hasDedicatedWorkers(planUniqName);
+    const queueName = PLAN_HELPERS.getQueueNameByPriority(priority);
+
+    return {
+      tier,
+      planUniqName,
+      priority,
+      tierConfig,
+      hasDedicatedWorkers,
+      queueName
+    };
+  } catch (error) {
+    console.error('Error fetching user plan for analysis:', error);
+    const planUniqName = 'free';
+    const tier = 'FREE';
+    const priority = 3;
+    const tierConfig = USER_TIERS.FREE;
+    
+    return {
+      tier,
+      planUniqName,
+      priority,
+      tierConfig,
+      hasDedicatedWorkers: false,
+      queueName: 'free-queue'
+    };
+  }
+}
 
 /**
  * Updates the pages_analyzed count for a project
@@ -98,6 +179,12 @@ export async function POST(
       custom_instruction = null,
     } = body;
   
+    // Get user plan information for priority-based processing
+    const userPlanInfo = await getUserPlanInfo(supabase, user.id);
+    console.log(`[ANALYSIS QUEUE ENTRY] User ${user.id} entered analysis queue with plan: ${userPlanInfo.planUniqName}, priority: ${userPlanInfo.priority}, tier: ${userPlanInfo.tier}`);
+    console.log(`[ANALYSIS QUEUE ENTRY] Queue: ${userPlanInfo.queueName}, Dedicated workers: ${userPlanInfo.hasDedicatedWorkers}, Concurrency: ${userPlanInfo.tierConfig.CONCURRENT_ANALYSES}`);
+    console.log(`[ANALYSIS QUEUE ENTRY] Timeout: ${userPlanInfo.tierConfig.QUEUE_TIMEOUT_MS}ms, Worker allocation: ${userPlanInfo.tierConfig.WORKER_ALLOCATION}`);
+
     // Verify project ownership and existence
     const { data: project, error: projectError } = await supabase
       .from("audit_projects")
@@ -138,8 +225,42 @@ export async function POST(
       );
     }
 
-    // Single page immediate analysis
+    // Single page immediate analysis with priority-based processing
     const page = pages[0];
+    
+    // Log analysis start for testing
+    console.log(`[ANALYSIS START] User ${user.id} starting analysis for page ${page.id} with plan: ${userPlanInfo.planUniqName}, priority: ${userPlanInfo.priority}`);
+    console.log(`[ANALYSIS START] Analysis types: ${analysis_types.join(', ')}, Page URL: ${page.url}`);
+    
+    // Add job to priority-based queue (this will pause lower priority jobs)
+    try {
+      const jobData = {
+        userId: user.id,
+        pageId: page.id,
+        projectId: id,
+        analysisTypes: analysis_types,
+        useCache: use_cache,
+        forceRefresh: force_refresh,
+        customInstruction: custom_instruction,
+        userPlanInfo: userPlanInfo
+      };
+      
+      const job = await queueManager.addPriorityJob(
+        userPlanInfo.planUniqName,
+        'analysis-queue',
+        jobData,
+        {
+          delay: 0,
+          removeOnComplete: 10,
+          removeOnFail: 5
+        }
+      );
+      
+      console.log(`[PRIORITY JOB] Added analysis job ${job.id} to ${userPlanInfo.queueName} for user ${user.id}`);
+    } catch (queueError) {
+      console.error(`[QUEUE ERROR] Failed to add priority job:`, queueError);
+    }
+    
     const results = await performSinglePageAnalysis(
       supabase,
       page,
@@ -147,8 +268,13 @@ export async function POST(
       analysis_types,
       use_cache,
       force_refresh,
-      custom_instruction
+      custom_instruction,
+      userPlanInfo
     );
+
+    // Log analysis completion for testing
+    console.log(`[ANALYSIS COMPLETE] User ${user.id} completed analysis for page ${page.id} with plan: ${userPlanInfo.planUniqName}, priority: ${userPlanInfo.priority}`);
+    console.log(`[ANALYSIS COMPLETE] Results keys: ${Object.keys(results).join(', ')}`);
 
     return NextResponse.json({
       ...results,
@@ -177,10 +303,22 @@ async function performSinglePageAnalysis(
   analysisTypes: string[],
   useCache: boolean,
   forceRefresh: boolean,
-  customInstruction?: string | null
+  customInstruction?: string | null,
+  userPlanInfo?: {
+    tier: keyof typeof USER_TIERS;
+    planUniqName: string;
+    priority: number;
+    tierConfig: any;
+    hasDedicatedWorkers: boolean;
+    queueName: string;
+  }
 ) {
   const startTime = Date.now();
-  const OVERALL_TIMEOUT = 120000; // 2 minutes total timeout (reduced from 3 minutes)
+  
+  // Use priority-based timeout
+  const OVERALL_TIMEOUT = userPlanInfo?.tierConfig?.QUEUE_TIMEOUT_MS || 120000; // Default 2 minutes
+  console.log(`[PRIORITY PROCESSING] User ${userPlanInfo?.tier} plan using timeout: ${OVERALL_TIMEOUT}ms for ${userPlanInfo?.planUniqName} plan`);
+  console.log(`[PRIORITY PROCESSING] Worker allocation: ${userPlanInfo?.tierConfig?.WORKER_ALLOCATION}, Concurrency: ${userPlanInfo?.tierConfig?.CONCURRENT_ANALYSES}`);
   
   try {
     // Update page status to analyzing
@@ -616,7 +754,8 @@ async function performSinglePageAnalysis(
     
     const endTime = Date.now();
     const duration = Math.round((endTime - startTime) / 1000);
-    console.log(`[DONE] Analysis completed for page ${page.id} in ${duration} seconds`);
+    console.log(`[ANALYSIS SUCCESS] User ${userPlanInfo?.tier} plan completed analysis for page ${page.id} in ${duration} seconds`);
+    console.log(`[ANALYSIS SUCCESS] Plan: ${userPlanInfo?.planUniqName}, Priority: ${userPlanInfo?.priority}, Queue: ${userPlanInfo?.queueName}`);
 
     // Update the pages_analyzed count for the project
     await updatePagesAnalyzedCount(supabase, project.id);
@@ -718,6 +857,11 @@ async function performSinglePageAnalysis(
     const isTimeoutError = error instanceof Error && error.message.includes('timeout');
     const isStoppedByUser = error instanceof Error && error.message.includes('stopped by user');
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    
+    // Log analysis failure for testing
+    console.log(`[ANALYSIS FAILED] User ${userPlanInfo?.tier} plan failed analysis for page ${page.id}`);
+    console.log(`[ANALYSIS FAILED] Plan: ${userPlanInfo?.planUniqName}, Priority: ${userPlanInfo?.priority}, Error: ${errorMessage}`);
+    console.log(`[ANALYSIS FAILED] Timeout: ${isTimeoutError}, Stopped by user: ${isStoppedByUser}`);
 
     // Determine the status and error message
     let status = "failed";
